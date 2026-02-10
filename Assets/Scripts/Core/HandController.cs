@@ -432,13 +432,19 @@ namespace MahjongGame.Core
             TalentManager.Instance.TriggerOnDraw(newData);
 
             // B. 生成实体
-            GameObject go = Instantiate(tilePrefab);
-            
-            // C. 初始化并注入依赖 (注意：把自己 this 传进去)
-            TileVisual visual = go.GetComponent<TileVisual>();
-            visual.Initialize(newData, this);
+            AddTileDirectly(newData);
+        }
 
-            // D. 加入手牌列表
+        /// <summary>
+        /// 直接向手牌中添加一张指定的牌 (用于测试或特殊逻辑)
+        /// </summary>
+        public void AddTileDirectly(TileData data)
+        {
+            if (data == null) return;
+
+            GameObject go = Instantiate(tilePrefab);
+            TileVisual visual = go.GetComponent<TileVisual>();
+            visual.Initialize(data, this);
             AddTileToHand(visual);
         }
 

@@ -6,9 +6,20 @@ using UnityEngine;
 
 namespace MahjongGame.Core.Fan
 {
-    public class FanRuleRegistry : MonoBehaviour
+    public class FanRuleRegistry
     {
-        public static FanRuleRegistry Instance;
+        private static FanRuleRegistry _instance;
+        public static FanRuleRegistry Instance
+        {
+            get
+            {
+                if (_instance == null)
+                {
+                    _instance = new FanRuleRegistry();
+                }
+                return _instance;
+            }
+        }
 
         // 存储所有规则: Key = RuleID
         private Dictionary<string, FanRule> _ruleDatabase = new Dictionary<string, FanRule>();
@@ -16,9 +27,8 @@ namespace MahjongGame.Core.Fan
         // 当前激活的规则列表 (用于计算)
         public List<FanRule> ActiveRules => _ruleDatabase.Values.ToList();
 
-        void Awake()
+        private FanRuleRegistry()
         {
-            Instance = this;
             LoadRulesByReflection();
         }
 

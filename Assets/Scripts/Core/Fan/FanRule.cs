@@ -27,6 +27,10 @@ namespace MahjongGame.Core.Fan
             _bonusFanValue += delta;
         }
 
-        public abstract bool Check(FanContext ctx);
+        /// <summary>
+        /// 计算该番种触发了多少次
+        /// </summary>
+        /// <returns>0 表示未触发，>0 表示触发次数</returns>
+        public abstract int GetMatchCount(FanContext ctx);
     }
 }

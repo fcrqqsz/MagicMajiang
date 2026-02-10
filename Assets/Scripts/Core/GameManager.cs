@@ -11,6 +11,11 @@ namespace MahjongGame.Core
 
         [Header("Settings")]
         public HandController playerHandController;
+
+        [Header("Debug")]
+        public bool useDebugHand = false;
+        public List<TileData> debugHand = new List<TileData>();
+
         // 模拟玩家数据 (以后会从网络或存档读取)
         // 假设 ID 0 是自己，1,2,3 是 AI/对手
         private int _playerCount = 4;
@@ -177,11 +182,30 @@ namespace MahjongGame.Core
 
             playerHandController.ClearHand();
 
-            // 循环调用 13 次 DrawCard
-            for (int i = 0; i < 13; i++)
+            // --- 调试逻辑：自定义手牌 ---
+            if (useDebugHand && debugHand != null && debugHand.Count > 0)
             {
-                playerHandController.DrawCard();
+                Debug.Log("<color=yellow>Debug: Using custom starting hand.</color>");
+                // 最多发 13 张作为起手
+                for (int i = 0; i < Mathf.Min(debugHand.Count, 13); i++)
+                {
+                    var tile = debugHand[i];
+                    // 创建副本避免直接修改 Inspector 引用
+                    TileData copy = new TileData(tile.TileSuit, tile.Value, tile.OriginalOwnerID);
+                    playerHandController.AddTileDirectly(copy);
+                }
             }
+            else
+            {
+                // 正常逻辑：循环调用 13 次 DrawCard
+                for (int i = 0; i < 13; i++)
+                {
+                    playerHandController.DrawCard();
+                }
+            }
+
+            // 理牌
+            playerHandController.SortHand();
         }
     }
 }

@@ -16,10 +16,14 @@ namespace MahjongGame.Core.Fan
 
         foreach (var rule in rules)
         {
-            if (rule.Check(ctx))
+            int count = rule.GetMatchCount(ctx);
+            if (count > 0)
             {
-                totalFan += rule.FanValue;
-                fanNames.Add($"{rule.Name}({rule.FanValue})");
+                int subTotal = rule.FanValue * count;
+                totalFan += subTotal;
+
+                string displayName = count > 1 ? $"{rule.Name} x{count}" : rule.Name;
+                fanNames.Add($"{displayName}({subTotal})");
             }
         }
         return totalFan;
