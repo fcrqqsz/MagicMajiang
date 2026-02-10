@@ -1,0 +1,14 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" editor-extension-mode="False">
+    <ui:VisualElement class="main-container">
+        <ui:VisualElement class="header-container">
+            <ui:Label name="TotalText" text="Total: 0 / 34" class="stat-label" />
+            <ui:Label name="ScoreText" text="Alienation: 0" class="stat-label" />
+        </ui:VisualElement>
+
+        <ui:ScrollView class="grid-scroll-view">
+            <ui:VisualElement name="GridContainer" class="grid-container" />
+        </ui:ScrollView>
+
+        <ui:Button name="BtnStart" text="START GAME" class="start-button" />
+    </ui:VisualElement>
+</ui:UXML>

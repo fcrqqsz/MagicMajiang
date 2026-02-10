@@ -1,0 +1,80 @@
+/* 全屏遮罩：半透明黑 */
+.overlay {
+    position: absolute;
+    left: 0; top: 0; right: 0; bottom: 0;
+    background-color: rgba(0, 0, 0, 0.85);
+    justify-content: center;
+    align-items: center;
+    opacity: 0; /* 初始透明，通过动画显示 */
+    transition-duration: 0.3s;
+}
+
+.overlay--visible {
+    opacity: 1;
+}
+
+/* 主面板：卡片样式 */
+.result-panel {
+    width: 600px;
+    height: 700px;
+    background-color: #2a2a2a;
+    border-width: 4px;
+    border-color: #ffd700; /* 金色边框 */
+    border-radius: 20px;
+    padding: 30px;
+    align-items: center;
+}
+
+/* 标题：巨大的“胡”字 */
+.title-text {
+    font-size: 80px;
+    color: #ff4444;
+    -unity-font-style: bold;
+    margin-bottom: 20px;
+    text-shadow: 2px 2px 0px #000;
+}
+
+/* 滚动列表：显示番种详情 */
+.fan-list {
+    flex-grow: 1;
+    width: 100%;
+    background-color: rgba(255, 255, 255, 0.05);
+    border-radius: 10px;
+    margin-bottom: 20px;
+    padding: 10px;
+}
+
+/* 列表项：单行番种 */
+.fan-item {
+    font-size: 32px;
+    color: #ffffff;
+    flex-direction: row;
+    justify-content: space-between;
+    margin-bottom: 5px;
+    padding-bottom: 5px;
+    border-bottom-width: 1px;
+    border-bottom-color: #555;
+}
+
+/* 总分显示 */
+.total-score {
+    font-size: 60px;
+    color: #ffd700;
+    margin-bottom: 30px;
+}
+
+/* 按钮 */
+.restart-btn {
+    width: 200px;
+    height: 60px;
+    font-size: 30px;
+    background-color: #4CAF50;
+    color: white;
+    border-radius: 10px;
+}
+.restart-btn:hover { background-color: #66BB6a; }
+
+/* 全局字体修正 */
+.unity-text-element {
+    -unity-font-definition: url('project://database/Assets/Font/MSYH.TTC');
+}

@@ -1,0 +1,12 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" editor-extension-mode="False">
+    <ui:VisualElement name="Root" class="tile-item">
+        <ui:Label name="FaceLabel" text="1&#10;万" class="tile-face" />
+        
+        <ui:Label name="CountLabel" text="0" class="tile-count" />
+        
+        <ui:VisualElement class="button-row">
+            <ui:Button name="BtnMinus" text="-" class="action-btn" />
+            <ui:Button name="BtnPlus" text="+" class="action-btn" />
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>
