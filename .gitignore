@@ -100,10 +100,3 @@ InitTestScene*.unity*
 
 # vscode
 .vscode
-
-# Not for AI
-*.unity
-*.prefab
-*.asset
-Packages/
-*.meta
