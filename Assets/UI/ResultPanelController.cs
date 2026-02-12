@@ -33,6 +33,25 @@ namespace MahjongGame.UI
             _overlay.style.display = DisplayStyle.None;
         }
 
+        public void ShowDraw()
+        {
+            // 1. 设置标题
+            _titleLabel.text = "流  局";
+
+            // 2. 清空列表
+            _listContainer.Clear();
+            Label info = new Label("牌山已空，无人胡牌");
+            info.AddToClassList("fan-item");
+            _listContainer.Add(info);
+
+            // 3. 隐藏总分
+            _totalLabel.text = "";
+
+            // 4. 显示
+            _overlay.style.display = DisplayStyle.Flex;
+            Invoke(nameof(FadeIn), 0.05f);
+        }
+
         public void ShowWin(int totalFan, List<string> fanDetails, bool isTsumo)
         {
             // 1. 设置标题

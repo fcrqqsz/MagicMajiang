@@ -1,0 +1,50 @@
+# .geminiignore for SuperMajiang (Unity Project)
+
+# Unity auto-generated and temporary directories
+Library/
+Temp/
+Logs/
+obj/
+bin/
+Build/
+Builds/
+UserSettings/
+UIElementsSchema/
+
+# Unity asset meta files (metadata noise)
+*.meta
+
+# Binary media assets
+*.png
+*.jpg
+*.jpeg
+*.tga
+*.tiff
+*.psd
+*.wav
+*.mp3
+*.ogg
+*.fbx
+*.obj
+*.mat
+*.ttf
+*.ttc
+*.fontsettings
+
+# Unity binary/YAML heavy assets
+*.unity
+*.prefab
+*.asset
+*.unitypackage
+
+# IDE specific files
+.vs/
+.idea/
+*.csproj
+*.sln
+*.user
+*.userprefs
+
+# OS specific files
+.DS_Store
+Thumbs.db

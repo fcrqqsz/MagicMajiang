@@ -28,6 +28,16 @@ namespace MahjongGame.Core.Fan
         }
 
         /// <summary>
+        /// 优先级：数值越大越先判定 (用于排斥逻辑)
+        /// </summary>
+        public virtual int Priority => 0;
+
+        /// <summary>
+        /// 如果此番种达成，将排斥（不再计算）以下 ID 的番种
+        /// </summary>
+        public virtual string[] ExcludedRuleIds => new string[0];
+
+        /// <summary>
         /// 计算该番种触发了多少次
         /// </summary>
         /// <returns>0 表示未触发，>0 表示触发次数</returns>

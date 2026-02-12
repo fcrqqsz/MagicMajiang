@@ -37,6 +37,14 @@ namespace MahjongGame.Core
         // 记录当前已经生成了多宽的副露区域 (用于向左推或者向右排)
         private float _currentMeldOffset = 0f;
 
+        // 获取 Sprite 的辅助方法
+        private Sprite GetTileSprite(TileData data)
+        {
+            var config = MahjongGame.Systems.DeckManager.Instance.tileConfig;
+            if (config == null) return null;
+            return config.GetSprite(data);
+        }
+
         public List<TileData> GetHandData()
         {
             List<TileData> list = new List<TileData>();
@@ -73,8 +81,8 @@ namespace MahjongGame.Core
                 GameObject go = Instantiate(tilePrefab, meldSpawnPoint);
                 TileVisual visual = go.GetComponent<TileVisual>();
                 
-                // 初始化 (注意：副露的牌通常不能点，所以 controller 传 null 或者专门的 MeldController)
-                visual.Initialize(data, null);
+                Sprite face = GetTileSprite(data);
+                visual.Initialize(data, null, face); // 传入 s
 
                 // --- 视觉旋转逻辑 ---
                 Quaternion rotation;
@@ -444,7 +452,8 @@ namespace MahjongGame.Core
 
             GameObject go = Instantiate(tilePrefab);
             TileVisual visual = go.GetComponent<TileVisual>();
-            visual.Initialize(data, this);
+            Sprite face = GetTileSprite(data);
+            visual.Initialize(data, this, face);
             AddTileToHand(visual);
         }
 

@@ -53,6 +53,13 @@ namespace MahjongGame.Systems
             // 简单的回合循环
             while (isGameActive)
             {
+                // [检查流局] 如果牌山空了，触发流局
+                if (DeckManager.Instance.RemainingCount == 0)
+                {
+                    HandleDraw();
+                    yield break;
+                }
+
                 Debug.Log($"--- 轮到玩家 {currentPlayerIndex} ---");
 
                 // 1. 摸牌阶段
@@ -465,6 +472,14 @@ namespace MahjongGame.Systems
             {
                 _isWaitingForDiscard = false; // 解除阻塞，进入下一回合
             }
+        }
+
+        private void HandleDraw()
+        {
+            Debug.Log("游戏结束：流局");
+            isGameActive = false;
+            ActionPanelController.Instance.Hide();
+            ResultPanelController.Instance.ShowDraw();
         }
     }
 }

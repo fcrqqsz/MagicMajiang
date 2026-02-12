@@ -10,6 +10,9 @@ namespace MahjongGame.Systems
         // 单例模式 (Singleton)，方便全局访问
         public static DeckManager Instance { get; private set; }
 
+        [Header("Assets")]
+        public TileResourceConfig tileConfig;
+
         // 这里的 List 类似于 C++ std::vector<TileData>
         // 存储当前牌山中剩余的牌
         private List<TileData> _wallTiles = new List<TileData>();

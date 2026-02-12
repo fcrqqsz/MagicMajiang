@@ -1,5 +1,4 @@
 using UnityEngine;
-using TMPro; // 引用 TextMeshPro 命名空间
 
 namespace MahjongGame.Core
 {
@@ -7,8 +6,16 @@ namespace MahjongGame.Core
     {
         // 引用 View 组件
         [Header("UI Components")]
-        [SerializeField] private TextMeshPro _faceText;  // 显示牌面文字
+        public SpriteRenderer faceRenderer; // 牌面
         [SerializeField] private Renderer _renderer;     // 控制底色（可选）
+        // 我们需要一种方式获取 Config。
+        // 方法A：单例管理器 (推荐)
+        // 方法B：直接拖拽 (如果 Config 是静态的)
+        // 这里为了简单，我们在 Initialize 时动态加载，或者建议做一个单例 ResourceManager
+        
+        // 假设我们在场景里有个单例持有 Config，或者简单点，直接在这里引用
+        // 更好的方式是放在 GameManager 或 DeckManager 里，Init 时传进来
+        // 但为了少改代码，我们用 Resources.Load 或者简单的静态引用
 
         // 持有 Model 数据
         public TileData Data { get; private set; }
@@ -16,36 +23,32 @@ namespace MahjongGame.Core
         // 持有控制器的引用 (类似于 C++ 的 Parent Pointer)
         private HandController _ownerController;
 
+        private void Awake()
+        {
+            // 如果你在 Inspector 里忘了拖，代码会自动尝试在子物体里找
+            if (faceRenderer == null)
+            {
+                faceRenderer = GetComponentInChildren<SpriteRenderer>();
+            }
+        }
+
         /// <summary>
         /// 初始化函数：注入数据
         /// 类似于 C++ 的 SetData / Bind
         /// </summary>
-        public void Initialize(TileData data, HandController controller)
+        // [优化] 直接接收 Sprite，而不是自己在内部去查
+        public void Initialize(TileData data, HandController owner, Sprite faceSprite)
         {
-            this.Data = data;
-            this._ownerController = controller; // 绑定控制器
-            RefreshVisual();
+            Data = data;
+            _ownerController = owner;
+
+            faceRenderer.sprite = faceSprite;
+            // 如果没图，需要关闭 renderer 以节省性能，或者防止紫色方块
+            faceRenderer.enabled = (faceSprite != null);
+            
+            gameObject.name = $"Tile_{Data.TileSuit}_{Data.Value}";
         }
 
-        /// <summary>
-        /// 根据数据刷新显示
-        /// </summary>
-        private void RefreshVisual()
-        {
-            if (Data == null) return;
-
-            // --- 简单的显示逻辑 (占位符) ---
-            _faceText.text = Data.GetName(true);
-
-            // --- 特色玩法反馈 ---
-            // 如果这张牌被修改过（比如天赋加持），改变文字颜色为红色
-            if (Data.IsModified)
-            {
-                _faceText.color = Color.red;
-            }
-        }
-
-        
         /// <summary>
         /// Unity 内置鼠标点击事件
         /// 要求物体必须有 Collider 组件

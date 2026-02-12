@@ -18,12 +18,14 @@ namespace MahjongGame.Core
         public TileData FirstTile; // 代表牌（如果是吃，则是最小的那张；如果是碰，则是任意一张）
         public List<TileData> Tiles; // 包含的具体牌
         public int SourcePlayerID; // 供牌者（是谁打出来的？用于算分）
+        public bool IsConcealed;   // 是否为暗面 (暗杠、或者立牌中拆解出来的面子)
 
-        public Meld(MeldType type, List<TileData> tiles, int sourceId)
+        public Meld(MeldType type, List<TileData> tiles, int sourceId, bool isConcealed = false)
         {
             this.Type = type;
             this.Tiles = tiles;
             this.SourcePlayerID = sourceId;
+            this.IsConcealed = isConcealed;
             // 简单的排序，方便取最小值
             tiles.Sort((a, b) => a.Value.CompareTo(b.Value));
             this.FirstTile = tiles[0];

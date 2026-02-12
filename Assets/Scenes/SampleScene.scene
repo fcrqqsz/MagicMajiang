@@ -771,6 +771,86 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   playerHandController: {fileID: 776909412}
+  useDebugHand: 1
+  debugHand:
+  - ID: 0
+    TileSuit: 0
+    Value: 3
+    OriginalOwnerID: 0
+    IsModified: 0
+    SpecialEffectID: 
+  - ID: 1
+    TileSuit: 0
+    Value: 3
+    OriginalOwnerID: 0
+    IsModified: 0
+    SpecialEffectID: 
+  - ID: 2
+    TileSuit: 0
+    Value: 3
+    OriginalOwnerID: 0
+    IsModified: 0
+    SpecialEffectID: 
+  - ID: 3
+    TileSuit: 4
+    Value: 1
+    OriginalOwnerID: 0
+    IsModified: 0
+    SpecialEffectID: 
+  - ID: 4
+    TileSuit: 4
+    Value: 1
+    OriginalOwnerID: 0
+    IsModified: 0
+    SpecialEffectID: 
+  - ID: 5
+    TileSuit: 4
+    Value: 1
+    OriginalOwnerID: 0
+    IsModified: 0
+    SpecialEffectID: 
+  - ID: 6
+    TileSuit: 4
+    Value: 3
+    OriginalOwnerID: 0
+    IsModified: 0
+    SpecialEffectID: 
+  - ID: 7
+    TileSuit: 4
+    Value: 3
+    OriginalOwnerID: 0
+    IsModified: 0
+    SpecialEffectID: 
+  - ID: 8
+    TileSuit: 4
+    Value: 3
+    OriginalOwnerID: 0
+    IsModified: 0
+    SpecialEffectID: 
+  - ID: 9
+    TileSuit: 4
+    Value: 2
+    OriginalOwnerID: 0
+    IsModified: 0
+    SpecialEffectID: 
+  - ID: 10
+    TileSuit: 4
+    Value: 2
+    OriginalOwnerID: 0
+    IsModified: 0
+    SpecialEffectID: 
+  - ID: 11
+    TileSuit: 4
+    Value: 2
+    OriginalOwnerID: 0
+    IsModified: 0
+    SpecialEffectID: 
+  - ID: 12
+    TileSuit: 0
+    Value: 5
+    OriginalOwnerID: 0
+    IsModified: 0
+    SpecialEffectID: 
 --- !u!4 &1461636647
 Transform:
   m_ObjectHideFlags: 0
