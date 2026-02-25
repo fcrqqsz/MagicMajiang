@@ -20,9 +20,24 @@ namespace MahjongGame.Core
         // 假设 ID 0 是自己，1,2,3 是 AI/对手
         private int _playerCount = 4;
 
+        // 存储当前局各玩家的牌库配置
+        public Dictionary<int, DeckConfig> ActiveConfigs { get; private set; } = new Dictionary<int, DeckConfig>();
+
         void Awake()
         {
             Instance = this;
+        }
+
+        /// <summary>
+        /// 获取指定玩家的异化分
+        /// </summary>
+        public int GetAlienationScore(int playerId)
+        {
+            if (ActiveConfigs != null && ActiveConfigs.TryGetValue(playerId, out var config))
+            {
+                return config.AlienationScore;
+            }
+            return 0;
         }
 
         /// <summary>
@@ -44,6 +59,12 @@ namespace MahjongGame.Core
             allConfigs.Add(DeckConfig.CreateStandard());
             allConfigs.Add(DeckConfig.CreateStandard());
             allConfigs.Add(DeckConfig.CreateStandard());
+
+            ActiveConfigs.Clear();
+            for (int i = 0; i < allConfigs.Count; i++)
+            {
+                ActiveConfigs[i] = allConfigs[i];
+            }
 
             // 3. 构建牌山
             MahjongGame.Systems.DeckManager.Instance.BuildWall(allConfigs);
@@ -71,6 +92,12 @@ namespace MahjongGame.Core
 
             // 1. 收集配置
             var configs = CreateTestDeckConfigs();
+
+            ActiveConfigs.Clear();
+            for (int i = 0; i < configs.Count; i++)
+            {
+                ActiveConfigs[i] = configs[i];
+            }
 
             TalentManager.Instance.TriggerGameStart();
 

@@ -479,7 +479,17 @@ namespace MahjongGame.Systems
             Debug.Log("游戏结束：流局");
             isGameActive = false;
             ActionPanelController.Instance.Hide();
-            ResultPanelController.Instance.ShowDraw();
+            
+            // 收集各家听牌状态 (暂为模拟数据，后续需接入真正的听牌检测)
+            List<string> statuses = new List<string>()
+            {
+                "玩家 0: 听牌判定中...",
+                "玩家 1: 听牌 (模拟)",
+                "玩家 2: 未听牌 (模拟)",
+                "玩家 3: 未听牌 (模拟)"
+            };
+
+            ResultPanelController.Instance.ShowDraw(statuses);
         }
     }
 }

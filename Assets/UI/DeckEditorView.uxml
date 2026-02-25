@@ -1,14 +1,24 @@
 <ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" editor-extension-mode="False">
     <ui:VisualElement class="main-container">
         <ui:VisualElement class="header-container">
-            <ui:Label name="TotalText" text="Total: 0 / 34" class="stat-label" />
-            <ui:Label name="ScoreText" text="Alienation: 0" class="stat-label" />
+            <ui:VisualElement class="header-stats">
+                <ui:Label name="TotalText" text="Total: 0 / 34" class="stat-label" />
+                <ui:Label name="ScoreText" text="Alienation: 0" class="stat-label" />
+            </ui:VisualElement>
+            <ui:VisualElement class="header-controls">
+                <ui:Button name="BtnClearAll" text="清空" class="control-btn" />
+                <ui:Button name="BtnResetAll" text="重置" class="control-btn" />
+            </ui:VisualElement>
         </ui:VisualElement>
 
         <ui:ScrollView class="grid-scroll-view">
-            <ui:VisualElement name="GridContainer" class="grid-container" />
+            <ui:VisualElement name="MainGrid" class="main-grid">
+                <!-- Each row will be created dynamically in C# -->
+            </ui:VisualElement>
         </ui:ScrollView>
 
-        <ui:Button name="BtnStart" text="START GAME" class="start-button" />
+        <ui:VisualElement class="footer-container">
+            <ui:Button name="BtnStart" text="START GAME" class="start-button" />
+        </ui:VisualElement>
     </ui:VisualElement>
 </ui:UXML>

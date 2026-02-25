@@ -42,6 +42,8 @@ namespace MahjongGame.Core.Fan
         public bool IsKongWin;           // 杠上开花 (8番)
         public bool IsRobKongWin;        // 抢杠胡 (8番)
         public bool IsLastTileWin;       // 和绝张 (4番)
+        public bool IsLastWallTileWin;   // 妙手回春 (8番)
+        public bool IsLastDiscardWin;    // 海底捞月 (8番)
         public WaitType Wait;            // 听牌类型
 
         // 场况信息

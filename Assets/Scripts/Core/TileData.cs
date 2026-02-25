@@ -25,6 +25,8 @@ namespace MahjongGame.Core
         public bool IsModified; 
         public string SpecialEffectID; // 对应的天赋效果ID
 
+        public TileType TileType => (TileSuit == Suit.Wind || TileSuit == Suit.Dragon) ? TileType.Word : TileType.Number;
+
         public TileData(Suit suit, int value, int ownerID)
         {
             this.ID = Guid.NewGuid().ToString();

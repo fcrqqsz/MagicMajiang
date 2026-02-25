@@ -17,7 +17,7 @@ namespace MahjongGame.Core.Fan
                 .OrderByDescending(r => r.Priority)
                 .ToList();
 
-            // 临时存储所有命中的番种及其次数 (简化元组声明以提高兼容性)
+            // 临时存储所有命中的番种及其次数
             var matchedResults = new List<(FanRule Rule, int Count)>();
             // 存储被排斥的 ID 集合
             var excludedIds = new HashSet<string>();
@@ -25,6 +25,9 @@ namespace MahjongGame.Core.Fan
             // 2. 第一轮判定：找出所有命中的番种，并收集排斥 ID
             foreach (var rule in rules)
             {
+                // 跳过“无番和”的初步判定，留到最后
+                if (rule.Id == "no_points_win") continue;
+
                 int count = rule.GetMatchCount(ctx);
                 if (count > 0)
                 {
@@ -38,12 +41,26 @@ namespace MahjongGame.Core.Fan
                 }
             }
 
-            // 3. 第二轮过滤与求和：剔除掉在排斥集中的番种
-            foreach (var result in matchedResults)
+            // 3. 第二轮过滤：剔除掉在排斥集中的番种
+            var finalMatched = matchedResults.Where(r => !excludedIds.Contains(r.Rule.Id)).ToList();
+
+            // 4. 特殊处理：无番和 (8番)
+            // 如果除了自摸(1番)以外，没有任何番种命中，则计无番和
+            // 注意：国标规则中，无番和是指不计入除自摸外的任何番种。
+            if (finalMatched.Count == 0 || (finalMatched.Count == 1 && finalMatched[0].Rule.Id == "self_draw"))
+            {
+                var noPointsRule = FanRuleRegistry.Instance.ActiveRules.FirstOrDefault(r => r.Id == "no_points_win");
+                if (noPointsRule != null)
+                {
+                    finalMatched.Add((noPointsRule, 1));
+                }
+            }
+
+            // 5. 汇总求和
+            foreach (var result in finalMatched)
             {
                 if (excludedIds.Contains(result.Rule.Id))
                 {
-                    // Debug.Log($"[Fan] 番种 {result.Rule.Name} 被排斥，不计分");
                     continue;
                 }
 

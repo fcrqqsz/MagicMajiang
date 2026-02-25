@@ -262,7 +262,7 @@ namespace MahjongGame.Core
 
             // 3. 添加副露 (暗杠)
             // 暗杠的 SourceID 是自己
-            Meld newMeld = new Meld(MeldType.Kan_Concealed, meldData, targetData.OriginalOwnerID);
+            Meld newMeld = new Meld(MeldType.Kan_Concealed, meldData, targetData.OriginalOwnerID, true);
             Melds.Add(newMeld);
 
             // 4. 视觉生成 (暗杠通常中间两张是扣着的，这里暂用普通生成)

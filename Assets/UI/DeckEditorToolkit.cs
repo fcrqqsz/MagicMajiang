@@ -21,13 +21,18 @@ namespace MahjongGame.UI
 
         // UI 元素引用
         private VisualElement _root;
-        private VisualElement _gridContainer;
+        private VisualElement _mainGrid;
         private Label _totalText;
         private Label _scoreText;
         private Button _btnStart;
+        private Button _btnClearAll;
+        private Button _btnResetAll;
 
         // 数据
         private DeckConfig _currentConfig;
+        
+        // 存储所有的刷新函数，方便批量更新
+        private List<Action> _allItemRefreshers = new List<Action>();
 
         void OnEnable()
         {
@@ -41,13 +46,17 @@ namespace MahjongGame.UI
                 _root.styleSheets.Add(_styleSheet);
 
             // 查找组件 (对应 UXML 中的 name)
-            _gridContainer = _root.Q<VisualElement>("GridContainer");
+            _mainGrid = _root.Q<VisualElement>("MainGrid");
             _totalText = _root.Q<Label>("TotalText");
             _scoreText = _root.Q<Label>("ScoreText");
             _btnStart = _root.Q<Button>("BtnStart");
+            _btnClearAll = _root.Q<Button>("BtnClearAll");
+            _btnResetAll = _root.Q<Button>("BtnResetAll");
 
-            // 绑定开始按钮
+            // 绑定事件
             _btnStart.clicked += OnStartGameClicked;
+            _btnClearAll.clicked += () => BatchUpdateDeck(0);
+            _btnResetAll.clicked += () => BatchUpdateDeck(1);
 
             // 初始化数据
             InitializeEditor();
@@ -55,61 +64,120 @@ namespace MahjongGame.UI
 
         private void InitializeEditor()
         {
-            // _currentConfig = new DeckConfig();
             _currentConfig = DeckConfig.CreateStandard();
-            GenerateGrid();
+            GenerateRows();
             RefreshStats();
         }
 
-        private void GenerateGrid()
+        private void GenerateRows()
         {
-            _gridContainer.Clear(); // 清空
+            _mainGrid.Clear();
+            _allItemRefreshers.Clear();
 
-            foreach (Suit suit in System.Enum.GetValues(typeof(Suit)))
-            {
-                int maxVal = (suit == Suit.Wind) ? 4 : (suit == Suit.Dragon ? 3 : 9);
-                for (int val = 1; val <= maxVal; val++)
-                {
-                    CreateTileItem(suit, val);
-                }
-            }
+            // 定义 4 个分组：万、筒、索、字 (风+箭)
+            CreateSuitRow("万", Suit.Man);
+            CreateSuitRow("筒", Suit.Pin);
+            CreateSuitRow("索", Suit.Sou);
+            
+            // 字牌比较特殊，包含 Wind 和 Dragon
+            CreateWordRow();
         }
 
-        private void CreateTileItem(Suit suit, int value)
+        private void CreateSuitRow(string label, Suit suit)
         {
-            // 1. 从模板克隆 UI 树
-            TemplateContainer instance = _itemTemplate.Instantiate();
+            VisualElement row = new VisualElement();
+            row.AddToClassList("suit-row");
+
+            VisualElement grid = new VisualElement();
+            grid.AddToClassList("grid-container");
+            grid.style.flexGrow = 1;
             
-            // 2. 获取内部组件
+            int maxVal = (suit == Suit.Wind) ? 4 : (suit == Suit.Dragon ? 3 : 9);
+            for (int v = 1; v <= maxVal; v++)
+            {
+                grid.Add(CreateTileItem(suit, v));
+            }
+            row.Add(grid);
+
+            // 右侧按钮
+            VisualElement controls = new VisualElement();
+            controls.AddToClassList("suit-controls");
+            
+            Button btnClear = new Button(() => BatchUpdateSuit(suit, 0)) { text = "清空" };
+            btnClear.AddToClassList("control-btn");
+            Button btnReset = new Button(() => BatchUpdateSuit(suit, 1)) { text = "重置" };
+            btnReset.AddToClassList("control-btn");
+            
+            controls.Add(btnClear);
+            controls.Add(btnReset);
+            row.Add(controls);
+
+            _mainGrid.Add(row);
+        }
+
+        private void CreateWordRow()
+        {
+            VisualElement row = new VisualElement();
+            row.AddToClassList("suit-row");
+
+            VisualElement grid = new VisualElement();
+            grid.AddToClassList("grid-container");
+            grid.style.flexGrow = 1;
+            
+            // 添加风牌
+            for (int v = 1; v <= 4; v++) grid.Add(CreateTileItem(Suit.Wind, v));
+            // 添加箭牌
+            for (int v = 1; v <= 3; v++) grid.Add(CreateTileItem(Suit.Dragon, v));
+            
+            row.Add(grid);
+
+            // 右侧按钮
+            VisualElement controls = new VisualElement();
+            controls.AddToClassList("suit-controls");
+            
+            Button btnClear = new Button(() => {
+                BatchUpdateSuit(Suit.Wind, 0, false);
+                BatchUpdateSuit(Suit.Dragon, 0, true);
+            }) { text = "清空" };
+            btnClear.AddToClassList("control-btn");
+            
+            Button btnReset = new Button(() => {
+                BatchUpdateSuit(Suit.Wind, 1, false);
+                BatchUpdateSuit(Suit.Dragon, 1, true);
+            }) { text = "重置" };
+            btnReset.AddToClassList("control-btn");
+            
+            controls.Add(btnClear);
+            controls.Add(btnReset);
+            row.Add(controls);
+
+            _mainGrid.Add(row);
+        }
+
+        private VisualElement CreateTileItem(Suit suit, int value)
+        {
+            TemplateContainer instance = _itemTemplate.Instantiate();
             var faceLabel = instance.Q<Label>("FaceLabel");
             var countLabel = instance.Q<Label>("CountLabel");
             var btnPlus = instance.Q<Button>("BtnPlus");
             var btnMinus = instance.Q<Button>("BtnMinus");
 
-            // 3. 初始化显示
             faceLabel.text = GetTileName(suit, value);
             
-            // 4. 绑定事件 (使用闭包捕获 suit 和 value)
-            // 注意：这里定义局部刷新函数，避免重绘整个 Grid
             Action updateLocalUI = () => 
             {
                 int count = _currentConfig.GetCardCount(suit, value);
                 countLabel.text = count.ToString();
-                
-                // 样式切换：有数字变绿，没数字变灰
                 if (count > 0) countLabel.AddToClassList("active");
                 else countLabel.RemoveFromClassList("active");
-
-                RefreshStats(); // 刷新顶部的总分
             };
 
             btnPlus.clicked += () => 
             {
-                int current = _currentConfig.GetCardCount(suit, value);
-                // 可以在这里加单卡上限判断
-                _currentConfig.SetCardCount(suit, value, current + 1);
-                _currentConfig.CalculateAlienationScore(); // 重新计算分值
+                _currentConfig.SetCardCount(suit, value, _currentConfig.GetCardCount(suit, value) + 1);
+                _currentConfig.CalculateAlienationScore();
                 updateLocalUI();
+                RefreshStats();
             };
 
             btnMinus.clicked += () => 
@@ -120,53 +188,54 @@ namespace MahjongGame.UI
                     _currentConfig.SetCardCount(suit, value, current - 1);
                     _currentConfig.CalculateAlienationScore();
                     updateLocalUI();
+                    RefreshStats();
                 }
             };
 
-            // 初始刷新一次
+            _allItemRefreshers.Add(updateLocalUI);
             updateLocalUI();
+            return instance;
+        }
 
-            // 5. 加入 Grid
-            _gridContainer.Add(instance);
+        private void BatchUpdateSuit(Suit suit, int count, bool refreshAll = true)
+        {
+            int maxVal = (suit == Suit.Wind) ? 4 : (suit == Suit.Dragon ? 3 : 9);
+            for (int v = 1; v <= maxVal; v++) _currentConfig.SetCardCount(suit, v, count);
+            
+            if (refreshAll)
+            {
+                _currentConfig.CalculateAlienationScore();
+                foreach (var refresh in _allItemRefreshers) refresh();
+                RefreshStats();
+            }
+        }
+
+        private void BatchUpdateDeck(int count)
+        {
+            foreach (Suit suit in Enum.GetValues(typeof(Suit)))
+            {
+                int maxVal = (suit == Suit.Wind) ? 4 : (suit == Suit.Dragon ? 3 : 9);
+                for (int v = 1; v <= maxVal; v++) _currentConfig.SetCardCount(suit, v, count);
+            }
+            _currentConfig.CalculateAlienationScore();
+            foreach (var refresh in _allItemRefreshers) refresh();
+            RefreshStats();
         }
 
         private void RefreshStats()
         {
-            // 获取总数 (假设你在 DeckConfig 加了 TotalCount 属性，或者用 Values.Sum())
-            // int total = _currentConfig.TotalCount; 
-            int total = _currentConfig.GenerateTiles(0).Count; // 临时替代方案
-
+            int total = _currentConfig.GenerateTiles(0).Count;
             _totalText.text = $"Total: {total} / 34";
             _scoreText.text = $"Alienation: {_currentConfig.AlienationScore}";
-
-            // 样式反馈
             _totalText.EnableInClassList("text-green", total == 34);
-            _totalText.EnableInClassList("text-white", total != 34); // 简单处理，实际可用更复杂的逻辑
-            
-            // 按钮状态
+            _totalText.EnableInClassList("text-white", total != 34);
             _btnStart.SetEnabled(total == 34);
         }
 
-        // 在 DeckEditorToolkit.cs 中
-
         private void OnStartGameClicked()
         {
-            // 1. 隐藏编辑器界面
-            // 如果是 GameObject 挂载方式:
             gameObject.SetActive(false);
-            
-            // 如果是纯 UI Document 方式 (也就是挂在 UIDocument 组件上):
-            // _document.rootVisualElement.style.display = DisplayStyle.None;
-
-            // 2. 传递数据给 GameManager
-            if (GameManager.Instance != null)
-            {
-                GameManager.Instance.StartGameWithConfig(_currentConfig);
-            }
-            else
-            {
-                Debug.LogError("场景中找不到 GameManager!");
-            }
+            if (GameManager.Instance != null) GameManager.Instance.StartGameWithConfig(_currentConfig);
         }
 
         private string GetTileName(Suit s, int v)

@@ -14,37 +14,16 @@
 *   **Animation:** DOTween (Pro)
 *   **Text:** TextMeshPro (SDF)
 
-## Architecture & Conventions
+## Architecture & Structure
+有关详细的架构模式、目录索引及实现范式，请优先参阅 **[struct.md](./struct.md)**。
 
-### 1. Key Patterns
-*   **MVC:** Strict separation of Data (Core), Visuals (Controllers), and UI (UI Toolkit).
-*   **FSM (Finite State Machine):** Used in `TurnManager` to handle the flow: Draw -> Action -> Response -> Turn End.
-*   **Strategy & Reflection:** Fan (scoring) rules are implemented as classes and automatically registered via `[FanRuleAttribute]`.
-    *   **Multiple Triggers:** Rules use `GetMatchCount(ctx)` to support repeating Fan types (e.g., multiple Dragon Pungs in custom decks).
-*   **Singletons:** Logic-heavy managers (`FanRuleRegistry`) use pure C# singleton patterns with lazy initialization to avoid Unity scene dependencies and `NullReferenceException`.
+### 核心约束 (Critical Constraints)
+*   **UI**: 始终使用 UI Toolkit。除非绝对必要，否则不要引入 Canvas/UGUI。
+*   **字体**: 确保使用兼容 SDF 的中文字体资产（如 MSYH.TTC）。
+*   **单例**: 逻辑层核心管理器应优先使用纯 C# 单例，避免对场景 GameObject 的硬依赖。
 
-### 2. Core Directories
-*   `Assets/Scripts/Core`: Pure C# logic (TileData, Meld, MahjongLogic, Fan calculation). **FanRuleRegistry is a pure C# class.**
-*   `Assets/Scripts/Controllers`: `MonoBehaviour` scripts handling 3D objects (HandController, RiverController).
-*   `Assets/Scripts/Systems`: Game loop managers (GameManager, TurnManager, TalentManager).
-*   `Assets/Scripts/UI`: UI Toolkit specific scripts and assets (.uxml, .uss).
-
-### 3. Critical Implementation Details
-*   **Turn Flow:** `TurnManager` controls the loop.
-    *   *Chi/Pon* sets `_skipNextDraw = true`.
-    *   *Kan* (Kong) sets `_skipNextDraw = false` (triggers draw from dead wall).
-*   **Hand Visualization:** `HandController` manages the "13+1" layout.
-    *   The newest drawn tile (`_lastDrawnTile`) has a visual gap.
-    *   This gap is removed after actions like Chi/Pon.
-*   **UI Input:** `ActionPanelController` handles player choices.
-    *   **Note:** Use strict event cleanup to prevent duplicate button clicks (see `ClearTempButtons`).
-*   **Debug Tools:** `GameManager` includes a `useDebugHand` toggle and `debugHand` list for testing specific scenarios.
-
-## Development & Usage
-*   **Primary Documentation:** Refer to `summary.md` for the most up-to-date snapshot, backlog, and troubleshooting logs.
-*   **Building:** Standard Unity Build settings.
-*   **Fan Rules:** When adding new rules in `FanRules_Common.cs`, implement `GetMatchCount`. For custom decks, use `% 3` logic to detect sets.
-
-## Important Constraints
-*   **UI:** Always use UI Toolkit. Do not introduce Canvas/RectTransform based UI unless absolutely necessary for world-space UI that UI Toolkit cannot handle.
-*   **Fonts:** Ensure `MSYH.TTC` or compatible SDF assets are used for Chinese character support.
+## 开发与计划 (Development & Planning)
+*   **进度跟踪**: 参阅 `summary.md` 获取最新快照、关键决策及排故日志。
+*   **任务与优化**: 参阅 **[plan.md](./plan.md)** 获取 Backlog 及长期优化路线图。
+*   **调试手牌**: 通过 `GameManager` 中的 `useDebugHand` 功能，在 Inspector 中快速配置测试牌型。
+*   **算番开发**: 在 `FanRules_Common.cs` 中新增规则时，需实现 `GetMatchCount` 并考虑优先级与排斥逻辑。

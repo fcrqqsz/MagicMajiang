@@ -1,14 +1,13 @@
 /* 全局字体设置 */
 .unity-text-element {
-    /* 这里的路径需要指向你之前生成的 .asset 字体文件 */
-    /* 请确保文件名和路径完全一致 */
     -unity-font-definition: url('project://database/Assets/Font/MSYH.TTC');
+    color: #eeeeee;
 }
 
 /* 全局容器设置 */
 .main-container {
     flex-grow: 1;
-    background-color: rgba(0, 0, 0, 0.9);
+    background-color: #222831; /* 深色背景 (Dark Gunmetal) */
     padding: 20px;
 }
 
@@ -18,83 +17,136 @@
     justify-content: space-between;
     height: 60px;
     margin-bottom: 20px;
-    background-color: #2a2a2a;
-    border-radius: 10px;
-    padding: 10px 20px;
+    background-color: #393E46; /* 较浅的深色背景 */
+    border-radius: 12px;
+    padding: 0 20px;
+    align-items: center;
+    border-width: 0;
+}
+
+.header-stats {
+    flex-direction: row;
+    align-items: center;
+}
+
+.header-controls {
+    flex-direction: row;
     align-items: center;
 }
 
 .stat-label {
-    font-size: 24px;
-    color: white;
+    font-size: 20px;
+    color: #EEEEEE;
     -unity-font-style: bold;
+    margin-right: 20px;
 }
 
-.text-red { color: #ff5555; }
-.text-green { color: #55ff55; }
+.text-red { color: #ff6b6b; }
+.text-green { color: #69f0ae; }
 .text-white { color: #ffffff; }
 
 /* 中间网格区域 */
 .grid-scroll-view {
     flex-grow: 1;
-    width: 100%;  /* 宽度撑满 */
+    width: 100%;
     margin-bottom: 20px;
+}
+
+.main-grid {
+    flex-direction: column;
+}
+
+.suit-row {
+    flex-direction: row;
+    align-items: center;
+    background-color: #393E46; /* 与头部一致的背景色 */
+    border-radius: 12px;
+    margin-bottom: 15px;
+    padding: 15px;
+    border-width: 0;
+}
+
+.suit-label {
+    display: none; /* 隐藏标签占位 */
 }
 
 .grid-container {
     flex-direction: row;
-    flex-wrap: wrap;             /* 允许换行 */
-    
-    /* 1. 水平方向：保持居中（这样每行不满时也会居中） */
-    justify-content: center;     
-    
-    /* 2. 关键修复：多行内容的垂直对齐方式 */
-    /* flex-start 强制所有行紧靠容器顶部，而不是分散在中间或两端 */
-    align-content: flex-start;   
-    
-    /* 3. 关键修复：单行内的垂直对齐 */
-    align-items: flex-start;     
-    
-    /* 4. 增加内边距，防止内容贴边 */
-    padding-bottom: 50px;        
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    align-content: flex-start;
+    align-items: flex-start;
+    flex-grow: 1;
+    margin-left: 0;
 }
 
-/* 修改 .tile-item */
-.tile-item {
-    width: 90px;
-    height: 130px;
-    
-    /* 5. 关键修复：增加卡片之间的间距 */
-    /* 尤其是 margin-bottom，这是解决“第二行遮挡第一行按钮”的核心 */
+.suit-controls {
+    width: 120px;
+    flex-direction: column;
+    justify-content: center;
+    padding-left: 10px;
+    border-left-width: 0;
+}
+
+.control-btn {
+    height: 40px; /* 增大按钮高度 */
+    font-size: 24px; /* 增大字体大小 */
+    background-color: #00ADB5; /* 蓝绿色 (Teal) */
+    color: #EEEEEE;
+    border-radius: 12px;
+    margin: 4px 0;
+    border-width: 0;
+    transition-duration: 0.2s;
+}
+.control-btn:hover { 
+    background-color: #00FFF5; /* 亮青色悬停 */
+    color: #222831; 
+}
+.control-btn:active { background-color: #007E85; }
+
+/* 全局控制按钮 (顶部) */
+.header-controls .control-btn {
+    width: 100px;
     margin-left: 10px;
-    margin-right: 10px;
-    margin-top: 10px;
-    margin-bottom: 75px; /* 稍微大一点，确保按钮不被遮挡 */
-    
-    background-color: #3e3e3e;
-    border-radius: 8px;
-    border-width: 2px;
-    border-color: #555;
+    background-color: #00ADB5;
+}
+
+/* 牌项样式 */
+.tile-item {
+    width: 95px;
+    height: 160px;
+    margin: 5px;
+    background-color: #222831; /* 深色背景，突出卡片感 */
+    border-radius: 12px;
+    border-width: 1px;
+    border-color: rgba(0, 173, 181, 0.3); /* 微妙的青色边框 */
     align-items: center;
     justify-content: space-between;
-    padding: 5px;
+    padding: 10px;
+    transition-duration: 0.2s;
+}
+
+.tile-item:hover {
+    border-color: #00FFF5; /* 亮青色边框模拟发光 */
+    background-color: #2a323b; /* 背景稍微变亮 */
+    scale: 1.02 1.02; /* 微微放大产生浮起感 */
 }
 
 .tile-face {
-    font-size: 36px;
-    color: white;
+    font-size: 32px;
+    color: #EEEEEE;
     -unity-text-align: middle-center;
-    margin-top: 5px;
 }
 
 .tile-count {
-    font-size: 24px;
-    color: #aaaaaa;
+    font-size: 20px;
+    color: #888;
     -unity-font-style: bold;
 }
 
 .tile-count.active {
-    color: #55ff55;
+    color: #00ADB5; /* 使用主题色 */
+    text-shadow: none;
 }
 
 /* 按钮区域 */
@@ -105,29 +157,35 @@
 }
 
 .action-btn {
-    width: 30px;
-    height: 30px;
-    font-size: 20px;
-    background-color: #555;
-    color: white;
-    border-radius: 5px;
-    border-width: 0;
+    width: 32px;
+    height: 32px;
+    font-size: 22px;
+    -unity-font-style: bold;
+    background-color: #393E46; /* 较浅的背景 */
+    color: #EEEEEE;
+    border-radius: 12px;
+    border-width: 2px;
+    border-color: #666;
+    transition-duration: 0.2s;
 }
-
-.action-btn:hover { background-color: #777; }
-.action-btn:active { background-color: #999; }
+.action-btn:hover { background-color: #00ADB5; color: #EEEEEE; }
+.action-btn:active { background-color: #007E85; }
 
 /* 底部大按钮 */
 .start-button {
     height: 60px;
-    font-size: 30px;
-    background-color: #4CAF50;
-    color: white;
-    border-radius: 10px;
+    font-size: 24px;
+    background-color: #00ADB5; /* 使用主题色 */
+    color: #EEEEEE;
+    border-radius: 12px;
     -unity-font-style: bold;
+    border-width: 0;
+    transition-duration: 0.2s;
+    margin-top: 0;
 }
-
+.start-button:hover { background-color: #00FFF5; color: #222831; }
+.start-button:active { background-color: #007E85; }
 .start-button:disabled {
-    background-color: #555;
-    color: #888;
+    background-color: #393E46;
+    color: #666;
 }
