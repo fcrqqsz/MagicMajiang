@@ -4,7 +4,9 @@
 
 ## 1. 核心设计模式
 *   **MVC 架构**: 严格分离数据层 (Core)、表现层 (Controllers) 与 UI 层 (UI Toolkit)。
-*   **FSM (有限状态机)**: `TurnManager` 驱动游戏主循环，管理 `Draw -> Action -> Response -> Turn End` 的流转。
+*   **胖客户端，瘦服务端 (Fat Client, Thin Server)**: 
+    *   `GameServer` 仅负责洗牌、发牌、状态流转和仲裁并发请求。
+    *   `LocalPlayerClient` 和 `SimpleAIClient` 在本地计算吃碰权限和算番，并将意图发往服务端。
 *   **Strategy & Reflection (算番系统)**: 
     *   番种规则通过 `[FanRuleAttribute]` 标记并由 `FanRuleRegistry` 自动注册。
     *   支持多重触发 (`GetMatchCount`) 机制，兼容自定义牌库下的番数累加。
@@ -21,8 +23,14 @@
     *   `Meld.cs`: 副露数据结构及暗面标记。
 *   **核心算法**:
     *   `MahjongLogic.cs`: 核心算法库（含回溯胡牌判定、手牌多路径拆解、听牌类型分析）。
-    *   `ActionValidator.cs`: 静态校验类，判定玩家当前可进行的动作。
+    *   `ActionValidator.cs`: 静态校验类，判定玩家当前可进行的动作 (吃、碰、杠、胡)。
     *   `DeckConfig.cs`: 玩家自定义牌库配置及异化值计算。
+*   **网络与代理 (`Core/Network/` & `Core/Agents/`)**:
+    *   `Protocol.cs`: 客户端与服务端通信的数据结构 (`ClientAction`)。
+    *   `GameServer.cs`: 异步核心循环，管理对局状态与并发仲裁。
+    *   `IPlayerClient.cs`: 客户端代理通用接口。
+    *   `SimpleAIClient.cs`: 规则化 AI 客户端。
+    *   `LocalPlayerClient.cs`: 本地真实玩家客户端，负责桥接 UI 与输入。
 *   **表现层控制器 (MonoBehaviour)**:
     *   `HandController.cs`: 管理 3D 手牌生成、布局、DoTween 动画及交互。
     *   `RiverController.cs`: 管理牌河的 3D 排布。
@@ -36,8 +44,8 @@
     *   `Rules/FanRules_Common.cs`: 具体番种规则集。
 
 ### B. `Assets/Scripts/Systems` (全局系统管理)
-*   `GameManager.cs`: 游戏初始化入口，调试手牌注入。
-*   `TurnManager.cs`: 回合流程控制器，管理游戏主循环及流局判定。
+*   `GameManager.cs`: 游戏初始化入口，组装 Server 与 Clients。
+*   `TurnManager.cs`: (重构中) 降级为表现层驱动器，监听事件同步动画。
 *   `DeckManager.cs`: 牌山构建、洗牌、发牌管理。
 *   `TalentManager.cs`: 天赋系统的分发中转站。
 

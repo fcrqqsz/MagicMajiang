@@ -5,13 +5,17 @@
 ## 1. 近期开发任务 (Backlog)
 
 ### High Priority (高优先级)
+*   **[进行中] TurnManager 表现层重构**:
+    *   移除 `TurnManager` 中遗留的任何业务逻辑（如旧的状态机变量、轮转计数等）。
+    *   将其改造成纯粹的事件监听器，监听 `GameServer` 和 `LocalPlayerClient` 的事件。
+    *   在接收到事件后，统一协调和调度 `HandController` 和 `RiverController` 的动画（如等待他人打牌动画播完再唤起本地玩家的摸牌动画）。
 *   **[已完成] 结算 UI 对接**: 
     *   [x] 将 `MahjongLogic.CheckWinWithFan` 返回的详细番种列表渲染至 `ResultPanel`。
     *   [x] 扩大 UI 面板，确保一次性展示所有番种列表而无需滚动。
     *   [x] **得分动效**: 实现得分（番数）从 0 开始滚动增加的视觉特效。
-*   **AI 决策逻辑**: 
-    *   需实现基于“切牌”原则（如：保留顺子/刻子胚子，打出孤张）的基础打牌逻辑。
-    *   实现 AI 对吃碰杠胡的响应判定逻辑。
+*   **[已完成] AI 决策逻辑与网络架构重构**: 
+    *   [x] 引入 "Fat Client, Thin Server" 架构，拆分 `GameServer` 与 Client Agents，支持未来的联机扩展。
+    *   [x] 实现 `SimpleAIClient`，完成基于孤张判定的出牌与吃碰杠胡基础响应。
 *   **[已完成] 流局与失败展示**:
     *   [x] 完善流局 (`ShowDraw`) 时各家听牌状态的展示。
     *   [x] 实现玩家输掉比赛（AI 胡牌）时的失败视觉反馈。
