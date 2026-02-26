@@ -120,5 +120,38 @@ namespace MahjongGame.Core
 
             return actions;
         }
+
+        /// <summary>
+        /// 获取所有能吃某张牌的组合
+        /// </summary>
+        /// <param name="myHand">我的手牌</param>
+        /// <param name="target">目标牌</param>
+        /// <returns>返回 List<int[]>，每个数组包含两个整数，代表用来吃的那两张牌的 Value</returns>
+        public static List<int[]> GetChiCombinations(List<TileData> myHand, TileData target)
+        {
+            List<int[]> combos = new List<int[]>();
+            
+            // 字牌不能吃
+            if (target.TileSuit == Suit.Wind || target.TileSuit == Suit.Dragon) return combos;
+
+            int val = target.Value;
+            
+            // 获取手里该花色所有【不重复】的数值
+            var distinctValues = myHand
+                .Where(t => t.TileSuit == target.TileSuit)
+                .Select(t => t.Value)
+                .Distinct()
+                .ToHashSet();
+
+            // 检查三种吃法
+            if (val > 2 && distinctValues.Contains(val - 2) && distinctValues.Contains(val - 1))
+                combos.Add(new int[] { val - 2, val - 1 });
+            if (val > 1 && val < 9 && distinctValues.Contains(val - 1) && distinctValues.Contains(val + 1))
+                combos.Add(new int[] { val - 1, val + 1 });
+            if (val < 8 && distinctValues.Contains(val + 1) && distinctValues.Contains(val + 2))
+                combos.Add(new int[] { val + 1, val + 2 });
+
+            return combos;
+        }
     }
 }

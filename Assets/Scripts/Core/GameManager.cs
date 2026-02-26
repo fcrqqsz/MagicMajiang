@@ -2,6 +2,8 @@ using System.Collections.Generic;
 using UnityEngine;
 using MahjongGame.Systems;
 using MahjongGame.Core; // 确保引用 DeckConfig
+using MahjongGame.Core.Network; // 确保引用 Network 命名空间
+using MahjongGame.Core.Agents;
 
 namespace MahjongGame.Core
 {
@@ -66,14 +68,25 @@ namespace MahjongGame.Core
                 ActiveConfigs[i] = allConfigs[i];
             }
 
-            // 3. 构建牌山
-            MahjongGame.Systems.DeckManager.Instance.BuildWall(allConfigs);
+            // ====== [新增] 使用全新的 Fat Client, Thin Server 架构 ======
+            var server = new GameServer();
+            List<IPlayerClient> clients = new List<IPlayerClient>();
 
-            // 4. 发牌
-            DealStartingHand();
+            // 玩家 0 是本地玩家
+            clients.Add(new LocalPlayerClient(0, server, playerHandController));
 
-            // 启动回合循环
-            MahjongGame.Systems.TurnManager.Instance.StartGameLoop();
+            // 玩家 1-3 是胖客户端 AI
+            clients.Add(new SimpleAIClient(1, server));
+            clients.Add(new SimpleAIClient(2, server));
+            clients.Add(new SimpleAIClient(3, server));
+
+            // 启动服务器逻辑（它内部会调用 DeckManager 构建牌山并发牌）
+            server.StartGame(clients, allConfigs);
+            
+            // 注释掉旧的流程
+            // MahjongGame.Systems.DeckManager.Instance.BuildWall(allConfigs);
+            // DealStartingHand();
+            // MahjongGame.Systems.TurnManager.Instance.StartGameLoop();
         }
 
         // void Start()

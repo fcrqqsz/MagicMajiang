@@ -235,7 +235,7 @@ namespace MahjongGame.Systems
                     } else if (choice == "Chi")
                     {
                         // 1. 获取组合 (List<int[]>)
-                            var combos = playerController.GetChiCombinations(discardedTile);
+                            var combos = ActionValidator.GetChiCombinations(handData, discardedTile);
                             
                             if (combos.Count == 1)
                             {
@@ -243,7 +243,7 @@ namespace MahjongGame.Systems
                             }
                             else if (combos.Count > 1)
                             {
-                                // 多选一
+                                // 多种吃法，显示二级菜单让玩家选择
                                 Debug.Log($"combo数量： {combos.Count}");
                                 var optionsStr = combos.Select(c => $"{c[0]}{discardedTile.GetSuitName()} {c[1]}{discardedTile.GetSuitName()}").ToList();
                                 Debug.Log($"optionsStr数量： {optionsStr.Count}");
@@ -274,7 +274,10 @@ namespace MahjongGame.Systems
         private void PerformChi(TileData target, int[] eatingValues)
         {
             playerController.ExecuteChi(target, eatingValues);
-            playerController.myRiver.RemoveLastDiscard();
+            // [修复] AI打出的牌是模拟数据，并未真正进入任何牌河(River)
+            // 因此这里不应该，也无法从牌河中移除它。
+            // 在新的服务器-客户端架构中，这个逻辑由服务器状态驱动。
+            // playerController.myRiver.RemoveLastDiscard();
             
             // 核心流转修改：
             currentPlayerIndex = 0; // 轮到我
@@ -287,7 +290,10 @@ namespace MahjongGame.Systems
         private void PerformPon(TileData target)
         {
             playerController.ExecutePon(target); // 记得把 HandController 的 ExecutePon 参数也改一下或者重载
-            playerController.myRiver.RemoveLastDiscard();
+            // [修复] AI打出的牌是模拟数据，并未真正进入任何牌河(River)
+            // 因此这里不应该，也无法从牌河中移除它。
+            // 在新的服务器-客户端架构中，这个逻辑由服务器状态驱动。
+            // playerController.myRiver.RemoveLastDiscard();
             
             currentPlayerIndex = 0;
             _turnFlowInterrupted = true;
@@ -302,10 +308,13 @@ namespace MahjongGame.Systems
             
             // 1. 执行视觉与数据 (手牌-3, 副露+4)
             playerController.ExecuteMingGan(target);
-            playerController.myRiver.RemoveLastDiscard();
+            // [修复] AI打出的牌是模拟数据，并未真正进入任何牌河(River)
+            // 因此这里不应该，也无法从牌河中移除它。
+            // 在新的服务器-客户端架构中，这个逻辑由服务器状态驱动。
+            // playerController.myRiver.RemoveLastDiscard();
 
             // 2. 状态机跳转
-            currentPlayerIndex = -1;
+            currentPlayerIndex = 0; // 轮到我
             
             // 3. 【关键区别】杠牌后需要“岭上开花” (摸一张牌)
             _skipNextDraw = false; // 明杠需要摸牌

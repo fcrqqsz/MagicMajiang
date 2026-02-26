@@ -8,6 +8,8 @@ namespace MahjongGame.Core
 {
     public class HandController : MonoBehaviour
     {
+        public event System.Action<TileData> OnTileDiscardedEvent;
+
         private List<TileVisual> _handTiles = new List<TileVisual>();
         
         // 当前选中的牌 (指针)
@@ -348,40 +350,13 @@ namespace MahjongGame.Core
         }
 
         /// <summary>
-        /// [重构] 获取所有能吃这张牌的组合 (去重版)
-        /// 返回：List<int[]>，每个数组包含两个整数，代表用来吃的那两张牌的 Value
+        /// [新增] 供 LocalPlayerClient 使用，指定数据摸牌并展示
         /// </summary>
-        public List<int[]> GetChiCombinations(TileData target)
+        public void DrawCardData(TileData data)
         {
-            List<int[]> combos = new List<int[]>();
-            
-            // 字牌不能吃
-            if (target.TileSuit == Suit.Wind || target.TileSuit == Suit.Dragon) return combos;
-
-            int val = target.Value;
-            
-            // 1. 获取手里该花色所有【不重复】的数值
-            // 这一步解决了 "重复选项" 问题
-            var distinctValues = _handTiles
-                .Where(t => t.Data.TileSuit == target.TileSuit)
-                .Select(t => t.Data.Value)
-                .Distinct() // <--- 关键：去重
-                .ToHashSet();
-
-            // 2. 检查三种吃法 (左/中/右)
-            // 左吃 (val-2, val-1)
-            if (distinctValues.Contains(val - 2) && distinctValues.Contains(val - 1))
-                combos.Add(new int[] { val - 2, val - 1 });
-
-            // 中吃 (val-1, val+1)
-            if (distinctValues.Contains(val - 1) && distinctValues.Contains(val + 1))
-                combos.Add(new int[] { val - 1, val + 1 });
-
-            // 右吃 (val+1, val+2)
-            if (distinctValues.Contains(val + 1) && distinctValues.Contains(val + 2))
-                combos.Add(new int[] { val + 1, val + 2 });
-
-            return combos;
+            // 复用 AddTileDirectly 逻辑
+            AddTileDirectly(data);
+            // 摸牌后通常需要重新计算位置（AddTileDirectly已调用UpdateHandPositions，但这里可以加额外动画逻辑）
         }
 
         /// <summary>
@@ -389,6 +364,8 @@ namespace MahjongGame.Core
         /// </summary>
         public void ExecuteChi(TileData targetTile, int[] eatingValues)
         {
+            if (eatingValues == null || eatingValues.Length != 2) return;
+
             // 1. 准备要存入副露的数据
             List<TileData> meldData = new List<TileData>();
             meldData.Add(targetTile); // 第一张是吃进来的牌
@@ -529,6 +506,9 @@ namespace MahjongGame.Core
             // 4. 重新整理手牌 (填补空缺)
             SortHand();
             UpdateHandPositions();
+
+            // 触发事件给客户端代理
+            OnTileDiscardedEvent?.Invoke(tile.Data);
 
             // 通知回合管理器
             if (MahjongGame.Systems.TurnManager.Instance != null)
