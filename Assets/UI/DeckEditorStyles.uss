@@ -61,7 +61,7 @@
     align-items: center;
     background-color: #393E46; /* 与头部一致的背景色 */
     border-radius: 12px;
-    margin-bottom: 15px;
+    margin-bottom: 30px; /* 1. 放大行间距 */
     padding: 15px;
     border-width: 0;
 }
@@ -113,9 +113,9 @@
 
 /* 牌项样式 */
 .tile-item {
-    width: 95px;
-    height: 160px;
-    margin: 5px;
+    width: 150px; /* 2. 增大卡片宽度 */
+    height: 180px; /* 2. 增大卡片高度，给牌面更多空间 */
+    margin: 10px;  /* 2. 增大左右间距 (四周都变大) */
     background-color: #222831; /* 深色背景，突出卡片感 */
     border-radius: 12px;
     border-width: 1px;
@@ -132,21 +132,24 @@
     scale: 1.02 1.02; /* 微微放大产生浮起感 */
 }
 
-.tile-face {
-    font-size: 32px;
-    color: #EEEEEE;
-    -unity-text-align: middle-center;
+.tile-face-image {
+    flex-grow: 1;
+    width: 100%;
+    -unity-background-scale-mode: scale-to-fit;
 }
 
 .tile-count {
-    font-size: 20px;
+    font-size: 24px; /* 字体加大 */
     color: #888;
     -unity-font-style: bold;
+    min-width: 36px; /* 4. 预留2位数的空间 */
+    -unity-text-align: middle-center; /* 文字居中 */
+    margin: 0 2px;
 }
 
 .tile-count.active {
     color: #00ADB5; /* 使用主题色 */
-    text-shadow: none;
+    text-shadow: 0 0 0 rgba(0, 0, 0, 0);
 }
 
 /* 按钮区域 */
@@ -154,6 +157,8 @@
     flex-direction: row;
     width: 100%;
     justify-content: space-between;
+    align-items: center; /* 垂直居中对齐 */
+    margin-top: 5px; /* 与上方图片的间距 */
 }
 
 .action-btn {

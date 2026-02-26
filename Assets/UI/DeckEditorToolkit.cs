@@ -157,12 +157,27 @@ namespace MahjongGame.UI
         private VisualElement CreateTileItem(Suit suit, int value)
         {
             TemplateContainer instance = _itemTemplate.Instantiate();
-            var faceLabel = instance.Q<Label>("FaceLabel");
+            var faceImage = instance.Q<VisualElement>("FaceImage");
             var countLabel = instance.Q<Label>("CountLabel");
             var btnPlus = instance.Q<Button>("BtnPlus");
             var btnMinus = instance.Q<Button>("BtnMinus");
 
-            faceLabel.text = GetTileName(suit, value);
+            // 加载并设置牌面图片
+            string imagePath = GetTileImagePath(suit, value);
+            Sprite tileSprite = Resources.Load<Sprite>(imagePath);
+            if (tileSprite != null)
+            {
+                faceImage.style.backgroundImage = new StyleBackground(tileSprite);
+            }
+            else
+            {
+                // 如果找不到图片，为了调试方便，可以显示文字
+                var fallbackLabel = new Label(GetTileNameForFallback(suit, value));
+                fallbackLabel.style.fontSize = 20;
+                fallbackLabel.style.unityTextAlign = TextAnchor.MiddleCenter;
+                faceImage.Add(fallbackLabel);
+                Debug.LogWarning($"[DeckEditor] Tile image not found, using fallback text. Path: {imagePath}");
+            }
             
             Action updateLocalUI = () => 
             {
@@ -238,7 +253,34 @@ namespace MahjongGame.UI
             if (GameManager.Instance != null) GameManager.Instance.StartGameWithConfig(_currentConfig);
         }
 
-        private string GetTileName(Suit s, int v)
+        private string GetTileImagePath(Suit suit, int value)
+        {
+            string prefix = "Art/FlatTile/f";
+            string suffix = "";
+            string valueStr = value.ToString();
+
+            switch (suit)
+            {
+                case Suit.Man: suffix = "m"; break;
+                case Suit.Pin: suffix = "p"; break;
+                case Suit.Sou: suffix = "s"; break;
+                case Suit.Wind: suffix = "z"; break; // 1-4 对应 东南西北
+                case Suit.Dragon:
+                    suffix = "z";
+                    // 资源命名: 7=中, 6=发, 5=白
+                    // 枚举值:   1=中, 2=发, 3=白
+                    switch (value)
+                    {
+                        case 1: valueStr = "7"; break; // 中
+                        case 2: valueStr = "6"; break; // 发
+                        case 3: valueStr = "5"; break; // 白
+                    }
+                    break;
+            }
+            return $"{prefix}{valueStr}{suffix}";
+        }
+
+        private string GetTileNameForFallback(Suit s, int v)
         {
             switch(s) {
                 case Suit.Man: return $"{v}\n万";
