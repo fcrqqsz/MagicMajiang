@@ -5,10 +5,6 @@
 ## 1. 近期开发任务 (Backlog)
 
 ### High Priority (高优先级)
-*   **[进行中] TurnManager 表现层重构**:
-    *   移除 `TurnManager` 中遗留的任何业务逻辑（如旧的状态机变量、轮转计数等）。
-    *   将其改造成纯粹的事件监听器，监听 `GameServer` 和 `LocalPlayerClient` 的事件。
-    *   在接收到事件后，统一协调和调度 `HandController` 和 `RiverController` 的动画（如等待他人打牌动画播完再唤起本地玩家的摸牌动画）。
 *   **[已完成] 结算 UI 对接**: 
     *   [x] 将 `MahjongLogic.CheckWinWithFan` 返回的详细番种列表渲染至 `ResultPanel`。
     *   [x] 扩大 UI 面板，确保一次性展示所有番种列表而无需滚动。
@@ -29,6 +25,10 @@
     *   在结算面板展示胡牌瞬间的 2D 手牌排布，方便玩家复盘。
 
 ## 2. 系统优化路线图 (Optimization)
+
+### 低优先级 / 未来规划 (Low Priority / Future)
+*   **表现层调度器 (View Coordinator) 重构**:
+    *   鉴于原有的 `TurnManager` 已经被移除，未来如果需要处理复杂的跨动画协同（如处理多个玩家同时发生的特效、控制摄像机镜头切换、管理全局倒计时等），需要引入一个专门的 `MatchViewController` 或 `AnimationCoordinator` 来统筹。这不属于核心逻辑范畴。
 
 ### 性能优化
 *   **对象池 (Object Pooling)**: 引入 `TilePool` 管理 `TileVisual` 的生成与回收，减少高频实例化带来的内存抖动。

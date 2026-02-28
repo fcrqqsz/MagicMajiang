@@ -45,7 +45,6 @@
 
 ### B. `Assets/Scripts/Systems` (全局系统管理)
 *   `GameManager.cs`: 游戏初始化入口，组装 Server 与 Clients。
-*   `TurnManager.cs`: (重构中) 降级为表现层驱动器，监听事件同步动画。
 *   `DeckManager.cs`: 牌山构建、洗牌、发牌管理。
 *   `TalentManager.cs`: 天赋系统的分发中转站。
 
