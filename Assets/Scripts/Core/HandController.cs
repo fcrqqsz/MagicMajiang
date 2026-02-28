@@ -21,7 +21,7 @@ namespace MahjongGame.Core
         [Header("Refs")]
         public RiverController myRiver; // <--- 新增引用
         [Header("Visual Settings")]
-        public float tileGap = 1.0f;
+        public float tileGap = 0.8f;
         public float drawGap = 1.0f; // [新增] 新摸的牌与手牌的额外距离
         public Vector3 handRotation = new Vector3(25f, 0f, 0f); // 让牌后仰 25 度
 
@@ -509,12 +509,6 @@ namespace MahjongGame.Core
 
             // 触发事件给客户端代理
             OnTileDiscardedEvent?.Invoke(tile.Data);
-
-            // 通知回合管理器
-            if (MahjongGame.Systems.TurnManager.Instance != null)
-            {
-                MahjongGame.Systems.TurnManager.Instance.OnPlayerDiscarded();
-            }
         }
 
         // --- 辅助：保持之前的排序和刷新逻辑 ---
