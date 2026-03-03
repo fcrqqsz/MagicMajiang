@@ -74,16 +74,13 @@ namespace MahjongGame.Core
             if (melds.Count == 0 && CheckSevenPairs(tileCounts))
             {
                 var decomp = new InternalDecomposition();
-                // 七对子的拆解不符合“面子”定义，我们将其存入单独的特殊结构或用对子填充 AllMelds
-                for(int i=0; i<34; i++)
+                // 七对子拆解：允许同种牌拆成多个对子
+                for(int i = 0; i < MAX_TILE_INDEX; i++)
                 {
-                    if (tileCounts[i] >= 2)
+                    int pairCount = tileCounts[i] / 2;
+                    for (int p = 0; p < pairCount; p++)
                     {
-                        TileData t = CreateTileFromIndex(i);
-                        // 为了兼容现有规则，我们暂时不把七对子放入 AllMelds，
-                        // 或者放入特殊的 7 个 Pair。
-                        // 这里我们仅标记其 WaitType
-                        decomp.Pair.Add(t); // 简单填充
+                        decomp.Pair.Add(CreateTileFromIndex(i));
                     }
                 }
                 decomp.Wait = Fan.WaitType.Single; // 七对子必然是单钓
@@ -94,11 +91,19 @@ namespace MahjongGame.Core
             if (melds.Count == 0 && CheckThirteenOrphans(tileCounts))
             {
                 var decomp = new InternalDecomposition();
-                decomp.Wait = Fan.WaitType.Single; // 十三幺必然是单钓 (听十三面或其中一张)
+                decomp.Wait = Fan.WaitType.Single; // 十三幺单钓
                 results.Add(decomp);
             }
 
-            // --- 3. 标准形：4面子 + 1雀头 ---
+            // --- 3. 特殊形：全不靠/七星不靠 (不计副露) ---
+            if (melds.Count == 0 && CheckQuanBuKao(tileCounts))
+            {
+                var decomp = new InternalDecomposition();
+                decomp.Wait = Fan.WaitType.Single; // 全不靠单钓
+                results.Add(decomp);
+            }
+
+            // --- 4. 标准形：4面子 + 1雀头 ---
             int setsNeeded = 4 - melds.Count;
             for (int i = 0; i < MAX_TILE_INDEX; i++)
             {
@@ -106,7 +111,7 @@ namespace MahjongGame.Core
                 {
                     tileCounts[i] -= 2;
                     var currentPath = new List<Meld>();
-                    FindAllSets(tileCounts, setsNeeded, currentPath, (completedSets) =>
+                    FindDecompositionsWithKnitted(tileCounts, setsNeeded, currentPath, (completedSets) =>
                     {
                         var decomp = new InternalDecomposition();
                         decomp.AllMelds.AddRange(melds);
@@ -121,6 +126,73 @@ namespace MahjongGame.Core
                 }
             }
             return results;
+        }
+
+        private static bool HasKnittedSuit(int[] tiles, int suitIndex, int offset)
+        {
+            int baseIdx = suitIndex * 9;
+            return tiles[baseIdx + offset] > 0 && tiles[baseIdx + offset + 3] > 0 && tiles[baseIdx + offset + 6] > 0;
+        }
+
+        private static void ModKnittedSuit(int[] tiles, int suitIndex, int offset, int delta)
+        {
+            int baseIdx = suitIndex * 9;
+            tiles[baseIdx + offset] += delta;
+            tiles[baseIdx + offset + 3] += delta;
+            tiles[baseIdx + offset + 6] += delta;
+        }
+
+        private static Meld CreateKnittedMeld(int suitIndex, int offset)
+        {
+            int baseIdx = suitIndex * 9;
+            return new Meld(MeldType.Knitted, new List<TileData> { 
+                CreateTileFromIndex(baseIdx + offset), 
+                CreateTileFromIndex(baseIdx + offset + 3), 
+                CreateTileFromIndex(baseIdx + offset + 6) 
+            }, -1, true);
+        }
+
+        private static void FindDecompositionsWithKnitted(int[] tiles, int setsNeeded, List<Meld> currentPath, System.Action<List<Meld>> onFound)
+        {
+            FindAllSets(tiles, setsNeeded, currentPath, onFound);
+
+            if (setsNeeded >= 3)
+            {
+                int[][] permutations = new int[][]
+                {
+                    new int[] { 0, 1, 2 }, new int[] { 0, 2, 1 },
+                    new int[] { 1, 0, 2 }, new int[] { 1, 2, 0 },
+                    new int[] { 2, 0, 1 }, new int[] { 2, 1, 0 }
+                };
+
+                foreach (var p in permutations)
+                {
+                    int suit147 = p[0];
+                    int suit258 = p[1];
+                    int suit369 = p[2];
+
+                    if (HasKnittedSuit(tiles, suit147, 0) && HasKnittedSuit(tiles, suit258, 1) && HasKnittedSuit(tiles, suit369, 2))
+                    {
+                        ModKnittedSuit(tiles, suit147, 0, -1);
+                        ModKnittedSuit(tiles, suit258, 1, -1);
+                        ModKnittedSuit(tiles, suit369, 2, -1);
+
+                        currentPath.Add(CreateKnittedMeld(suit147, 0));
+                        currentPath.Add(CreateKnittedMeld(suit258, 1));
+                        currentPath.Add(CreateKnittedMeld(suit369, 2));
+
+                        FindAllSets(tiles, setsNeeded - 3, currentPath, onFound);
+
+                        currentPath.RemoveAt(currentPath.Count - 1);
+                        currentPath.RemoveAt(currentPath.Count - 1);
+                        currentPath.RemoveAt(currentPath.Count - 1);
+
+                        ModKnittedSuit(tiles, suit147, 0, 1);
+                        ModKnittedSuit(tiles, suit258, 1, 1);
+                        ModKnittedSuit(tiles, suit369, 2, 1);
+                    }
+                }
+            }
         }
 
         private static Fan.WaitType AnalyzeWaitType(InternalDecomposition decomp, TileData winTile, int pairIndex)
@@ -206,8 +278,12 @@ namespace MahjongGame.Core
             int[] tileCounts = ConvertToFrequencyArray(handTiles);
             tileCounts[GetTileIndex(winningTile)]++;
             
-            if (CheckSevenPairs(tileCounts)) return true;
-            if (CheckThirteenOrphans(tileCounts)) return true;
+            if (melds.Count == 0)
+            {
+                if (CheckSevenPairs(tileCounts)) return true;
+                if (CheckThirteenOrphans(tileCounts)) return true;
+                if (CheckQuanBuKao(tileCounts)) return true;
+            }
 
             int setsNeeded = 4 - melds.Count;
             return CheckStandardWin(tileCounts, setsNeeded);
@@ -220,7 +296,7 @@ namespace MahjongGame.Core
                 if (tiles[i] >= 2)
                 {
                     tiles[i] -= 2;
-                    if (CheckSets(tiles, setsNeeded)) 
+                    if (CheckSetsWithKnitted(tiles, setsNeeded)) 
                     {
                         tiles[i] += 2; 
                         return true;
@@ -228,6 +304,45 @@ namespace MahjongGame.Core
                     tiles[i] += 2;
                 }
             }
+            return false;
+        }
+
+        private static bool CheckSetsWithKnitted(int[] tiles, int setsNeeded)
+        {
+            if (CheckSets(tiles, setsNeeded)) return true;
+
+            if (setsNeeded >= 3)
+            {
+                int[][] permutations = new int[][]
+                {
+                    new int[] { 0, 1, 2 }, new int[] { 0, 2, 1 },
+                    new int[] { 1, 0, 2 }, new int[] { 1, 2, 0 },
+                    new int[] { 2, 0, 1 }, new int[] { 2, 1, 0 }
+                };
+
+                foreach (var p in permutations)
+                {
+                    int suit147 = p[0];
+                    int suit258 = p[1];
+                    int suit369 = p[2];
+
+                    if (HasKnittedSuit(tiles, suit147, 0) && HasKnittedSuit(tiles, suit258, 1) && HasKnittedSuit(tiles, suit369, 2))
+                    {
+                        ModKnittedSuit(tiles, suit147, 0, -1);
+                        ModKnittedSuit(tiles, suit258, 1, -1);
+                        ModKnittedSuit(tiles, suit369, 2, -1);
+
+                        bool ok = CheckSets(tiles, setsNeeded - 3);
+
+                        ModKnittedSuit(tiles, suit147, 0, 1);
+                        ModKnittedSuit(tiles, suit258, 1, 1);
+                        ModKnittedSuit(tiles, suit369, 2, 1);
+
+                        if (ok) return true;
+                    }
+                }
+            }
+
             return false;
         }
 
@@ -260,17 +375,81 @@ namespace MahjongGame.Core
         private static bool CheckSevenPairs(int[] tiles)
         {
             int pairs = 0;
+            int totalTiles = 0;
             for (int i = 0; i < MAX_TILE_INDEX; i++)
             {
-                if (tiles[i] == 2) pairs++;
-                else if (tiles[i] != 0 && tiles[i] != 4) return false;
+                pairs += tiles[i] / 2;
+                totalTiles += tiles[i];
             }
-            return pairs == 7;
+            return totalTiles == 14 && pairs == 7;
         }
 
         private static bool CheckThirteenOrphans(int[] tiles)
         {
-            return false; 
+            int[] orphanIndices = { 0, 8, 9, 17, 18, 26, 27, 28, 29, 30, 31, 32, 33 };
+            int typesCount = 0;
+            int totalOrphans = 0;
+            int totalTiles = 0;
+
+            for (int i = 0; i < MAX_TILE_INDEX; i++)
+            {
+                totalTiles += tiles[i];
+            }
+
+            foreach (int i in orphanIndices)
+            {
+                if (tiles[i] > 0)
+                {
+                    typesCount++;
+                    totalOrphans += tiles[i];
+                }
+            }
+
+            // 要求：总计14张牌，全都是幺九/字牌，且包含了所有13种类型
+            return totalTiles == 14 && totalOrphans == 14 && typesCount == 13;
+        }
+
+        private static bool CheckQuanBuKao(int[] tiles)
+        {
+            int totalTiles = 0;
+            for (int i = 0; i < MAX_TILE_INDEX; i++)
+            {
+                if (tiles[i] > 1) return false; // 全不靠不能有任何对子
+                totalTiles += tiles[i];
+            }
+            if (totalTiles != 14) return false;
+
+            List<int> manVals = new List<int>();
+            List<int> pinVals = new List<int>();
+            List<int> souVals = new List<int>();
+            for (int i = 0; i < 9; i++) if (tiles[i] > 0) manVals.Add(i % 9);
+            for (int i = 9; i < 18; i++) if (tiles[i] > 0) pinVals.Add(i % 9);
+            for (int i = 18; i < 27; i++) if (tiles[i] > 0) souVals.Add(i % 9);
+
+            if (!IsValidKnittedSuit(manVals) || !IsValidKnittedSuit(pinVals) || !IsValidKnittedSuit(souVals)) return false;
+
+            int[] usedPatterns = new int[3]; 
+            if (manVals.Count > 0) usedPatterns[manVals[0] % 3]++;
+            if (pinVals.Count > 0) usedPatterns[pinVals[0] % 3]++;
+            if (souVals.Count > 0) usedPatterns[souVals[0] % 3]++;
+
+            for (int i = 0; i < 3; i++)
+            {
+                if (usedPatterns[i] > 1) return false; // 两门花色不能使用同一种147/258/369步进
+            }
+
+            return true;
+        }
+
+        private static bool IsValidKnittedSuit(List<int> vals)
+        {
+            if (vals.Count == 0) return true;
+            int mod = vals[0] % 3;
+            for (int i = 1; i < vals.Count; i++)
+            {
+                if (vals[i] % 3 != mod) return false;
+            }
+            return true;
         }
 
         private static bool IsSequencePossible(int index)

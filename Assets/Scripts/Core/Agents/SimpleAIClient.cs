@@ -35,6 +35,11 @@ namespace MahjongGame.Core.Agents
             Debug.Log($"[AI {PlayerId}] 收到初始手牌，共 {_hand.Count} 张");
         }
 
+        public void OnPlayerDrawn(int playerId)
+        {
+            // AI 不需要视觉表现，因此空实现即可
+        }
+
         public async void OnTileDrawn(TileData drawnTile)
         {
             _hand.Add(drawnTile);
@@ -179,6 +184,14 @@ namespace MahjongGame.Core.Agents
 
         private TileData ChooseTileToDiscard()
         {
+            if (GameManager.Instance != null && GameManager.Instance.forceAIDiscard && GameManager.Instance.aiCheatDiscards != null && GameManager.Instance.aiCheatDiscards.Count > 0)
+            {
+                var t = GameManager.Instance.aiCheatDiscards[0];
+                TileData cheat = new TileData(t.TileSuit, t.Value, PlayerId);
+                Debug.Log($"<color=red>[AI Cheat]</color> AI {PlayerId} 强制打出: {cheat.TileSuit} {cheat.Value}");
+                return cheat;
+            }
+
             // 基础策略：优先打出单张的字牌(风/箭)，然后打出单张的老头牌(1,9)
             // 简单实现：随机找一个字牌打，如果没有，随机打
             var winds = _hand.Where(t => t.TileSuit == Suit.Wind || t.TileSuit == Suit.Dragon).ToList();

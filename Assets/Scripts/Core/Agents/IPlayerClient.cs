@@ -21,6 +21,11 @@ namespace MahjongGame.Core.Agents
         void OnTileDrawn(TileData drawnTile);
 
         /// <summary>
+        /// 广播：某人摸牌了（用于对手表现层增加暗牌）
+        /// </summary>
+        void OnPlayerDrawn(int playerId);
+
+        /// <summary>
         /// 广播：其他玩家打出了一张牌
         /// </summary>
         /// <param name="playerId">打牌的玩家ID</param>

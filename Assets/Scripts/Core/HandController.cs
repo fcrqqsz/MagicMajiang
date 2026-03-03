@@ -69,11 +69,14 @@ namespace MahjongGame.Core
         /// </summary>
         private void CreateMeldVisual(Meld meld)
         {
-            // 简单的排列逻辑：从 meldSpawnPoint 开始向右延伸
-            // 更好的做法通常是：副露固定在右边，手牌向左挤，这里为了演示简化处理
+            // 按照国标常态：副露整体从右向左排列
             
             // 视觉占位数量 (加杠虽然4张，但视觉上只占3张宽度)
             int visualTileCount = (meld.Type == MeldType.Kan_Added) ? 3 : meld.Tiles.Count;
+
+            // 计算该副露起点的 X 坐标 (最左侧边界)
+            float totalMeldWidth = visualTileCount * meldTileWidth;
+            float startX = _currentMeldOffset - totalMeldWidth;
 
             for (int i = 0; i < meld.Tiles.Count; i++)
             {
@@ -115,30 +118,28 @@ namespace MahjongGame.Core
                 go.transform.localRotation = rotation;
 
                 // --- 位置计算 ---
-                // 注意：横置的牌宽度不同，这里简化处理，假设宽度一致
-                // 如果需要精确，横置牌的宽度应该是 tileHeight 而不是 tileWidth
-                float xPos = _currentMeldOffset + (i * meldTileWidth);
+                float xPos = startX + (i * meldTileWidth);
                 float yPos = 0f;
 
                 // 加杠特殊处理：第4张牌(i=3)叠在第1张(i=0)上面
                 if (meld.Type == MeldType.Kan_Added && i == 3)
                 {
-                    xPos = _currentMeldOffset + (0 * meldTileWidth); // 回到第1张的位置
-                    yPos = 0.6f; // 向上堆叠 (根据牌厚度调整)
+                    xPos = startX + (0 * meldTileWidth); // 回到第1张的位置
+                    yPos = 0.5f; // 向上堆叠 (根据牌厚度调整)
                 }
                 
                 // 微调：如果是横置的牌，位置可能需要修正一下中心点
                 if ((meld.Type == MeldType.Pon || meld.Type == MeldType.Kan_Added) && i == 0)
                 {
                     // 简单的修正，让横着的牌不跟后面的重叠
-                    // xPos -= 0.1f; 
+                    xPos -= 0.15f; 
                 }
 
                 go.transform.localPosition = new Vector3(xPos, yPos, 0);
             }
 
-            // 更新偏移量 (3张牌 + 额外间距)
-            _currentMeldOffset += (visualTileCount * meldTileWidth) + meldGap;
+            // 更新偏移量，下一个副露将在此基础上继续向左偏移
+            _currentMeldOffset = startX - meldGap;
         }
         
         /// <summary>
@@ -168,6 +169,7 @@ namespace MahjongGame.Core
             foreach (var visual in matchingTiles)
             {
                 _handTiles.Remove(visual);
+                visual.transform.DOKill();
                 Destroy(visual.gameObject); // 或者做个飞过去的动画再销毁
             }
             _lastDrawnTile = null;
@@ -198,6 +200,7 @@ namespace MahjongGame.Core
             foreach (var visual in matchingTiles)
             {
                 _handTiles.Remove(visual);
+                visual.transform.DOKill();
                 Destroy(visual.gameObject);
             }
 
@@ -259,6 +262,7 @@ namespace MahjongGame.Core
                 
                 // 从手牌列表移除并销毁物体
                 _handTiles.Remove(visual);
+                visual.transform.DOKill();
                 Destroy(visual.gameObject);
             }
 
@@ -309,6 +313,7 @@ namespace MahjongGame.Core
             if (tileToRemove == null) return;
 
             _handTiles.Remove(tileToRemove);
+            tileToRemove.transform.DOKill();
             Destroy(tileToRemove.gameObject);
 
             // 2. 找到对应的副露并修改数据
@@ -340,7 +345,11 @@ namespace MahjongGame.Core
         private void RefreshAllMeldsVisual()
         {
             // 清空 MeldSpawnPoint 下所有物体
-            foreach (Transform child in meldSpawnPoint) Destroy(child.gameObject);
+            foreach (Transform child in meldSpawnPoint) 
+            {
+                child.DOKill();
+                Destroy(child.gameObject);
+            }
             
             _currentMeldOffset = 0f;
             foreach (var meld in Melds)
@@ -383,6 +392,7 @@ namespace MahjongGame.Core
                 {
                     meldData.Add(visual.Data); // 记录数据
                     _handTiles.Remove(visual); // 移除列表
+                    visual.transform.DOKill();
                     Destroy(visual.gameObject); // 销毁物体
                 }
             }
@@ -500,6 +510,7 @@ namespace MahjongGame.Core
             if (myRiver != null) {
                 myRiver.AddTileToRiver(tile);
             } else {
+                tile.transform.DOKill();
                 Destroy(tile.gameObject); // 保底逻辑
             }
 
@@ -546,6 +557,7 @@ namespace MahjongGame.Core
                 Quaternion targetRot = Quaternion.Euler(handRotation);
 
                 // 使用 DoTween 平滑移动和旋转
+                _handTiles[i].transform.DOKill(); // <-- 防止动画冲突
                 _handTiles[i].transform.DOLocalMove(targetPos, 0.3f);
                 _handTiles[i].transform.DOLocalRotate(handRotation, 0.3f);
             }
@@ -554,7 +566,11 @@ namespace MahjongGame.Core
         // 清空 (用于重置)
         public void ClearHand()
         {
-            foreach(var tile in _handTiles) Destroy(tile.gameObject);
+            foreach(var tile in _handTiles) 
+            {
+                tile.transform.DOKill();
+                Destroy(tile.gameObject);
+            }
             _handTiles.Clear();
             _selectedTile = null;
         }

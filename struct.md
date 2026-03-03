@@ -41,7 +41,9 @@
     *   `FanRule.cs`: 规则基类，定义优先级、排斥逻辑。
     *   `Rules/FanCalculator.cs`: 汇总番数核心类。
     *   `Rules/FanRuleRegistry.cs`: 纯 C# 单例，自动发现并注册规则类。
-    *   `Rules/FanRules_Common.cs`: 具体番种规则集。
+    *   `Rules/MCR/MCR_1to6.cs`: 国标 1-6 番种规则。
+    *   `Rules/MCR/MCR_8to24.cs`: 国标 8-24 番种规则。
+    *   `Rules/MCR/MCR_32Plus.cs`: 国标 32+ 番种规则。
 
 ### B. `Assets/Scripts/Systems` (全局系统管理)
 *   `GameManager.cs`: 游戏初始化入口，组装 Server 与 Clients。

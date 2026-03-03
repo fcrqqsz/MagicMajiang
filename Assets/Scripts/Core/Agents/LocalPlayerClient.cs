@@ -21,6 +21,7 @@ namespace MahjongGame.Core.Agents
 
         // 本地状态
         private bool _isWaitingForUI = false;
+        private int _lastDiscarderId = -1; // 记录最后打牌的人
 
         public LocalPlayerClient(int playerId, IServer server, HandController handController)
         {
@@ -38,7 +39,20 @@ namespace MahjongGame.Core.Agents
                 _handController.AddTileDirectly(tile);
             }
             _handController.SortHand();
+
+            // 初始化其他玩家的 13 张盖着的牌
+            for (int i = 1; i < 4; i++)
+            {
+                var view = GameManager.Instance.GetOpponentView(i);
+                if (view != null) view.InitHand(13);
+            }
             Debug.Log($"[LocalPlayer] 游戏开始，发牌完成");
+        }
+
+        public void OnPlayerDrawn(int playerId)
+        {
+            var view = GameManager.Instance.GetOpponentView(playerId);
+            if (view != null) view.DrawCard();
         }
 
         public async void OnTileDrawn(TileData drawnTile)
@@ -120,6 +134,12 @@ namespace MahjongGame.Core.Agents
 
         public async void OnOtherPlayerDiscarded(int discarderId, TileData discardedTile)
         {
+            _lastDiscarderId = discarderId; // 记录最后出牌人
+            
+            // 表现层：其他玩家打出牌，渲染到其牌河
+            var view = GameManager.Instance.GetOpponentView(discarderId);
+            if (view != null) view.DiscardTile(discardedTile);
+
             var handData = _handController.GetHandData();
             var melds = _handController.Melds;
             bool isNextPlayer = (discarderId + 1) % 4 == PlayerId;
@@ -198,6 +218,17 @@ namespace MahjongGame.Core.Agents
 
         public void OnActionResolved(int actionPlayerId, ClientActionType actionType, TileData targetTile, int[] chiCombinations)
         {
+            // 从打出该牌的玩家牌河中移除这张牌 (不论是谁吃碰杠)
+            if (actionType != ClientActionType.AnGan && actionType != ClientActionType.JiaGang && _lastDiscarderId != -1)
+            {
+                if (_lastDiscarderId == PlayerId) 
+                    _handController.myRiver?.RemoveLastDiscard();
+                else 
+                    GameManager.Instance.GetOpponentView(_lastDiscarderId)?.myRiver?.RemoveLastDiscard();
+                
+                _lastDiscarderId = -1; // 重置
+            }
+
             // 收到全局动作广播，更新表现层
             if (actionPlayerId == PlayerId)
             {
@@ -219,8 +250,27 @@ namespace MahjongGame.Core.Agents
             }
             else
             {
-                // 如果是别人执行的，只需从别人（或公共）的牌河中移除那张牌
-                // 或者播放其他人的 3D 动画
+                // 别人执行动作，更新别人的副露和手牌数量
+                var view = GameManager.Instance.GetOpponentView(actionPlayerId);
+                if (view != null)
+                {
+                    List<TileData> meldTiles = new List<TileData> { targetTile };
+                    
+                    if (actionType == ClientActionType.Pon) { meldTiles.Add(targetTile); meldTiles.Add(targetTile); }
+                    else if (actionType == ClientActionType.MingGan || actionType == ClientActionType.AnGan) { meldTiles.Add(targetTile); meldTiles.Add(targetTile); meldTiles.Add(targetTile); }
+                    else if (actionType == ClientActionType.Chi)
+                    {
+                        meldTiles.Add(new TileData(targetTile.TileSuit, chiCombinations[0], targetTile.OriginalOwnerID));
+                        meldTiles.Add(new TileData(targetTile.TileSuit, chiCombinations[1], targetTile.OriginalOwnerID));
+                        meldTiles.Sort((a,b) => a.Value.CompareTo(b.Value));
+                    }
+
+                    if (actionType == ClientActionType.Pon) view.ExecuteMeld(MeldType.Pon, meldTiles);
+                    else if (actionType == ClientActionType.Chi) view.ExecuteMeld(MeldType.Chi, meldTiles);
+                    else if (actionType == ClientActionType.MingGan) view.ExecuteMeld(MeldType.Kan_Exposed, meldTiles);
+                    else if (actionType == ClientActionType.AnGan) view.ExecuteMeld(MeldType.Kan_Concealed, meldTiles);
+                    else if (actionType == ClientActionType.JiaGang) view.ExecuteMeld(MeldType.Kan_Added, meldTiles);
+                }
                 Debug.Log($"[LocalPlayer] 观察到玩家 {actionPlayerId} 执行了 {actionType}");
             }
         }

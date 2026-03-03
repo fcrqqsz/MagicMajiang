@@ -14,9 +14,18 @@ namespace MahjongGame.Core
         [Header("Settings")]
         public HandController playerHandController;
 
+        [Header("Opponent Views")]
+        public OpponentViewController rightOpponent;
+        public OpponentViewController topOpponent;
+        public OpponentViewController leftOpponent;
+
         [Header("Debug")]
         public bool useDebugHand = false;
         public List<TileData> debugHand = new List<TileData>();
+
+        [Header("AI Cheat")]
+        public bool forceAIDiscard = false;
+        public List<TileData> aiCheatDiscards = new List<TileData>();
 
         // 模拟玩家数据 (以后会从网络或存档读取)
         // 假设 ID 0 是自己，1,2,3 是 AI/对手
@@ -28,6 +37,14 @@ namespace MahjongGame.Core
         void Awake()
         {
             Instance = this;
+        }
+
+        public OpponentViewController GetOpponentView(int playerId)
+        {
+            if (playerId == 1) return rightOpponent;
+            if (playerId == 2) return topOpponent;
+            if (playerId == 3) return leftOpponent;
+            return null;
         }
 
         /// <summary>
@@ -173,7 +190,6 @@ namespace MahjongGame.Core
 
                 // --- 你的特色逻辑 ---
                 // 假设每个玩家必须带入 34 张牌 (标准麻将 136 / 4)
-                // 或者按照你的设定：带入 10% 特殊牌，系统补全 90%
                 
                 // 这里暂时写死：每个人生成 34 张随机牌作为测试
                 // for(int i=0; i<34; i++)

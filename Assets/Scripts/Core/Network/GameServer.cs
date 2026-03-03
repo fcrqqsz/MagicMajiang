@@ -57,10 +57,32 @@ namespace MahjongGame.Core.Network
             foreach (var client in _clients)
             {
                 List<TileData> startingHand = new List<TileData>();
-                for (int i = 0; i < 13; i++)
+                
+                bool useDebug = GameManager.Instance != null && GameManager.Instance.useDebugHand && client is LocalPlayerClient;
+
+                if (useDebug)
                 {
-                    startingHand.Add(DeckManager.Instance.DrawTile());
+                    var debugHand = GameManager.Instance.debugHand;
+                    for (int i = 0; i < Mathf.Min(debugHand.Count, 13); i++)
+                    {
+                        var t = debugHand[i];
+                        startingHand.Add(new TileData(t.TileSuit, t.Value, t.OriginalOwnerID));
+                    }
+                    
+                    int remaining = 13 - startingHand.Count;
+                    for (int i = 0; i < remaining; i++)
+                    {
+                        startingHand.Add(DeckManager.Instance.DrawTile());
+                    }
                 }
+                else
+                {
+                    for (int i = 0; i < 13; i++)
+                    {
+                        startingHand.Add(DeckManager.Instance.DrawTile());
+                    }
+                }
+                
                 client.OnGameStart(startingHand);
             }
         }
@@ -81,8 +103,17 @@ namespace MahjongGame.Core.Network
                 if (!_skipNextDraw)
                 {
                     TileData drawnTile = DeckManager.Instance.DrawTile();
-                    // 这里本该只发送给当前玩家，但在全量广播前，只有对应客户端会处理
+                    // 这里发送给当前玩家具体牌数据
                     currentPlayer.OnTileDrawn(drawnTile);
+
+                    // 广播给其他人，某人摸牌了 (不包含具体牌数据)
+                    for (int i = 0; i < _clients.Count; i++)
+                    {
+                        if (i != _currentPlayerIndex)
+                        {
+                            _clients[i].OnPlayerDrawn(_currentPlayerIndex);
+                        }
+                    }
                 }
                 _skipNextDraw = false;
 
