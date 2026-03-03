@@ -479,5 +479,63 @@ namespace MahjongGame.Core
             }
             return baseIdx + (t.Value - 1);
         }
+
+        public struct WaitDetail
+        {
+            public TileData WaitTile;
+            public int MaxFan;
+        }
+
+        /// <summary>
+        /// 获取所有打出后能听牌的提示信息
+        /// </summary>
+        /// <returns>Key: 打出的牌的索引 (GetTileIndex), Value: 听的牌及最大番数列表</returns>
+        public static Dictionary<int, List<WaitDetail>> GetWaitHints(List<TileData> hand, List<Meld> melds)
+        {
+            var hints = new Dictionary<int, List<WaitDetail>>();
+            
+            var uniqueHandTiles = new HashSet<int>();
+            foreach (var t in hand)
+            {
+                uniqueHandTiles.Add(GetTileIndex(t));
+            }
+
+            foreach (var discardIndex in uniqueHandTiles)
+            {
+                var handAfterDiscard = new List<TileData>(hand);
+                
+                for (int i = 0; i < handAfterDiscard.Count; i++)
+                {
+                    if (GetTileIndex(handAfterDiscard[i]) == discardIndex)
+                    {
+                        handAfterDiscard.RemoveAt(i);
+                        break;
+                    }
+                }
+
+                var waitDetails = new List<WaitDetail>();
+
+                for (int i = 0; i < MAX_TILE_INDEX; i++)
+                {
+                    var waitTile = CreateTileFromIndex(i);
+                    // 性能优化：先用快速且不带番的 IsWin 校验一遍，能胡才算番
+                    if (IsWin(handAfterDiscard, melds, waitTile))
+                    {
+                        // 计算最大番数 (以别人点炮来计算基础番)
+                        if (CheckWinWithFan(handAfterDiscard, melds, waitTile, false, out int totalFan, out _))
+                        {
+                            waitDetails.Add(new WaitDetail { WaitTile = waitTile, MaxFan = totalFan });
+                        }
+                    }
+                }
+
+                if (waitDetails.Count > 0)
+                {
+                    hints[discardIndex] = waitDetails;
+                }
+            }
+
+            return hints;
+        }
     }
 }

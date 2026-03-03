@@ -489,12 +489,32 @@ namespace MahjongGame.Core
             Vector3 pos = tile.transform.localPosition;
             tile.transform.localPosition = new Vector3(pos.x, 0.5f, pos.z);
             
+            // 4. 展示听牌提示
+            if (UI.WaitHintController.Instance != null)
+            {
+                int tileIndex = MahjongLogic.GetTileIndex(tile.Data);
+                
+                if (_cachedWaitHints.TryGetValue(tileIndex, out var waitDetails))
+                {
+                    UI.WaitHintController.Instance.ShowHint(waitDetails);
+                }
+                else
+                {
+                    UI.WaitHintController.Instance.HideHint();
+                }
+            }
+
             Debug.Log($"选中了: {tile.Data}");
         }
 
         // --- 3. 出牌逻辑 (Discard) ---
         private void DiscardTile(TileVisual tile)
         {
+            if (UI.WaitHintController.Instance != null)
+            {
+                UI.WaitHintController.Instance.HideHint();
+            }
+
             // >>> 埋点 2: 通知天赋系统 "我打牌了" <<<
             TalentManager.Instance.TriggerOnDiscard(tile.Data);
 
@@ -576,10 +596,24 @@ namespace MahjongGame.Core
         }
 
         private bool _isInteractable = false; // 交互锁
+        private Dictionary<int, List<MahjongLogic.WaitDetail>> _cachedWaitHints = new Dictionary<int, List<MahjongLogic.WaitDetail>>();
 
         public void SetInteractable(bool canInteract)
         {
             _isInteractable = canInteract;
+            if (canInteract)
+            {
+                // 每次轮到玩家操作时，预先计算所有听牌提示并缓存
+                _cachedWaitHints = MahjongLogic.GetWaitHints(GetHandData(), Melds);
+            }
+            else
+            {
+                _cachedWaitHints.Clear();
+                if (UI.WaitHintController.Instance != null)
+                {
+                    UI.WaitHintController.Instance.HideHint();
+                }
+            }
         }
     }
 }
