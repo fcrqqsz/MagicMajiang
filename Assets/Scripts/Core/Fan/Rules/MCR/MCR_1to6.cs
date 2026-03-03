@@ -16,6 +16,7 @@ namespace MahjongGame.Core.Fan.Rules
     public class Fan_SelfDraw : FanRule
     {
         public override string Name => "自摸";
+        public override string Description => "自己摸到和牌的牌";
         public override int GetMatchCount(FanContext ctx) => ctx.IsSelfDraw ? 1 : 0;
     }
 
@@ -24,6 +25,7 @@ namespace MahjongGame.Core.Fan.Rules
     public class Fan_SingleWait : FanRule
     {
         public override string Name => "单钓将";
+        public override string Description => "听牌时只听一张牌，且该牌为将牌";
         public override int GetMatchCount(FanContext ctx) => ctx.Wait == WaitType.Single ? 1 : 0;
     }
 
@@ -32,6 +34,7 @@ namespace MahjongGame.Core.Fan.Rules
     public class Fan_ClosedWait : FanRule
     {
         public override string Name => "坎张";
+        public override string Description => "听牌时只听顺子中间的那张牌";
         public override int GetMatchCount(FanContext ctx) => ctx.Wait == WaitType.Closed ? 1 : 0;
     }
 
@@ -40,6 +43,7 @@ namespace MahjongGame.Core.Fan.Rules
     public class Fan_EdgeWait : FanRule
     {
         public override string Name => "边张";
+        public override string Description => "听牌时只听123的3或789的7";
         public override int GetMatchCount(FanContext ctx) => ctx.Wait == WaitType.Edge ? 1 : 0;
     }
 
@@ -48,6 +52,7 @@ namespace MahjongGame.Core.Fan.Rules
     public class Fan_TerminalHonorPung : FanRule
     {
         public override string Name => "幺九刻";
+        public override string Description => "由序数牌1、9或字牌组成的刻子";
         public override int GetMatchCount(FanContext ctx)
         {
             int total = 0;
@@ -78,6 +83,7 @@ namespace MahjongGame.Core.Fan.Rules
     public class Fan_PureDoubleSequence : FanRule
     {
         public override string Name => "一般高";
+        public override string Description => "由一种花色2副序数相同的顺子组成的胡牌";
         public override int GetMatchCount(FanContext ctx)
         {
             var sequences = ctx.Decomposition.AllMelds.Where(m => m.Type == MeldType.Chi).ToList();
@@ -96,6 +102,7 @@ namespace MahjongGame.Core.Fan.Rules
     public class Fan_MixedDoubleSequence : FanRule
     {
         public override string Name => "喜相逢";
+        public override string Description => "由2种花色2副序数相同的顺子组成的胡牌";
         public override int GetMatchCount(FanContext ctx)
         {
             var sequences = ctx.Decomposition.AllMelds.Where(m => m.Type == MeldType.Chi).ToList();
@@ -123,6 +130,7 @@ namespace MahjongGame.Core.Fan.Rules
     public class Fan_ShortStraight : FanRule
     {
         public override string Name => "连六";
+        public override string Description => "由一种花色序数相连的2副顺子组成的胡牌";
         public override int GetMatchCount(FanContext ctx)
         {
             var sequences = ctx.Decomposition.AllMelds.Where(m => m.Type == MeldType.Chi).ToList();
@@ -149,6 +157,7 @@ namespace MahjongGame.Core.Fan.Rules
     public class Fan_TwoTerminalChows : FanRule
     {
         public override string Name => "老少副";
+        public override string Description => "由一种花色序数牌123、789的顺子各1副组成的胡牌";
         public override int GetMatchCount(FanContext ctx)
         {
             var sequences = ctx.Decomposition.AllMelds.Where(m => m.Type == MeldType.Chi).ToList();
@@ -168,6 +177,7 @@ namespace MahjongGame.Core.Fan.Rules
     public class Fan_MeldedKong : FanRule
     {
         public override string Name => "明杠";
+        public override string Description => "自己有暗刻，碰别人打出的牌；或自己摸到已碰牌的第4张牌";
         public override int GetMatchCount(FanContext ctx)
         {
             return ctx.FixedMelds.Count(m => m.Type == MeldType.Kan_Exposed || m.Type == MeldType.Kan_Added);
@@ -179,6 +189,7 @@ namespace MahjongGame.Core.Fan.Rules
     public class Fan_OneVoidedSuit : FanRule
     {
         public override string Name => "缺一门";
+        public override string Description => "和牌中缺少一种花色的序数牌";
         public override int GetMatchCount(FanContext ctx)
         {
             bool hasMan = false, hasPin = false, hasSou = false;
@@ -203,6 +214,7 @@ namespace MahjongGame.Core.Fan.Rules
     public class Fan_NoHonors : FanRule
     {
         public override string Name => "无字";
+        public override string Description => "和牌中没有字牌";
         public override int GetMatchCount(FanContext ctx)
         {
             foreach (var t in ctx.HandTiles) if (t.TileType == TileType.Word) return 0;
@@ -248,6 +260,7 @@ namespace MahjongGame.Core.Fan.Rules
     public class Fan_DragonPung : FanRule
     {
         public override string Name => "箭刻";
+        public override string Description => "由中、发、白组成的刻子";
 
         public override int GetMatchCount(FanContext ctx)
         {
@@ -268,6 +281,7 @@ namespace MahjongGame.Core.Fan.Rules
     public class Fan_ConcealedKong : FanRule
     {
         public override string Name => "暗杠";
+        public override string Description => "自己摸到4张相同的牌，并声明暗杠";
         public override int GetMatchCount(FanContext ctx)
         {
             return ctx.FixedMelds.Count(m => m.Type == MeldType.Kan_Concealed);
@@ -279,6 +293,7 @@ namespace MahjongGame.Core.Fan.Rules
     public class Fan_FourTiles : FanRule
     {
         public override string Name => "四归一";
+        public override string Description => "和牌中，有4张相同的牌归于一家的顺子、刻子、对子、将牌中(不包括杠牌)";
         public override int GetMatchCount(FanContext ctx)
         {
             int matches = 0;
@@ -305,6 +320,7 @@ namespace MahjongGame.Core.Fan.Rules
     public class Fan_DoublePung : FanRule
     {
         public override string Name => "双同刻";
+        public override string Description => "由2种花色序数相同的2副刻子组成的胡牌";
         public override int GetMatchCount(FanContext ctx)
         {
             int matches = 0;
@@ -332,6 +348,7 @@ namespace MahjongGame.Core.Fan.Rules
     public class Fan_TwoConcealedPungs : FanRule
     {
         public override string Name => "双暗刻";
+        public override string Description => "和牌中包含2副暗刻";
         public override int GetMatchCount(FanContext ctx)
         {
             int count = ctx.Decomposition.AllMelds.Count(m => m.IsPungOrKong && m.IsConcealed);
@@ -344,6 +361,7 @@ namespace MahjongGame.Core.Fan.Rules
     public class Fan_PrevalentWind : FanRule
     {
         public override string Name => "圈风刻";
+        public override string Description => "由圈风牌组成的刻子";
         public override int GetMatchCount(FanContext ctx)
         {
             int count = 0;
@@ -361,6 +379,7 @@ namespace MahjongGame.Core.Fan.Rules
     public class Fan_SeatWind : FanRule
     {
         public override string Name => "门风刻";
+        public override string Description => "由门风牌组成的刻子";
         public override int GetMatchCount(FanContext ctx)
         {
             int count = 0;
@@ -378,6 +397,7 @@ namespace MahjongGame.Core.Fan.Rules
     public class Fan_ConcealedHand : FanRule
     {
         public override string Name => "门前清";
+        public override string Description => "没有吃、碰、明杠，和别人打出的牌";
         public override int GetMatchCount(FanContext ctx)
         {
             bool isMelded = ctx.FixedMelds.Any(m => m.Type != MeldType.Kan_Concealed);
@@ -390,6 +410,7 @@ namespace MahjongGame.Core.Fan.Rules
     public class Fan_AllChows : FanRule
     {
         public override string Name => "平和";
+        public override string Description => "由4副顺子及序数牌作将组成的胡牌";
         public override int Priority => 15;
         // 平和必然无字
         public override string[] ExcludedRuleIds => new[] { "no_honors" };
@@ -411,6 +432,7 @@ namespace MahjongGame.Core.Fan.Rules
     public class Fan_LastTileWin : FanRule
     {
         public override string Name => "和绝张";
+        public override string Description => "和牌时，牌墙里或牌池里同张牌已出现3张";
         public override int GetMatchCount(FanContext ctx) => ctx.IsLastTileWin ? 1 : 0;
     }
 
@@ -419,6 +441,7 @@ namespace MahjongGame.Core.Fan.Rules
     public class Fan_OutsideHand : FanRule
     {
         public override string Name => "全带幺";
+        public override string Description => "每副顺子、刻子、杠子、将牌均含有幺九牌";
         public override int GetMatchCount(FanContext ctx)
         {
             if (ctx.Decomposition.AllMelds.Count != 4) return 0; // 排除特殊牌型
@@ -439,6 +462,7 @@ namespace MahjongGame.Core.Fan.Rules
     public class Fan_FullyConcealed : FanRule
     {
         public override string Name => "不求人";
+        public override string Description => "没有吃、碰、明杠，自摸和牌";
         public override int Priority => 10;
         public override string[] ExcludedRuleIds => new[] { "self_draw" };
         public override int GetMatchCount(FanContext ctx)
@@ -453,6 +477,7 @@ namespace MahjongGame.Core.Fan.Rules
     public class Fan_TwoMeldedKongs : FanRule
     {
         public override string Name => "双明杠";
+        public override string Description => "和牌中包含2副明杠";
         public override int Priority => 10;
         public override string[] ExcludedRuleIds => new[] { "melded_kong" };
         public override int GetMatchCount(FanContext ctx)
@@ -521,6 +546,7 @@ namespace MahjongGame.Core.Fan.Rules
     public class Fan_AllTypes : FanRule
     {
         public override string Name => "五门齐";
+        public override string Description => "和牌中万、筒、条、风、箭5种牌齐全";
         public override int GetMatchCount(FanContext ctx)
         {
             bool hasMan = false, hasPin = false, hasSou = false, hasWind = false, hasDragon = false;
@@ -545,6 +571,7 @@ namespace MahjongGame.Core.Fan.Rules
     public class Fan_MeldedHand : FanRule
     {
         public override string Name => "全求人";
+        public override string Description => "全副露，单钓将，和别人打出的牌";
         public override int Priority => 10;
         public override string[] ExcludedRuleIds => new[] { "single_wait" };
         public override int GetMatchCount(FanContext ctx)
@@ -558,6 +585,7 @@ namespace MahjongGame.Core.Fan.Rules
     public class Fan_TwoConcealedKongs : FanRule
     {
         public override string Name => "双暗杠";
+        public override string Description => "和牌中包含2副暗杠";
         public override int Priority => 10;
         public override string[] ExcludedRuleIds => new[] { "concealed_kong" };
         public override int GetMatchCount(FanContext ctx)
@@ -572,6 +600,7 @@ namespace MahjongGame.Core.Fan.Rules
     public class Fan_MixedShiftedChows : FanRule
     {
         public override string Name => "三色三步高";
+        public override string Description => "由3种花色3副序数递增1的顺子组成的胡牌";
         public override int GetMatchCount(FanContext ctx)
         {
             var sequences = ctx.Decomposition.AllMelds.Where(m => m.Type == MeldType.Chi).ToList();
@@ -609,6 +638,7 @@ namespace MahjongGame.Core.Fan.Rules
     public class Fan_TwoDragonPungs : FanRule
     {
         public override string Name => "双箭刻";
+        public override string Description => "和牌中包含2副箭刻";
         public override int Priority => 70;
         // 双箭刻排斥基础的箭刻计数
         public override string[] ExcludedRuleIds => new[] { "dragon_pung" };
