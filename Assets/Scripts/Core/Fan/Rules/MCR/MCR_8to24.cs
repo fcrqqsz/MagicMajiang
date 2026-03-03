@@ -254,9 +254,7 @@ namespace MahjongGame.Core.Fan.Rules
         public override int GetMatchCount(FanContext ctx)
         {
             // 简化检测：手牌中是否有齐备的 147、258、369 且跨三门花色。
-            int[] counts = new int[34];
-            foreach (var t in ctx.HandTiles) counts[MahjongLogic.GetTileIndex(t)]++;
-            if (ctx.WinningTile != null) counts[MahjongLogic.GetTileIndex(ctx.WinningTile)]++;
+            int[] counts = ctx.HandCounts;
 
             int manPattern = -1, pinPattern = -1, souPattern = -1;
 
@@ -294,9 +292,7 @@ namespace MahjongGame.Core.Fan.Rules
             if (ctx.FixedMelds.Count > 0) return 0;
             if (ctx.Decomposition.AllMelds.Count > 0) return 0;
 
-            int[] counts = new int[34];
-            foreach (var t in ctx.HandTiles) counts[MahjongLogic.GetTileIndex(t)]++;
-            if (ctx.WinningTile != null) counts[MahjongLogic.GetTileIndex(ctx.WinningTile)]++;
+            int[] counts = ctx.HandCounts;
 
             int totalTiles = 0;
             for (int i = 0; i < 34; i++)
@@ -620,9 +616,7 @@ namespace MahjongGame.Core.Fan.Rules
             if (ctx.FixedMelds.Count > 0) return 0;
             if (ctx.Decomposition.AllMelds.Count > 0) return 0; // 不是标准胡牌牌型
 
-            int[] counts = new int[34];
-            foreach (var t in ctx.HandTiles) counts[MahjongLogic.GetTileIndex(t)]++;
-            if (ctx.WinningTile != null) counts[MahjongLogic.GetTileIndex(ctx.WinningTile)]++;
+            int[] counts = ctx.HandCounts;
 
             int totalTiles = 0;
             for (int i = 0; i < 34; i++)

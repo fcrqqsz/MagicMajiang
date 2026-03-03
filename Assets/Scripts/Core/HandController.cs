@@ -1,28 +1,19 @@
 using System.Collections.Generic;
 using UnityEngine;
-using MahjongGame.Systems; // 需要引用 DeckManager
-using DG.Tweening; // 引入 DoTween
-using System.Linq; // 引用 Linq 用于快速查找
+using MahjongGame.Systems; 
+using DG.Tweening; 
+using System.Linq; 
 
 namespace MahjongGame.Core
 {
-    public class HandController : MonoBehaviour
+    public class HandController : MahjongHandViewBase
     {
         public event System.Action<TileData> OnTileDiscardedEvent;
-
-        private List<TileVisual> _handTiles = new List<TileVisual>();
         
         // 当前选中的牌 (指针)
         private TileVisual _selectedTile = null;
 
-        // [Header("Settings")]
-        // public float tileGap = 1.1f;
-        public GameObject tilePrefab; // 需要在这里引用Prefab用于抽牌
-        [Header("Refs")]
-        public RiverController myRiver; // <--- 新增引用
         [Header("Visual Settings")]
-        public float tileGap = 0.8f;
-        public float drawGap = 1.0f; // [新增] 新摸的牌与手牌的额外距离
         public Vector3 handRotation = new Vector3(25f, 0f, 0f); // 让牌后仰 25 度
 
         // [重要] 标记最后摸到的那张牌
@@ -31,21 +22,6 @@ namespace MahjongGame.Core
         public TileData LastDrawnData => _lastDrawnTile?.Data;
 
         public List<Meld> Melds { get; private set; } = new List<Meld>();
-
-        [Header("Meld Settings")]
-        public Transform meldSpawnPoint; // 刚才创建的锚点
-        public float meldGap = 0.2f;     // 副露之间的间距
-        public float meldTileWidth = 0.8f; // 单张副露牌的估算宽度
-        // 记录当前已经生成了多宽的副露区域 (用于向左推或者向右排)
-        private float _currentMeldOffset = 0f;
-
-        // 获取 Sprite 的辅助方法
-        private Sprite GetTileSprite(TileData data)
-        {
-            var config = MahjongGame.Systems.DeckManager.Instance.tileConfig;
-            if (config == null) return null;
-            return config.GetSprite(data);
-        }
 
         public List<TileData> GetHandData()
         {
@@ -61,94 +37,14 @@ namespace MahjongGame.Core
         {
             Melds.Add(meld);
             // 生成副露的 3D 模型
-            CreateMeldVisual(meld);
-        }
-
-        /// <summary>
-        /// 生成副露的视觉对象
-        /// </summary>
-        private void CreateMeldVisual(Meld meld)
-        {
-            // 按照国标常态：副露整体从右向左排列
-            
-            // 视觉占位数量 (加杠虽然4张，但视觉上只占3张宽度)
-            int visualTileCount = (meld.Type == MeldType.Kan_Added) ? 3 : meld.Tiles.Count;
-
-            // 计算该副露起点的 X 坐标 (最左侧边界)
-            float totalMeldWidth = visualTileCount * meldTileWidth;
-            float startX = _currentMeldOffset - totalMeldWidth;
-
-            for (int i = 0; i < meld.Tiles.Count; i++)
-            {
-                TileData data = meld.Tiles[i];
-                
-                // 实例化
-                GameObject go = Instantiate(tilePrefab, meldSpawnPoint);
-                TileVisual visual = go.GetComponent<TileVisual>();
-                
-                Sprite face = GetTileSprite(data);
-                visual.Initialize(data, null, face); // 传入 s
-
-                // --- 视觉旋转逻辑 ---
-                Quaternion rotation;
-
-                // 1. 碰 (Pon) - 第一张横置
-                if (meld.Type == MeldType.Pon && i == 0)
-                {
-                    rotation = Quaternion.Euler(90, -90, 0); 
-                }
-                // 1.5 加杠 (Kan_Added) - 第1张和第4张(i=3)横置
-                else if (meld.Type == MeldType.Kan_Added && (i == 0 || i == 3))
-                {
-                    rotation = Quaternion.Euler(90, -90, 0);
-                }
-                // 2. 暗杠 (Kan_Concealed) - 两头扣，中间亮
-                // 扣牌的旋转：正面朝下。如果 (90, 0, 0) 是正面朝上，那么 (-90, 0, 0) 就是正面朝下
-                else if ((meld.Type == MeldType.Kan_Concealed) && (i == 0 || i == 3))
-                {
-                    // 第1张和第4张
-                    rotation = Quaternion.Euler(-90, 0, 0); // 背面朝上 (扣着)
-                }
-                // 3. 其他 (吃、明杠、碰的后两张) - 全部正面朝上
-                else
-                {
-                    rotation = Quaternion.Euler(90, 0, 0);
-                }
-
-                go.transform.localRotation = rotation;
-
-                // --- 位置计算 ---
-                float xPos = startX + (i * meldTileWidth);
-                float yPos = 0f;
-
-                // 加杠特殊处理：第4张牌(i=3)叠在第1张(i=0)上面
-                if (meld.Type == MeldType.Kan_Added && i == 3)
-                {
-                    xPos = startX + (0 * meldTileWidth); // 回到第1张的位置
-                    yPos = 0.5f; // 向上堆叠 (根据牌厚度调整)
-                }
-                
-                // 微调：如果是横置的牌，位置可能需要修正一下中心点
-                if ((meld.Type == MeldType.Pon || meld.Type == MeldType.Kan_Added) && i == 0)
-                {
-                    // 简单的修正，让横着的牌不跟后面的重叠
-                    xPos -= 0.15f; 
-                }
-
-                go.transform.localPosition = new Vector3(xPos, yPos, 0);
-            }
-
-            // 更新偏移量，下一个副露将在此基础上继续向左偏移
-            _currentMeldOffset = startX - meldGap;
+            CreateMeldVisual(meld.Type, meld.Tiles);
         }
         
         /// <summary>
         /// 执行 "碰" 操作
         /// </summary>
-        /// <param name="targetTile">别人打出的那张牌</param>
         public void ExecutePon(TileData targetTile)
         {
-            // 1. 在手牌里找两张一样的牌
             var matchingTiles = _handTiles
                 .Where(t => t.Data.TileSuit == targetTile.TileSuit && t.Data.Value == targetTile.Value)
                 .Take(2)
@@ -160,21 +56,18 @@ namespace MahjongGame.Core
                 return;
             }
 
-            // 3. 构建副露数据 (Meld Data)
             List<TileData> meldDataList = new List<TileData> { targetTile, matchingTiles[0].Data, matchingTiles[1].Data };
             Meld newMeld = new Meld(MeldType.Pon, meldDataList, targetTile.OriginalOwnerID);
             AddMeld(newMeld);
 
-            // 2. 从手牌列表移除，并销毁 3D 物体
             foreach (var visual in matchingTiles)
             {
                 _handTiles.Remove(visual);
                 visual.transform.DOKill();
-                Destroy(visual.gameObject); // 或者做个飞过去的动画再销毁
+                Destroy(visual.gameObject); 
             }
             _lastDrawnTile = null;
 
-            // 5. 整理剩余手牌
             SortHand();
             UpdateHandPositions();
         }
@@ -184,10 +77,9 @@ namespace MahjongGame.Core
         /// </summary>
         public void ExecuteMingGan(TileData targetTile)
         {
-            // 1. 在手牌里找 3 张一样的牌
             var matchingTiles = _handTiles
                 .Where(t => t.Data.TileSuit == targetTile.TileSuit && t.Data.Value == targetTile.Value)
-                .Take(3) // 找3张
+                .Take(3) 
                 .ToList();
 
             if (matchingTiles.Count < 3)
@@ -196,7 +88,6 @@ namespace MahjongGame.Core
                 return;
             }
 
-            // 2. 移除手牌
             foreach (var visual in matchingTiles)
             {
                 _handTiles.Remove(visual);
@@ -204,7 +95,6 @@ namespace MahjongGame.Core
                 Destroy(visual.gameObject);
             }
 
-            // 3. 构建副露数据 (4张牌)
             List<TileData> meldData = new List<TileData> 
             { 
                 targetTile, 
@@ -216,10 +106,8 @@ namespace MahjongGame.Core
             Meld newMeld = new Meld(MeldType.Kan_Exposed, meldData, targetTile.OriginalOwnerID);
             Melds.Add(newMeld);
 
-            // 4. 生成视觉对象
-            CreateMeldVisual(newMeld);
+            CreateMeldVisual(newMeld.Type, newMeld.Tiles);
 
-            // 5. 理牌
             SortHand();
             UpdateHandPositions();
         }
@@ -229,11 +117,10 @@ namespace MahjongGame.Core
         /// </summary>
         public List<TileData> GetAnGanOptions()
         {
-            // 查找手牌中数量 == 4 的牌
             var groups = _handTiles
                 .GroupBy(t => new { t.Data.TileSuit, t.Data.Value })
                 .Where(g => g.Count() >= 4)
-                .Select(g => g.First().Data) // 取其中一张做代表
+                .Select(g => g.First().Data) 
                 .ToList();
             
             return groups;
@@ -244,38 +131,30 @@ namespace MahjongGame.Core
         /// </summary>
         public void ExecuteAnGan(TileData targetData)
         {
-            // 1. 找到这4张牌
             var matchingTiles = _handTiles
                 .Where(t => t.Data.TileSuit == targetData.TileSuit && t.Data.Value == targetData.Value)
                 .ToList();
 
             if (matchingTiles.Count < 4) return;
 
-            // 2. [关键] 只取前 4 张移除，多余的保留在手牌中
             var tilesToRemove = matchingTiles.Take(4).ToList(); 
 
-            // 3. 构建副露数据
             List<TileData> meldData = new List<TileData>();
             foreach (var visual in tilesToRemove)
             {
                 meldData.Add(visual.Data);
                 
-                // 从手牌列表移除并销毁物体
                 _handTiles.Remove(visual);
                 visual.transform.DOKill();
                 Destroy(visual.gameObject);
             }
 
-            // 3. 添加副露 (暗杠)
-            // 暗杠的 SourceID 是自己
             Meld newMeld = new Meld(MeldType.Kan_Concealed, meldData, targetData.OriginalOwnerID, true);
             Melds.Add(newMeld);
 
-            // 4. 视觉生成 (暗杠通常中间两张是扣着的，这里暂用普通生成)
-            CreateMeldVisual(newMeld);
+            CreateMeldVisual(newMeld.Type, newMeld.Tiles);
             
-            // 5. 状态清理
-            _lastDrawnTile = null; // 杠完后需要重新摸牌，当前状态清空
+            _lastDrawnTile = null; 
             
             SortHand();
             UpdateHandPositions();
@@ -292,7 +171,6 @@ namespace MahjongGame.Core
             {
                 if (meld.Type == MeldType.Pon)
                 {
-                    // 在手牌里找匹配的
                     var match = _handTiles.FirstOrDefault(t => t.Data.TileSuit == meld.FirstTile.TileSuit && t.Data.Value == meld.FirstTile.Value);
                     if (match != null)
                     {
@@ -308,7 +186,6 @@ namespace MahjongGame.Core
         /// </summary>
         public void ExecuteJiaGang(TileData targetData)
         {
-            // 1. 从手牌移除这张牌
             var tileToRemove = _handTiles.FirstOrDefault(t => t.Data.TileSuit == targetData.TileSuit && t.Data.Value == targetData.Value);
             if (tileToRemove == null) return;
 
@@ -316,105 +193,78 @@ namespace MahjongGame.Core
             tileToRemove.transform.DOKill();
             Destroy(tileToRemove.gameObject);
 
-            // 2. 找到对应的副露并修改数据
             var targetMeld = Melds.FirstOrDefault(m => m.Type == MeldType.Pon && m.FirstTile.TileSuit == targetData.TileSuit && m.FirstTile.Value == targetData.Value);
             if (targetMeld != null)
             {
-                // 修改类型为 加杠
                 targetMeld.Type = MeldType.Kan_Added;
-                targetMeld.Tiles.Add(targetData); // 数据加进去
+                targetMeld.Tiles.Add(targetData); 
                 
-                // 3. 视觉更新
-                // 简单做法：销毁旧的副露，重新生成一个新的
-                // 高级做法：找到那个副露的 GameObject，往上加一张牌
-                // 这里采用简单做法：清空副露区，重新生成所有副露 (RefreshAllMelds)
-                
-                // 为了演示，我们假设你有一个清除 Melds 视觉的方法
-                // 或者我们直接找到那个 Transform 删掉重画
-                // 这里简化：直接销毁所有副露子物体，重新 CreateMeldVisual
                 RefreshAllMeldsVisual();
             }
 
-            // 4. 状态清理
             _lastDrawnTile = null; 
             SortHand();
             UpdateHandPositions();
         }
 
-        // 辅助：刷新所有副露显示 (简单粗暴但有效)
         private void RefreshAllMeldsVisual()
         {
-            // 清空 MeldSpawnPoint 下所有物体
-            foreach (Transform child in meldSpawnPoint) 
+            if (meldSpawnPoint != null)
             {
-                child.DOKill();
-                Destroy(child.gameObject);
+                foreach (Transform child in meldSpawnPoint) 
+                {
+                    child.DOKill();
+                    Destroy(child.gameObject);
+                }
             }
             
             _currentMeldOffset = 0f;
             foreach (var meld in Melds)
             {
-                CreateMeldVisual(meld);
+                CreateMeldVisual(meld.Type, meld.Tiles);
             }
         }
 
-        /// <summary>
-        /// [新增] 供 LocalPlayerClient 使用，指定数据摸牌并展示
-        /// </summary>
         public void DrawCardData(TileData data)
         {
-            // 复用 AddTileDirectly 逻辑
             AddTileDirectly(data);
-            // 摸牌后通常需要重新计算位置（AddTileDirectly已调用UpdateHandPositions，但这里可以加额外动画逻辑）
         }
 
-        /// <summary>
-        /// [重构] 执行 "吃" 操作 (按数值删除)
-        /// </summary>
         public void ExecuteChi(TileData targetTile, int[] eatingValues)
         {
             if (eatingValues == null || eatingValues.Length != 2) return;
 
-            // 1. 准备要存入副露的数据
             List<TileData> meldData = new List<TileData>();
-            meldData.Add(targetTile); // 第一张是吃进来的牌
+            meldData.Add(targetTile); 
 
-            // 2. 从手牌中查找并移除对应数值的牌
             foreach (int val in eatingValues)
             {
-                // 查找手里第一张符合该数值的牌
-                // 注意：由于我们之前做了去重判定，这里肯定能找到至少一张
                 var visual = _handTiles.FirstOrDefault(t => 
                     t.Data.TileSuit == targetTile.TileSuit && 
                     t.Data.Value == val);
 
                 if (visual != null)
                 {
-                    meldData.Add(visual.Data); // 记录数据
-                    _handTiles.Remove(visual); // 移除列表
+                    meldData.Add(visual.Data); 
+                    _handTiles.Remove(visual); 
                     visual.transform.DOKill();
-                    Destroy(visual.gameObject); // 销毁物体
+                    Destroy(visual.gameObject); 
                 }
             }
             _lastDrawnTile = null;
 
-            // 3. 生成副露对象
-            // 为了显示美观，我们把 meldData 排序： 比如吃了3，用24，显示应该是 234
             meldData.Sort((a, b) => a.Value.CompareTo(b.Value));
 
             Meld newMeld = new Meld(MeldType.Chi, meldData, targetTile.OriginalOwnerID);
             Melds.Add(newMeld);
 
-            // 4. 生成视觉 & 理牌
-            CreateMeldVisual(newMeld);
+            CreateMeldVisual(newMeld.Type, newMeld.Tiles);
             SortHand();
             UpdateHandPositions();
         }
 
-        // --- 1. 抽牌逻辑 (Draw) ---
         public void DrawCard()
         {
-            // A. 从数据层拿数据
             TileData newData = DeckManager.Instance.DrawTile();
             if (newData == null) 
             {
@@ -422,17 +272,11 @@ namespace MahjongGame.Core
                 return;
             }
 
-            // >>> 埋点 1: 通知天赋系统 "我摸牌了" <<<
-            // 天赋可能会修改 newData 的属性 (引用传递)
             TalentManager.Instance.TriggerOnDraw(newData);
 
-            // B. 生成实体
             AddTileDirectly(newData);
         }
 
-        /// <summary>
-        /// 直接向手牌中添加一张指定的牌 (用于测试或特殊逻辑)
-        /// </summary>
         public void AddTileDirectly(TileData data)
         {
             if (data == null) return;
@@ -444,52 +288,41 @@ namespace MahjongGame.Core
             AddTileToHand(visual);
         }
 
-        // 内部辅助：加入列表并刷新
         private void AddTileToHand(TileVisual visual)
         {
             visual.transform.SetParent(this.transform);
             _handTiles.Add(visual);
-            _lastDrawnTile = visual; // 记录它是刚摸的
+            _lastDrawnTile = visual; 
             
-            // 抽牌后通常自动理牌 (为了简化演示，这里直接重排)
             UpdateHandPositions();
         }
 
-        // --- 2. 交互逻辑 (Click Handler) ---
-        public void OnTileClicked(TileVisual clickedTile)
+        public override void OnTileClicked(TileVisual clickedTile)
         {
-            if (!_isInteractable) return; // 如果没轮到我，点了没反应
+            if (!_isInteractable) return; 
             
-            // 情况 A: 点击了已经选中的牌 -> 确认出牌
             if (_selectedTile == clickedTile)
             {
                 DiscardTile(clickedTile);
             }
-            // 情况 B: 点击了其他牌 -> 切换选中
             else
             {
                 SelectTile(clickedTile);
             }
         }
 
-        // 选中状态处理
         private void SelectTile(TileVisual tile)
         {
-            // 1. 如果之前有选中的牌，先把它放回去
             if (_selectedTile != null)
             {
                 _selectedTile.transform.localPosition = new Vector3(_selectedTile.transform.localPosition.x, 0, 0);
             }
 
-            // 2. 更新选中引用
             _selectedTile = tile;
 
-            // 3. 让新选中的牌浮起来 (视觉反馈)
-            // Y轴向上移动 0.5 单位
             Vector3 pos = tile.transform.localPosition;
             tile.transform.localPosition = new Vector3(pos.x, 0.5f, pos.z);
             
-            // 4. 展示听牌提示
             if (UI.WaitHintController.Instance != null)
             {
                 int tileIndex = MahjongLogic.GetTileIndex(tile.Data);
@@ -507,7 +340,6 @@ namespace MahjongGame.Core
             Debug.Log($"选中了: {tile.Data}");
         }
 
-        // --- 3. 出牌逻辑 (Discard) ---
         private void DiscardTile(TileVisual tile)
         {
             if (UI.WaitHintController.Instance != null)
@@ -515,34 +347,25 @@ namespace MahjongGame.Core
                 UI.WaitHintController.Instance.HideHint();
             }
 
-            // >>> 埋点 2: 通知天赋系统 "我打牌了" <<<
             TalentManager.Instance.TriggerOnDiscard(tile.Data);
 
-            // 1. 从逻辑列表移除
             _handTiles.Remove(tile);
-            
-            // 2. 清除选中状态
             _selectedTile = null;
-
             _lastDrawnTile = null;
 
-            // 2. 视觉处理：交给牌河控制器
             if (myRiver != null) {
                 myRiver.AddTileToRiver(tile);
             } else {
                 tile.transform.DOKill();
-                Destroy(tile.gameObject); // 保底逻辑
+                Destroy(tile.gameObject); 
             }
 
-            // 4. 重新整理手牌 (填补空缺)
             SortHand();
             UpdateHandPositions();
 
-            // 触发事件给客户端代理
             OnTileDiscardedEvent?.Invoke(tile.Data);
         }
 
-        // --- 辅助：保持之前的排序和刷新逻辑 ---
         public void SortHand()
         {
             _handTiles.Sort((a, b) =>
@@ -551,51 +374,37 @@ namespace MahjongGame.Core
                 return a.Data.Value.CompareTo(b.Data.Value);
             });
             
-            // 同步 Hierarchy 顺序
             for(int i=0; i<_handTiles.Count; i++) _handTiles[i].transform.SetSiblingIndex(i);
         }
 
-        private void UpdateHandPositions()
+        protected override void UpdateHandPositions()
         {
             for (int i = 0; i < _handTiles.Count; i++)
             {
-
-                // 计算当前牌的目标 X
                 float targetX = i * tileGap;
 
-                // [核心逻辑] 如果是最后一张牌，并且手牌数量是 14 (或其他满手牌状态如 2, 5, 8, 11, 14)
-                // 且这张牌就是我们刚摸上来的那张，则增加额外间距
                 if (i == _handTiles.Count - 1 && _handTiles[i] == _lastDrawnTile)
                 {
                     targetX += drawGap;
                 }
 
-                // 目标位置
                 Vector3 targetPos = new Vector3(targetX, 0, 0);
-                
-                // 目标旋转 (基础后仰 + 以后可能的弯曲)
                 Quaternion targetRot = Quaternion.Euler(handRotation);
 
-                // 使用 DoTween 平滑移动和旋转
-                _handTiles[i].transform.DOKill(); // <-- 防止动画冲突
+                _handTiles[i].transform.DOKill(); 
                 _handTiles[i].transform.DOLocalMove(targetPos, 0.3f);
                 _handTiles[i].transform.DOLocalRotate(handRotation, 0.3f);
             }
         }
 
-        // 清空 (用于重置)
-        public void ClearHand()
+        public override void ClearHand()
         {
-            foreach(var tile in _handTiles) 
-            {
-                tile.transform.DOKill();
-                Destroy(tile.gameObject);
-            }
-            _handTiles.Clear();
+            base.ClearHand();
             _selectedTile = null;
+            Melds.Clear();
         }
 
-        private bool _isInteractable = false; // 交互锁
+        private bool _isInteractable = false; 
         private Dictionary<int, List<MahjongLogic.WaitDetail>> _cachedWaitHints = new Dictionary<int, List<MahjongLogic.WaitDetail>>();
 
         public void SetInteractable(bool canInteract)
@@ -603,7 +412,6 @@ namespace MahjongGame.Core
             _isInteractable = canInteract;
             if (canInteract)
             {
-                // 每次轮到玩家操作时，预先计算所有听牌提示并缓存
                 _cachedWaitHints = MahjongLogic.GetWaitHints(GetHandData(), Melds);
             }
             else

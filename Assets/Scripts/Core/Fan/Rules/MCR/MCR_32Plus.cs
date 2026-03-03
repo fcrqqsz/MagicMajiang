@@ -369,9 +369,7 @@ namespace MahjongGame.Core.Fan.Rules
         {
             if (ctx.FixedMelds.Count > 0) return 0; // 必须门前清，不允许任何副露
 
-            int[] counts = new int[34];
-            foreach (var t in ctx.HandTiles) counts[MahjongLogic.GetTileIndex(t)]++;
-            if (ctx.WinningTile != null) counts[MahjongLogic.GetTileIndex(ctx.WinningTile)]++;
+            int[] counts = ctx.HandCounts;
 
             for (int suit = 0; suit < 3; suit++)
             {
@@ -422,9 +420,7 @@ namespace MahjongGame.Core.Fan.Rules
         {
             if (ctx.FixedMelds.Count > 0) return 0;
 
-            int[] counts = new int[34];
-            foreach (var t in ctx.HandTiles) counts[MahjongLogic.GetTileIndex(t)]++;
-            if (ctx.WinningTile != null) counts[MahjongLogic.GetTileIndex(ctx.WinningTile)]++;
+            int[] counts = ctx.HandCounts;
 
             int totalTiles = 0;
             for (int i = 0; i < 34; i++) totalTiles += counts[i];
@@ -475,9 +471,7 @@ namespace MahjongGame.Core.Fan.Rules
         public override int GetMatchCount(FanContext ctx)
         {
             if (ctx.FixedMelds.Count > 0) return 0;
-            int[] counts = new int[34];
-            foreach (var t in ctx.HandTiles) counts[MahjongLogic.GetTileIndex(t)]++;
-            if (ctx.WinningTile != null) counts[MahjongLogic.GetTileIndex(ctx.WinningTile)]++;
+            int[] counts = ctx.HandCounts;
 
             int[] orphanIndices = { 0, 8, 9, 17, 18, 26, 27, 28, 29, 30, 31, 32, 33 };
             int typeCount = 0;

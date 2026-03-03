@@ -21,7 +21,7 @@ namespace MahjongGame.Core
         public TileData Data { get; private set; }
 
         // 持有控制器的引用 (类似于 C++ 的 Parent Pointer)
-        private HandController _ownerController;
+        private MahjongHandViewBase _ownerController;
 
         private void Awake()
         {
@@ -37,7 +37,7 @@ namespace MahjongGame.Core
         /// 类似于 C++ 的 SetData / Bind
         /// </summary>
         // [优化] 直接接收 Sprite，而不是自己在内部去查
-        public void Initialize(TileData data, HandController owner, Sprite faceSprite)
+        public void Initialize(TileData data, MahjongHandViewBase owner, Sprite faceSprite)
         {
             Data = data;
             _ownerController = owner;

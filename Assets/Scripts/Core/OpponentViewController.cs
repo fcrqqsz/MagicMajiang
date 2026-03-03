@@ -4,28 +4,13 @@ using DG.Tweening;
 
 namespace MahjongGame.Core
 {
-    public class OpponentViewController : MonoBehaviour
+    public class OpponentViewController : MahjongHandViewBase
     {
-        [Header("Settings")]
-        public GameObject tilePrefab; // 统一使用一个麻将预制体，通过旋转显示背面
-
-        [Header("Hand Settings")]
+        [Header("Opponent Specific Settings")]
         public Transform handSpawnPoint;
-        public float tileGap = 0.8f;
-        public float drawGap = 1.0f;
-        public Vector3 opponentHandRotation = new Vector3(0f, 0f, 0f); // 假设立起且背对牌桌中心(Y轴转180度)
-        
-        [Header("Meld Settings")]
-        public Transform meldSpawnPoint;
-        public float meldGap = 0.2f;
-        public float meldTileWidth = 0.8f;
+        public Vector3 opponentHandRotation = new Vector3(0f, 0f, 0f); 
 
-        [Header("Refs")]
-        public RiverController myRiver;
-
-        private List<GameObject> _handTiles = new List<GameObject>();
         private bool _justDrawn = false;
-        private float _currentMeldOffset = 0f;
 
         public void InitHand(int count)
         {
@@ -45,10 +30,10 @@ namespace MahjongGame.Core
         {
             if (_handTiles.Count > 0)
             {
-                GameObject tileToRemove = _handTiles[_handTiles.Count - 1];
+                TileVisual tileToRemove = _handTiles[_handTiles.Count - 1];
                 _handTiles.RemoveAt(_handTiles.Count - 1);
                 tileToRemove.transform.DOKill();
-                Destroy(tileToRemove);
+                Destroy(tileToRemove.gameObject);
             }
             
             _justDrawn = false;
@@ -59,9 +44,8 @@ namespace MahjongGame.Core
             {
                 GameObject go = Instantiate(tilePrefab);
                 TileVisual visual = go.GetComponent<TileVisual>();
-                var config = MahjongGame.Systems.DeckManager.Instance.tileConfig;
-                Sprite face = config != null ? config.GetSprite(discardedData) : null;
-                if (visual != null) visual.Initialize(discardedData, null, face);
+                Sprite face = GetTileSprite(discardedData);
+                if (visual != null) visual.Initialize(discardedData, this, face);
                 
                 myRiver.AddTileToRiver(visual);
             }
@@ -71,37 +55,32 @@ namespace MahjongGame.Core
         {
             if (tilePrefab == null) return;
             GameObject go = Instantiate(tilePrefab, handSpawnPoint);
-            // 盖牌不需要初始化正面花色，直接设置旋转即可
+            TileVisual visual = go.GetComponent<TileVisual>();
+            
+            // 为了防止在 TileVisual.Initialize 中 Data 报空指针，我们随便给个 Dummy Data
+            TileData dummyData = new TileData(Suit.Wind, 0, -1);
+            visual.Initialize(dummyData, this, null);
+            
             go.transform.localRotation = Quaternion.Euler(opponentHandRotation);
-            _handTiles.Add(go);
+            _handTiles.Add(visual);
         }
 
-        private void UpdateHandPositions()
+        protected override void UpdateHandPositions()
         {
             for (int i = 0; i < _handTiles.Count; i++)
             {
                 float targetX = i * tileGap;
                 if (_justDrawn && i == _handTiles.Count - 1) targetX += drawGap;
                 _handTiles[i].transform.DOKill(); // 在播放新动画前杀掉旧动画，防止冲突
-                _handTiles[i].transform.DOLocalMove(new Vector3(targetX, 0, 0), 0.3f).SetLink(_handTiles[i]);
-                _handTiles[i].transform.DOLocalRotate(opponentHandRotation, 0.3f).SetLink(_handTiles[i]);
+                _handTiles[i].transform.DOLocalMove(new Vector3(targetX, 0, 0), 0.3f).SetLink(_handTiles[i].gameObject);
+                _handTiles[i].transform.DOLocalRotate(opponentHandRotation, 0.3f).SetLink(_handTiles[i].gameObject);
             }
         }
 
-        public void ClearHand()
+        public override void ClearHand()
         {
-            foreach (var t in _handTiles)
-            {
-                t.transform.DOKill();
-                Destroy(t);
-            }
-            _handTiles.Clear();
+            base.ClearHand();
             _justDrawn = false;
-            if (meldSpawnPoint != null)
-            {
-                foreach (Transform child in meldSpawnPoint) Destroy(child.gameObject);
-            }
-            _currentMeldOffset = 0f;
         }
 
         // --- 副露表现 ---
@@ -113,76 +92,16 @@ namespace MahjongGame.Core
             {
                 if (_handTiles.Count > 0)
                 {
-                    GameObject t = _handTiles[_handTiles.Count - 1];
+                    TileVisual t = _handTiles[_handTiles.Count - 1];
                     _handTiles.RemoveAt(_handTiles.Count - 1);
                     t.transform.DOKill();
-                    Destroy(t);
+                    Destroy(t.gameObject);
                 }
             }
             UpdateHandPositions();
 
-            if (meldSpawnPoint == null || tilePrefab == null) return;
-
-            // 2. 生成副露模型
-            int visualCount = type == MeldType.Kan_Added ? 3 : meldTiles.Count;
-            float startX = _currentMeldOffset - (visualCount * meldTileWidth);
-
-            for (int i = 0; i < meldTiles.Count; i++)
-            {
-                TileData data = meldTiles[i];
-                GameObject go = Instantiate(tilePrefab, meldSpawnPoint);
-                TileVisual visual = go.GetComponent<TileVisual>();
-                
-                Quaternion rotation;
-
-                // 判断是否是扣着的牌（暗杠的第1和第4张）
-                bool isConcealed = (type == MeldType.Kan_Concealed && (i == 0 || i == 3));
-
-                if (!isConcealed)
-                {
-                    var config = MahjongGame.Systems.DeckManager.Instance.tileConfig;
-                    Sprite face = config != null ? config.GetSprite(data) : null;
-                    if (visual != null) visual.Initialize(data, null, face);
-
-                    if (type == MeldType.Pon && i == 0)
-                    {
-                        rotation = Quaternion.Euler(90, -90, 0); 
-                    }
-                    else if (type == MeldType.Kan_Added && (i == 0 || i == 3))
-                    {
-                        rotation = Quaternion.Euler(90, -90, 0);
-                    }
-                    else
-                    {
-                        rotation = Quaternion.Euler(90, 0, 0);
-                    }
-                }
-                else
-                {
-                    // 扣着的牌，不需要初始化花色
-                    rotation = Quaternion.Euler(-90, 0, 0);
-                }
-
-                go.transform.localRotation = rotation;
-
-                // --- 位置计算 ---
-                float xPos = startX + (i * meldTileWidth);
-                float yPos = 0f;
-
-                if (type == MeldType.Kan_Added && i == 3)
-                {
-                    xPos = startX; // 加杠叠在第一张上
-                    yPos = 0.5f;
-                }
-                
-                if ((type == MeldType.Pon || type == MeldType.Kan_Added) && i == 0)
-                {
-                    xPos -= 0.15f; // 横置修正
-                }
-
-                go.transform.localPosition = new Vector3(xPos, yPos, 0);
-            }
-            _currentMeldOffset = startX - meldGap;
+            // 2. 复用基类逻辑生成副露模型
+            CreateMeldVisual(type, meldTiles);
         }
     }
 }

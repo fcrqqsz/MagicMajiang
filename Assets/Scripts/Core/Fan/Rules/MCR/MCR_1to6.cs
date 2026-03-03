@@ -297,15 +297,13 @@ namespace MahjongGame.Core.Fan.Rules
         public override int GetMatchCount(FanContext ctx)
         {
             int matches = 0;
-            int[] allCounts = new int[34];
-            foreach (var t in ctx.HandTiles) allCounts[MahjongLogic.GetTileIndex(t)]++;
+            int[] allCounts = (int[])ctx.HandCounts.Clone();
             foreach (var m in ctx.FixedMelds)
             {
                 if (m.Type == MeldType.Kan_Exposed || m.Type == MeldType.Kan_Concealed || m.Type == MeldType.Kan_Added)
                     continue;
                 foreach (var t in m.Tiles) allCounts[MahjongLogic.GetTileIndex(t)]++;
             }
-            if (ctx.WinningTile != null) allCounts[MahjongLogic.GetTileIndex(ctx.WinningTile)]++;
 
             for (int i = 0; i < 34; i++)
             {
