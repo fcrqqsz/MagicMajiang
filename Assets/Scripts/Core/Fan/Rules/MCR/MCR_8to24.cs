@@ -113,6 +113,13 @@ namespace MahjongGame.Core.Fan.Rules
             {
                 if (ctx.HandCounts[i] > 0 && !reversibleIndices.Contains(i)) return 0;
             }
+            foreach (var m in ctx.FixedMelds)
+            {
+                foreach (var t in m.Tiles)
+                {
+                    if (!reversibleIndices.Contains(MahjongLogic.GetTileIndex(t))) return 0;
+                }
+            }
             return 1;
         }
     }
@@ -528,15 +535,46 @@ namespace MahjongGame.Core.Fan.Rules
         }
     }
 
-    // === 24番：一色三同刻 (一种花色序数相同的三个刻子) ===
-    [FanRule("pure_triple_pung", 24)]
-    public class Fan_PureTriplePung : FanRule
+    // === 24番：一色三节高 (一种花色序数递增的三副刻子) ===
+    [FanRule("three_pure_shifted_pungs", 24)]
+    public class Fan_ThreePureShiftedPungs : FanRule
     {
-        public override string Name => "一色三同刻";
+        public override string Name => "一色三节高";
+        public override int Priority => 80;
+        public override string[] ExcludedRuleIds => new[] { "pure_triple_chow" };
+
         public override int GetMatchCount(FanContext ctx)
         {
             var pungs = ctx.Decomposition.AllMelds.Where(m => m.IsPungOrKong).ToList();
-            var grouped = pungs.GroupBy(p => new { p.FirstTile.TileSuit, p.FirstTile.Value });
+            var grouped = pungs.GroupBy(p => p.FirstTile.TileSuit);
+            foreach (var g in grouped)
+            {
+                if (g.Key == Suit.Wind || g.Key == Suit.Dragon) continue;
+                var vals = g.Select(p => p.FirstTile.Value).Distinct().OrderBy(v => v).ToList();
+                int consec = 1, maxConsec = 1;
+                for (int i = 1; i < vals.Count; i++)
+                {
+                    if (vals[i] == vals[i - 1] + 1) { consec++; if (consec > maxConsec) maxConsec = consec; }
+                    else consec = 1;
+                }
+                if (maxConsec >= 3) return 1;
+            }
+            return 0;
+        }
+    }
+
+    // === 24番：一色三同顺 (一种花色序数相同的三副顺子) ===
+    [FanRule("pure_triple_chow", 24)]
+    public class Fan_PureTripleChow : FanRule
+    {
+        public override string Name => "一色三同顺";
+        public override int Priority => 80;
+        public override string[] ExcludedRuleIds => new[] { "three_pure_shifted_pungs", "pure_double_sequence" };
+
+        public override int GetMatchCount(FanContext ctx)
+        {
+            var chows = ctx.Decomposition.AllMelds.Where(m => m.Type == MeldType.Chi).ToList();
+            var grouped = chows.GroupBy(c => new { c.FirstTile.TileSuit, c.FirstTile.Value });
             foreach (var group in grouped)
             {
                 if (group.Count() >= 3) return 1;

@@ -103,11 +103,15 @@ namespace MahjongGame.Core.Fan.Rules
             int matches = 0;
             foreach (var g in grouped)
             {
-                var suits = g.Select(s => s.FirstTile.TileSuit).Distinct().ToList();
-                if (suits.Count >= 2)
+                // 按花色统计每种花色有多少副同序数顺子
+                var suitCounts = g.GroupBy(s => s.FirstTile.TileSuit).Select(sg => sg.Count()).ToList();
+                // 不同花色间两两配对，取组合数
+                for (int i = 0; i < suitCounts.Count; i++)
                 {
-                    // 仅找不同花色的顺子对，不考虑超过两种花色带来的组合爆炸
-                    matches++;
+                    for (int j = i + 1; j < suitCounts.Count; j++)
+                    {
+                        matches += suitCounts[i] * suitCounts[j];
+                    }
                 }
             }
             return matches;
@@ -376,7 +380,7 @@ namespace MahjongGame.Core.Fan.Rules
         public override string Name => "门前清";
         public override int GetMatchCount(FanContext ctx)
         {
-            bool isMelded = ctx.FixedMelds.Any(m => m.Type != MeldType.Kan_Exposed || m.Type == MeldType.Kan_Added);
+            bool isMelded = ctx.FixedMelds.Any(m => m.Type != MeldType.Kan_Concealed);
             return (!isMelded && !ctx.IsSelfDraw) ? 1 : 0;
         }
     }
@@ -592,7 +596,7 @@ namespace MahjongGame.Core.Fan.Rules
                         vals.Sort();
                         int d1 = vals[1] - vals[0];
                         int d2 = vals[2] - vals[1];
-                        if (d1 == d2 && (d1 == 1 || d1 == 2)) return 1;
+                        if (d1 == d2 && d1 == 1) return 1;
                     }
                 }
             }
