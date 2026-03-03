@@ -66,7 +66,12 @@ namespace MahjongGame.Core
             
             // 准备所有牌的池子
             List<TileData> pool = new List<TileData>(hand);
-            pool.Add(winTile);
+            
+            // 如果手牌数量是 3n+1 (1,4,7,10,13)，说明 winTile 还没被包含，需要加进去
+            if (pool.Count % 3 == 1)
+            {
+                pool.Add(winTile);
+            }
 
             int[] tileCounts = ConvertToFrequencyArray(pool);
 
@@ -276,7 +281,12 @@ namespace MahjongGame.Core
         public static bool IsWin(List<TileData> handTiles, List<Meld> melds, TileData winningTile)
         {
             int[] tileCounts = ConvertToFrequencyArray(handTiles);
-            tileCounts[GetTileIndex(winningTile)]++;
+            
+            // 如果手牌数量是 3n+1 (1,4,7,10,13)，说明 winningTile 还没被包含，需要加 1
+            if (handTiles.Count % 3 == 1)
+            {
+                tileCounts[GetTileIndex(winningTile)]++;
+            }
             
             if (melds.Count == 0)
             {

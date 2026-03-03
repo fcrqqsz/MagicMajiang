@@ -49,6 +49,7 @@ namespace MahjongGame.Core.Agents
             await Task.Delay(500);
 
             // 1. 本地校验自摸或杠
+            // 注意：此时 _hand 已经包含了 drawnTile (Count=14)
             var actions = ActionValidator.CheckSelfActions(_hand, _melds, drawnTile);
             if (actions.HasAction)
             {
