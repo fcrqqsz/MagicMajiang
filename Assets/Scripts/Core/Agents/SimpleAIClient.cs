@@ -21,6 +21,10 @@ namespace MahjongGame.Core.Agents
         private List<TileData> _hand = new List<TileData>();
         private List<Meld> _melds = new List<Meld>();
 
+        // 风位信息
+        private WindDirection _roundWind = WindDirection.East;
+        private WindDirection _seatWind = WindDirection.East;
+
         public SimpleAIClient(int playerId, IServer server)
         {
             PlayerId = playerId;
@@ -58,7 +62,7 @@ namespace MahjongGame.Core.Agents
                     // 胖客户端：本地调用核心逻辑算番
                     int totalFan;
                     List<string> fanDetails;
-                    bool canWin = MahjongLogic.CheckWinWithFan(_hand, _melds, drawnTile, true, out totalFan, out fanDetails);
+                    bool canWin = MahjongLogic.CheckWinWithFan(_hand, _melds, drawnTile, true, out totalFan, out fanDetails, _roundWind, _seatWind);
                     
                     if (canWin)
                     {
@@ -97,7 +101,7 @@ namespace MahjongGame.Core.Agents
                     int totalFan;
                     List<string> fanDetails;
                     // 他人打出的牌，加入手牌计算番数
-                    bool canWin = MahjongLogic.CheckWinWithFan(_hand, _melds, discardedTile, false, out totalFan, out fanDetails);
+                    bool canWin = MahjongLogic.CheckWinWithFan(_hand, _melds, discardedTile, false, out totalFan, out fanDetails, _roundWind, _seatWind);
                     if (canWin)
                     {
                         var action = new ClientAction(PlayerId, ClientActionType.Hu, discardedTile);
@@ -170,6 +174,18 @@ namespace MahjongGame.Core.Agents
         public void OnPlayerWin(int winnerId, int totalFan, List<string> fanDetails, bool isSelfDraw)
         {
             Debug.Log($"[AI {PlayerId}] 确认玩家 {winnerId} 胡牌，番数：{totalFan}");
+        }
+
+        public void OnRoundStart(int roundNumber, WindDirection prevalentWind, WindDirection seatWind, int dealerIndex)
+        {
+            _roundWind = prevalentWind;
+            _seatWind = seatWind;
+            Debug.Log($"[AI {PlayerId}] 第{roundNumber}局开始 - 圈风:{prevalentWind} 门风:{seatWind}");
+        }
+
+        public void OnSessionEnd(int[] finalScores)
+        {
+            Debug.Log($"[AI {PlayerId}] 对战结束");
         }
 
         // --- 本地内部逻辑 ---

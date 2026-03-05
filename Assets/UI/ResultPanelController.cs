@@ -1,8 +1,10 @@
 using UnityEngine;
 using UnityEngine.UIElements;
-using UnityEngine.SceneManagement; // 用于重启场景
+using UnityEngine.SceneManagement;
 using System.Collections.Generic;
-using System.Collections; // 添加以支持 Coroutine
+using System.Collections;
+using MahjongGame.Core;
+using MahjongGame.Core.Network;
 
 namespace MahjongGame.UI
 {
@@ -16,6 +18,10 @@ namespace MahjongGame.UI
         private ScrollView _listContainer;
         private Label _totalLabel;
         private Button _btnRestart;
+
+        // 多局对战状态
+        private GameSession _session;
+        private bool _isShowingFinalResult = false;
 
         void Awake()
         {
@@ -34,15 +40,39 @@ namespace MahjongGame.UI
             _overlay.style.display = DisplayStyle.None;
         }
 
+        /// <summary>
+        /// 由 GameManager 在局结束时调用，传入当前对战状态
+        /// </summary>
+        public void SetSessionInfo(GameSession session)
+        {
+            _session = session;
+            _isShowingFinalResult = false;
+            UpdateButtonText();
+        }
+
+        private void UpdateButtonText()
+        {
+            if (_session == null || _session.Mode == GameMode.Single)
+            {
+                _btnRestart.text = "再来一局";
+            }
+            else if (_session.IsSessionOver())
+            {
+                _btnRestart.text = "查看总结算";
+            }
+            else
+            {
+                _btnRestart.text = "下一局";
+            }
+        }
+
         public void ShowDraw(List<string> playerStatuses = null)
         {
-            // 1. 设置标题
             _titleLabel.text = "流  局";
-            _titleLabel.style.color = new StyleColor(new Color(0.7f, 0.7f, 0.7f)); // 灰色
+            _titleLabel.style.color = new StyleColor(new Color(0.7f, 0.7f, 0.7f));
 
-            // 2. 清空列表
             _listContainer.Clear();
-            
+
             if (playerStatuses != null && playerStatuses.Count > 0)
             {
                 foreach (var status in playerStatuses)
@@ -59,24 +89,21 @@ namespace MahjongGame.UI
                 _listContainer.Add(info);
             }
 
-            // 3. 隐藏总分
+            AppendScoreInfo();
+
             _totalLabel.text = "";
 
-            // 4. 显示
             _overlay.style.display = DisplayStyle.Flex;
             Invoke(nameof(FadeIn), 0.05f);
         }
 
         public void ShowLose(int aiId, int totalFan, List<string> fanDetails)
         {
-            // 1. 设置标题
             _titleLabel.text = $"玩家 {aiId} 胡牌";
-            _titleLabel.style.color = new StyleColor(new Color(0.5f, 0.5f, 0.8f)); // 蓝紫色代表AI赢
+            _titleLabel.style.color = new StyleColor(new Color(0.5f, 0.5f, 0.8f));
 
-            // 2. 清空旧列表
             _listContainer.Clear();
 
-            // 3. 填充番种详情
             foreach (var detail in fanDetails)
             {
                 Label item = new Label(detail);
@@ -84,31 +111,89 @@ namespace MahjongGame.UI
                 _listContainer.Add(item);
             }
 
-            // 4. 隐藏不需要的玩家专属分
             _totalLabel.text = $"被扣除：{totalFan} 番";
 
-            // 5. 显示动画
+            AppendScoreInfo();
+
             _overlay.style.display = DisplayStyle.Flex;
             Invoke(nameof(FadeIn), 0.05f);
         }
 
         public void ShowWin(int totalFan, List<string> fanDetails, bool isTsumo)
         {
-            // 1. 设置标题
             _titleLabel.text = isTsumo ? "自  摸" : "荣  胡";
-            _titleLabel.style.color = new StyleColor(new Color(1f, 0.26f, 0.26f)); // 恢复红色
+            _titleLabel.style.color = new StyleColor(new Color(1f, 0.26f, 0.26f));
 
-            // 2. 清空旧列表
             _listContainer.Clear();
             _totalLabel.text = "合计：0 番";
 
-            // 3. 显示动画与数据
             _overlay.style.display = DisplayStyle.Flex;
 
-            // 开启滚动计分协程
             StartCoroutine(RollScoreRoutine(fanDetails));
-            
-            // 延迟一帧加 class 以触发 transition 动画
+
+            Invoke(nameof(FadeIn), 0.05f);
+        }
+
+        /// <summary>
+        /// 在列表底部追加当前分数信息 (多局模式)
+        /// </summary>
+        private void AppendScoreInfo()
+        {
+            if (_session == null || _session.Mode == GameMode.Single) return;
+
+            // 分隔线
+            Label separator = new Label("────────────");
+            separator.AddToClassList("fan-item");
+            separator.style.color = new StyleColor(new Color(0.5f, 0.5f, 0.5f));
+            _listContainer.Add(separator);
+
+            // 当前分数
+            string[] windNames = { "东", "南", "西", "北" };
+            for (int i = 0; i < 4; i++)
+            {
+                string playerName = i == 0 ? "你" : $"AI {i}";
+                string scoreText = $"{playerName}: {_session.Scores[i]:+#;-#;0} 分";
+                Label scoreLabel = new Label(scoreText);
+                scoreLabel.AddToClassList("fan-item");
+                if (i == 0)
+                    scoreLabel.style.color = new StyleColor(new Color(1f, 0.85f, 0.4f));
+                _listContainer.Add(scoreLabel);
+            }
+        }
+
+        /// <summary>
+        /// 显示最终总结算面板
+        /// </summary>
+        private void ShowSessionResult()
+        {
+            _titleLabel.text = "对战结束";
+            _titleLabel.style.color = new StyleColor(new Color(1f, 0.85f, 0.4f));
+
+            _listContainer.Clear();
+
+            // 排名
+            var rankings = new List<(int id, int score)>();
+            for (int i = 0; i < 4; i++)
+                rankings.Add((i, _session.Scores[i]));
+            rankings.Sort((a, b) => b.score.CompareTo(a.score));
+
+            int rank = 1;
+            foreach (var (id, score) in rankings)
+            {
+                string playerName = id == 0 ? "你" : $"AI {id}";
+                Label item = new Label($"第{rank}名  {playerName}    {score:+#;-#;0} 分");
+                item.AddToClassList("fan-item");
+                if (id == 0)
+                    item.style.color = new StyleColor(new Color(1f, 0.85f, 0.4f));
+                _listContainer.Add(item);
+                rank++;
+            }
+
+            _totalLabel.text = "";
+            _btnRestart.text = "返回主菜单";
+            _isShowingFinalResult = true;
+
+            _overlay.style.display = DisplayStyle.Flex;
             Invoke(nameof(FadeIn), 0.05f);
         }
 
@@ -122,7 +207,6 @@ namespace MahjongGame.UI
         {
             List<FanItemData> parsedDetails = new List<FanItemData>();
 
-            // 解析每个字符串，提取番数
             foreach (var detail in fanDetails)
             {
                 int score = 0;
@@ -133,24 +217,20 @@ namespace MahjongGame.UI
                     string numStr = detail.Substring(startIdx + 1, endIdx - startIdx - 1);
                     int.TryParse(numStr, out score);
                 }
-                
+
                 parsedDetails.Add(new FanItemData { FullText = detail, Score = score });
             }
 
-            // 从高往低排序
             parsedDetails.Sort((a, b) => b.Score.CompareTo(a.Score));
 
             int currentTotal = 0;
 
-            // 逐个显示并增加番数
             foreach (var item in parsedDetails)
             {
-                // 在列表中添加该番种
                 Label label = new Label(item.FullText);
                 label.AddToClassList("fan-item");
                 _listContainer.Add(label);
 
-                // 数字滚动效果
                 int targetTotal = currentTotal + item.Score;
                 float rollDuration = 0.2f;
                 float elapsed = 0f;
@@ -167,9 +247,11 @@ namespace MahjongGame.UI
                 currentTotal = targetTotal;
                 _totalLabel.text = $"合计：{currentTotal} 番";
 
-                // 停顿0.5秒
                 yield return new WaitForSeconds(0.5f);
             }
+
+            // 番种滚动完成后追加分数信息
+            AppendScoreInfo();
         }
 
         private void FadeIn()
@@ -179,8 +261,35 @@ namespace MahjongGame.UI
 
         private void OnRestartClicked()
         {
-            // 简单粗暴：重载当前场景
-            SceneManager.LoadScene(SceneManager.GetActiveScene().name);
+            // 隐藏面板
+            _overlay.RemoveFromClassList("overlay--visible");
+            _overlay.style.display = DisplayStyle.None;
+
+            if (_session != null && _session.Mode != GameMode.Single)
+            {
+                if (_session.IsSessionOver())
+                {
+                    if (_isShowingFinalResult)
+                    {
+                        SceneManager.LoadScene(SceneManager.GetActiveScene().name);
+                    }
+                    else
+                    {
+                        GameManager.Instance.EndSession();
+                        ShowSessionResult();
+                    }
+                }
+                else
+                {
+                    // 还有下一局 → 开始下一局
+                    GameManager.Instance.StartNextRound();
+                }
+            }
+            else
+            {
+                // 单局模式：重载场景
+                SceneManager.LoadScene(SceneManager.GetActiveScene().name);
+            }
         }
     }
 }

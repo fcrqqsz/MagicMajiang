@@ -47,5 +47,15 @@ namespace MahjongGame.Core.Agents
         /// 广播：有人胡牌
         /// </summary>
         void OnPlayerWin(int playerId, int totalFan, List<string> fanDetails, bool isSelfDraw);
+
+        /// <summary>
+        /// 新一局开始时，服务端同步圈风/门风/东家信息
+        /// </summary>
+        void OnRoundStart(int roundNumber, WindDirection prevalentWind, WindDirection seatWind, int dealerIndex);
+
+        /// <summary>
+        /// 整个对战结束，广播最终分数
+        /// </summary>
+        void OnSessionEnd(int[] finalScores);
     }
 }

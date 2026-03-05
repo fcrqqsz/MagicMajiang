@@ -57,6 +57,9 @@ namespace MahjongGame.Core
                     Destroy(child.gameObject);
                 }
             }
+
+            // 同时清理牌河
+            if (myRiver != null) myRiver.Clear();
         }
 
         /// <summary>

@@ -21,6 +21,14 @@ namespace MahjongGame.Core.Network
         private List<IPlayerClient> _clients;
         private int _currentPlayerIndex = 0;
         private bool _isGameActive = false;
+        private GameSession _session;
+
+        // 当前局结果 (供 GameManager 读取)
+        public int WinnerId { get; private set; } = -1;
+        public int WinFan { get; private set; }
+        public bool WinIsSelfDraw { get; private set; }
+        public int LoserId { get; private set; } = -1; // 放炮者
+        public bool IsDrawGame { get; private set; }
 
         private TaskCompletionSource<ClientAction> _pendingActionTcs;
         private Dictionary<int, ClientAction> _pendingResponses = new Dictionary<int, ClientAction>();
@@ -29,13 +37,39 @@ namespace MahjongGame.Core.Network
         // 临时流转控制
         private bool _skipNextDraw = false;
 
-        public async void StartGame(List<IPlayerClient> clients, List<DeckConfig> configs)
+        // 局结束事件，GameManager 监听此事件驱动多局循环
+        public event System.Action OnRoundFinished;
+
+        public async void StartGame(List<IPlayerClient> clients, List<DeckConfig> configs, GameSession session = null)
         {
             _clients = clients;
-            _currentPlayerIndex = 0;
+            _session = session;
+            _currentPlayerIndex = session != null ? session.DealerIndex : 0;
+
+            // 重置局状态
+            if (_session != null) _session.ResetRoundState();
+            WinnerId = -1;
+            WinFan = 0;
+            WinIsSelfDraw = false;
+            LoserId = -1;
+            IsDrawGame = false;
 
             // 洗牌
             DeckManager.Instance.BuildWall(configs);
+
+            // 广播圈风/门风信息
+            if (_session != null)
+            {
+                for (int i = 0; i < _clients.Count; i++)
+                {
+                    _clients[i].OnRoundStart(
+                        _session.TotalRoundsPlayed + 1,
+                        _session.PrevalentWind,
+                        _session.GetSeatWind(i),
+                        _session.DealerIndex
+                    );
+                }
+            }
 
             // 发牌
             DealStartingHands();
@@ -164,7 +198,7 @@ namespace MahjongGame.Core.Network
                     {
                         if (resolvedAction.ActionType == ClientActionType.Hu)
                         {
-                            HandlePlayerWin(resolvedAction, false);
+                            HandlePlayerWin(resolvedAction, false, _currentPlayerIndex);
                             break;
                         }
                         else
@@ -250,22 +284,39 @@ namespace MahjongGame.Core.Network
             }
         }
 
-        private void HandlePlayerWin(ClientAction winAction, bool isSelfDraw)
+        private void HandlePlayerWin(ClientAction winAction, bool isSelfDraw, int loserId = -1)
         {
             _isGameActive = false;
+            WinnerId = winAction.PlayerId;
+            WinFan = winAction.TotalFan;
+            WinIsSelfDraw = isSelfDraw;
+            LoserId = loserId;
+
+            // 计分
+            if (_session != null)
+            {
+                _session.ApplyScore(winAction.PlayerId, winAction.TotalFan, isSelfDraw, loserId);
+            }
+
             foreach (var client in _clients)
             {
                 client.OnPlayerWin(winAction.PlayerId, winAction.TotalFan, winAction.FanDetails, isSelfDraw);
             }
+
+            OnRoundFinished?.Invoke();
         }
 
         private void HandleDrawGame()
         {
             _isGameActive = false;
+            IsDrawGame = true;
+
             foreach (var client in _clients)
             {
                 client.OnDrawGame();
             }
+
+            OnRoundFinished?.Invoke();
         }
     }
 }

@@ -47,10 +47,10 @@ namespace MahjongGame.Core.Fan
         public WaitType Wait;            // 听牌类型
 
         // 场况信息
-        public Suit RoundWind; // 圈风
-        public Suit SeatWind;  // 门风
+        public WindDirection RoundWind; // 圈风
+        public WindDirection SeatWind;  // 门风
 
-        public FanContext(List<TileData> hand, List<Meld> melds, TileData winTile, bool selfDraw, Suit round, Suit seat, HandDecomposition decomposition = null)
+        public FanContext(List<TileData> hand, List<Meld> melds, TileData winTile, bool selfDraw, WindDirection round, WindDirection seat, HandDecomposition decomposition = null)
         {
             this.HandTiles = new List<TileData>(hand);
             this.FixedMelds = melds;

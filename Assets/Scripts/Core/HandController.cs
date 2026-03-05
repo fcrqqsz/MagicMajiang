@@ -23,6 +23,10 @@ namespace MahjongGame.Core
 
         public List<Meld> Melds { get; private set; } = new List<Meld>();
 
+        // 当前风位 (由 LocalPlayerClient.OnRoundStart 设置)
+        public WindDirection RoundWind { get; set; } = WindDirection.East;
+        public WindDirection SeatWind { get; set; } = WindDirection.East;
+
         public List<TileData> GetHandData()
         {
             List<TileData> list = new List<TileData>();
@@ -373,8 +377,10 @@ namespace MahjongGame.Core
                 if (a.Data.TileSuit != b.Data.TileSuit) return a.Data.TileSuit.CompareTo(b.Data.TileSuit);
                 return a.Data.Value.CompareTo(b.Data.Value);
             });
-            
+
             for(int i=0; i<_handTiles.Count; i++) _handTiles[i].transform.SetSiblingIndex(i);
+            _lastDrawnTile = null; // 理牌后清除摸牌标记，避免最后一张多出间隔
+            UpdateHandPositions();
         }
 
         protected override void UpdateHandPositions()
@@ -412,7 +418,7 @@ namespace MahjongGame.Core
             _isInteractable = canInteract;
             if (canInteract)
             {
-                _cachedWaitHints = MahjongLogic.GetWaitHints(GetHandData(), Melds);
+                _cachedWaitHints = MahjongLogic.GetWaitHints(GetHandData(), Melds, RoundWind, SeatWind);
             }
             else
             {

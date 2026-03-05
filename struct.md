@@ -19,7 +19,7 @@
 主要分为纯逻辑与 3D 控制两部分：
 *   **基础数据**:
     *   `TileData.cs`: 牌的基础数据结构 (Suit, Value, ID)。
-    *   `MahjongEnums.cs`: 存储 Suit, MeldType 等核心枚举。
+    *   `MahjongEnums.cs`: 存储 Suit, MeldType, WindDirection, GameMode 等核心枚举。
     *   `Meld.cs`: 副露数据结构及暗面标记。
 *   **核心算法**:
     *   `MahjongLogic.cs`: 核心算法库（含回溯胡牌判定、手牌多路径拆解、听牌类型分析）。
@@ -27,7 +27,8 @@
     *   `DeckConfig.cs`: 玩家自定义牌库配置及异化值计算。
 *   **网络与代理 (`Core/Network/` & `Core/Agents/`)**:
     *   `Protocol.cs`: 客户端与服务端通信的数据结构 (`ClientAction`)。
-    *   `GameServer.cs`: 异步核心循环，管理对局状态与并发仲裁。
+    *   `GameServer.cs`: 异步核心循环，管理单局状态与并发仲裁。
+    *   `GameSession.cs`: 多局对战状态管理（圈风轮转、门风分配、国标计分、局数追踪）。
     *   `IPlayerClient.cs`: 客户端代理通用接口。
     *   `SimpleAIClient.cs`: 规则化 AI 客户端。
     *   `LocalPlayerClient.cs`: 本地真实玩家客户端，负责桥接 UI 与输入。
@@ -37,7 +38,7 @@
     *   `TileVisual.cs`: 单张牌的视觉容器，处理牌面图片切换。
     *   `TileResourceConfig.cs`: 基于 `ScriptableObject` 的资源索引表。
 *   **算番系统 (`Core/Fan/`)**:
-    *   `FanContext.cs`: 包含拆解方案、听牌类型、场况信息的上下文。
+    *   `FanContext.cs`: 包含拆解方案、听牌类型、场况信息(WindDirection 风位)的上下文。
     *   `FanRule.cs`: 规则基类，定义优先级、排斥逻辑。
     *   `Rules/FanCalculator.cs`: 汇总番数核心类。
     *   `Rules/FanRuleRegistry.cs`: 纯 C# 单例，自动发现并注册规则类。
@@ -46,7 +47,7 @@
     *   `Rules/MCR/MCR_32Plus.cs`: 国标 32+ 番种规则。
 
 ### B. `Assets/Scripts/Systems` (全局系统管理)
-*   `GameManager.cs`: 游戏初始化入口，组装 Server 与 Clients。
+*   `GameManager.cs`: 游戏初始化入口，组装 Server 与 Clients，驱动多局循环。
 *   `DeckManager.cs`: 牌山构建、洗牌、发牌管理。
 *   `TalentManager.cs`: 天赋系统的分发中转站。
 

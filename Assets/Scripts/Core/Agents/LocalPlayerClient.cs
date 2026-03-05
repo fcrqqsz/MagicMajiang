@@ -23,6 +23,10 @@ namespace MahjongGame.Core.Agents
         private bool _isWaitingForUI = false;
         private int _lastDiscarderId = -1; // 记录最后打牌的人
 
+        // 风位信息
+        private WindDirection _roundWind = WindDirection.East;
+        private WindDirection _seatWind = WindDirection.East;
+
         public LocalPlayerClient(int playerId, IServer server, HandController handController)
         {
             PlayerId = playerId;
@@ -35,7 +39,6 @@ namespace MahjongGame.Core.Agents
             _handController.ClearHand();
             foreach (var tile in startingHand)
             {
-                // 注意：这里需要确保 HandController 的逻辑已经适配纯数据直接添加
                 _handController.AddTileDirectly(tile);
             }
             _handController.SortHand();
@@ -79,7 +82,7 @@ namespace MahjongGame.Core.Agents
                     {
                         int totalFan;
                         List<string> fanDetails;
-                        MahjongLogic.CheckWinWithFan(handData, melds, drawnTile, true, out totalFan, out fanDetails);
+                        MahjongLogic.CheckWinWithFan(handData, melds, drawnTile, true, out totalFan, out fanDetails, _roundWind, _seatWind);
                         
                         var action = new ClientAction(PlayerId, ClientActionType.Hu, drawnTile);
                         action.SetHuDetails(totalFan, fanDetails);
@@ -159,7 +162,7 @@ namespace MahjongGame.Core.Agents
                     {
                         int totalFan;
                         List<string> fanDetails;
-                        MahjongLogic.CheckWinWithFan(handData, melds, discardedTile, false, out totalFan, out fanDetails);
+                        MahjongLogic.CheckWinWithFan(handData, melds, discardedTile, false, out totalFan, out fanDetails, _roundWind, _seatWind);
                         
                         var action = new ClientAction(PlayerId, ClientActionType.Hu, discardedTile);
                         action.SetHuDetails(totalFan, fanDetails);
@@ -303,6 +306,21 @@ namespace MahjongGame.Core.Agents
             {
                 ResultPanelController.Instance.ShowLose(winnerId, totalFan, fanDetails);
             }
+        }
+
+        public void OnRoundStart(int roundNumber, WindDirection prevalentWind, WindDirection seatWind, int dealerIndex)
+        {
+            _roundWind = prevalentWind;
+            _seatWind = seatWind;
+            // 同步到 HandController 供听牌提示使用
+            _handController.RoundWind = prevalentWind;
+            _handController.SeatWind = seatWind;
+            Debug.Log($"[LocalPlayer] 第{roundNumber}局开始 - 圈风:{prevalentWind} 门风:{seatWind}");
+        }
+
+        public void OnSessionEnd(int[] finalScores)
+        {
+            Debug.Log($"[LocalPlayer] 对战结束 - 分数: {string.Join(",", finalScores)}");
         }
     }
 }

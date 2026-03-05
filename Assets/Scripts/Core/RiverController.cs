@@ -46,6 +46,22 @@ namespace MahjongGame.Core
         }
 
         /// <summary>
+        /// 清空牌河所有牌
+        /// </summary>
+        public void Clear()
+        {
+            foreach (var tile in _discardedTiles)
+            {
+                if (tile != null)
+                {
+                    tile.transform.DOKill();
+                    Destroy(tile.gameObject);
+                }
+            }
+            _discardedTiles.Clear();
+        }
+
+        /// <summary>
         /// 移除最后打入的一张牌 (被吃碰杠走了)
         /// </summary>
         public void RemoveLastDiscard()

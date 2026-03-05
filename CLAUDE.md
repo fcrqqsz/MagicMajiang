@@ -19,6 +19,13 @@
 - `LocalPlayerClient` / `SimpleAIClient`: 本地计算吃碰杠胡权限和算番，将意图发往服务端
 - 通过 `IPlayerClient` 接口统一本地玩家与 AI
 
+**多局对战系统**:
+- `GameSession`: 管理多局状态（圈风轮转、门风分配、累计分数）
+- 支持 `GameMode`: Single(单局) / EastOnly(东风局4局) / HalfGame(半庄8局) / FullGame(全庄16局)
+- `WindDirection` 枚举值与牌面 Value 对齐（East=1..North=4），番种规则无需转换
+- 国标规则：无庄家概念，东家仅决定先摸牌和门风分配，计分无翻倍
+- 计分：自摸三家各付(8+番数)；点炮放炮者付(8+番数)另两家各付底分8；流局不计分
+
 **算番系统**: Strategy + Reflection 模式
 - 规则通过 `[FanRuleAttribute]` 标记，由 `FanRuleRegistry` 自动注册
 - 支持 `GetMatchCount` 多重触发，兼容自定义牌库番数累加
@@ -31,7 +38,7 @@
 Assets/Scripts/
 ├── Core/                    # 核心逻辑与表现层
 │   ├── TileData.cs          # 牌数据结构 (Suit, Value, ID)
-│   ├── MahjongEnums.cs      # Suit, MeldType 等枚举
+│   ├── MahjongEnums.cs      # Suit, MeldType, WindDirection, GameMode 等枚举
 │   ├── Meld.cs              # 副露数据结构
 │   ├── MahjongLogic.cs      # 核心算法 (回溯胡牌判定、多路径拆解、听牌分析)
 │   ├── ActionValidator.cs   # 吃碰杠胡动作校验
@@ -41,13 +48,14 @@ Assets/Scripts/
 │   ├── TileVisual.cs        # 单张牌视觉容器
 │   ├── Network/
 │   │   ├── Protocol.cs      # 通信数据结构 (ClientAction)
-│   │   └── GameServer.cs    # 异步核心循环
+│   │   ├── GameServer.cs    # 异步核心循环
+│   │   └── GameSession.cs   # 多局对战状态管理 (圈风/门风/计分)
 │   ├── Agents/
 │   │   ├── IPlayerClient.cs # 客户端代理接口
 │   │   ├── SimpleAIClient.cs
 │   │   └── LocalPlayerClient.cs
 │   └── Fan/                 # 算番系统
-│       ├── FanContext.cs    # 拆解方案、听牌类型、场况上下文
+│       ├── FanContext.cs    # 拆解方案、听牌类型、场况上下文 (WindDirection 风位)
 │       ├── FanRule.cs       # 规则基类
 │       └── Rules/
 │           ├── FanCalculator.cs
@@ -57,7 +65,7 @@ Assets/Scripts/
 │               ├── MCR_8to24.cs # 8-24番 (28种)
 │               └── MCR_32Plus.cs # 32+番 (18种)
 ├── Systems/                 # 全局管理
-│   ├── GameManager.cs       # 游戏初始化入口
+│   ├── GameManager.cs       # 游戏初始化入口, 多局循环驱动
 │   ├── DeckManager.cs       # 牌山构建、洗牌、发牌
 │   └── TalentManager.cs    # 天赋系统分发
 ├── Talent/                  # Roguelike 天赋
@@ -88,10 +96,17 @@ Assets/UI/                   # UI Toolkit 面板
 
 ### Debugging
 - `GameManager` 中 `useDebugHand` 可在 Inspector 配置测试牌型
+- `GameManager` 中 `gameMode` 可在 Inspector 切换对局模式 (Single/EastOnly/HalfGame/FullGame)
 - 算番开发: 在 `FanRules_Common.cs` 新增规则需实现 `GetMatchCount`，考虑优先级与排斥
+
+### Design Principles
+- 客户端不应直接访问 `GameManager.Session` 等全局状态，信息通过接口回调下发
+- 牌河清理等公共操作放在 `MahjongHandViewBase` 基类，避免各客户端重复实现
+- `ClearHand()` 基类会自动清理关联的牌河 (`myRiver.Clear()`)
 
 ## Current Priorities
 参阅 `plan.md` 获取完整任务列表。当前重点:
+- 多局对战 UI 完善（风位显示、分数面板）
 - 发牌与摸牌 DoTween 动画
 - 结算手牌缩略图复盘
 - 异化牌视觉反馈

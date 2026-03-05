@@ -19,7 +19,7 @@ namespace MahjongGame.Core
         /// <summary>
         /// 完整胡牌判定 (含8番起胡校验)
         /// </summary>
-        public static bool CheckWinWithFan(List<TileData> hand, List<Meld> melds, TileData winTile, bool isSelfDraw, out int totalFan, out List<string> fanDetails)
+        public static bool CheckWinWithFan(List<TileData> hand, List<Meld> melds, TileData winTile, bool isSelfDraw, out int totalFan, out List<string> fanDetails, WindDirection roundWind = WindDirection.East, WindDirection seatWind = WindDirection.East)
         {
             totalFan = 0;
             fanDetails = null;
@@ -34,7 +34,7 @@ namespace MahjongGame.Core
             // 2. 遍历所有方案，选番数最高的
             foreach (var decomp in decompositions)
             {
-                var ctx = new Fan.FanContext(hand, melds, winTile, isSelfDraw, Suit.Wind, Suit.Wind, decomp);
+                var ctx = new Fan.FanContext(hand, melds, winTile, isSelfDraw, roundWind, seatWind, decomp);
                 ctx.Wait = decomp.Wait;
 
                 int currentFan = _calculator.CalculateTotalFan(ctx, out List<string> currentDetails);
@@ -500,10 +500,10 @@ namespace MahjongGame.Core
         /// 获取所有打出后能听牌的提示信息
         /// </summary>
         /// <returns>Key: 打出的牌的索引 (GetTileIndex), Value: 听的牌及最大番数列表</returns>
-        public static Dictionary<int, List<WaitDetail>> GetWaitHints(List<TileData> hand, List<Meld> melds)
+        public static Dictionary<int, List<WaitDetail>> GetWaitHints(List<TileData> hand, List<Meld> melds, WindDirection roundWind = WindDirection.East, WindDirection seatWind = WindDirection.East)
         {
             var hints = new Dictionary<int, List<WaitDetail>>();
-            
+
             var uniqueHandTiles = new HashSet<int>();
             foreach (var t in hand)
             {
@@ -513,7 +513,7 @@ namespace MahjongGame.Core
             foreach (var discardIndex in uniqueHandTiles)
             {
                 var handAfterDiscard = new List<TileData>(hand);
-                
+
                 for (int i = 0; i < handAfterDiscard.Count; i++)
                 {
                     if (GetTileIndex(handAfterDiscard[i]) == discardIndex)
@@ -528,11 +528,9 @@ namespace MahjongGame.Core
                 for (int i = 0; i < MAX_TILE_INDEX; i++)
                 {
                     var waitTile = CreateTileFromIndex(i);
-                    // 性能优化：先用快速且不带番的 IsWin 校验一遍，能胡才算番
                     if (IsWin(handAfterDiscard, melds, waitTile))
                     {
-                        // 计算最大番数 (以别人点炮来计算基础番)
-                        if (CheckWinWithFan(handAfterDiscard, melds, waitTile, false, out int totalFan, out _))
+                        if (CheckWinWithFan(handAfterDiscard, melds, waitTile, false, out int totalFan, out _, roundWind, seatWind))
                         {
                             waitDetails.Add(new WaitDetail { WaitTile = waitTile, MaxFan = totalFan });
                         }
