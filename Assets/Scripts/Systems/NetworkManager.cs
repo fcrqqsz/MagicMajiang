@@ -18,6 +18,7 @@ namespace SuperMajiang.Systems
             if (Instance == null)
             {
                 Instance = this;
+                transform.SetParent(null);
                 DontDestroyOnLoad(gameObject);
                 
                 // Initialize Mock Services

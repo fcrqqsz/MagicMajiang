@@ -17,6 +17,7 @@ namespace SuperMajiang.Systems
             if (Instance == null)
             {
                 Instance = this;
+                transform.SetParent(null);
                 DontDestroyOnLoad(gameObject);
                 profilePath = Path.Combine(Application.persistentDataPath, "profile.json");
                 LoadProfile();
