@@ -3,6 +3,10 @@
 本文档作为项目的核心架构索引，详细记录了系统的设计模式、目录结构及职责。
 
 ## 1. 核心设计模式
+*   **多场景架构 (Multi-Scene Architecture)**: 
+    *   `00_Persistent`: 作为游戏持久入口，承载所有“不死”的单例管理器（Profile、Network 等）。
+    *   `01_Login` & `02_MainLobby`: UI 专用子场景，通过 Additive 模式叠加加载。
+    *   `03_Game`: 麻将核心 3D 对局场景。
 *   **MVC 架构**: 严格分离数据层 (Core)、表现层 (Controllers) 与 UI 层 (UI Toolkit)。
 *   **胖客户端，瘦服务端 (Fat Client, Thin Server)**: 
     *   `GameServer` 仅负责洗牌、发牌、状态流转和仲裁并发请求。
@@ -26,6 +30,8 @@
     *   `ActionValidator.cs`: 静态校验类，判定玩家当前可进行的动作 (吃、碰、杠、胡)。
     *   `DeckConfig.cs`: 玩家自定义牌库配置及异化值计算。
 *   **网络与代理 (`Core/Network/` & `Core/Agents/`)**:
+    *   `Data/`: 玩家本地存档数据模型 (`PlayerProfile`, `SavedDeck`)。
+    *   `Interfaces/ & Mock/`: 抽象网络接口层 (`IAuthService`, `IMatchmakingService`) 与对应 Mock 实现。
     *   `Protocol.cs`: 客户端与服务端通信的数据结构 (`ClientAction`)。
     *   `GameServer.cs`: 异步核心循环，管理单局状态与并发仲裁。集成 `CancellationTokenSource` 管理回合取消。
     *   `ServerGameState.cs`: 服务端手牌/副露快照。每次摸牌、出牌、副露时同步更新，超时时提供真实手牌自动出牌，未来可用于重连恢复。
@@ -48,6 +54,10 @@
     *   `Rules/MCR/MCR_32Plus.cs`: 国标 32+ 番种规则。
 
 ### B. `Assets/Scripts/Systems` (全局系统管理)
+*   `ProfileManager.cs`: 玩家本地存档数据管理者。
+*   `NetworkManager.cs`: 服务接口与 Additive 多场景加载的枢纽。
+*   `LoadingScreenController.cs`: UI Toolkit 加载遮罩控制。
+*   `CameraManager.cs`: 多场景动态相机切换控制。
 *   `GameManager.cs`: 游戏初始化入口，组装 Server 与 Clients，驱动多局循环。
 *   `DeckManager.cs`: 牌山构建、洗牌、发牌管理。
 *   `TalentManager.cs`: 天赋系统的分发中转站。
@@ -58,6 +68,7 @@
 
 ### D. `Assets/Scripts/Editor` (编辑器扩展)
 *   `TileConfigEditor.cs`: `TileResourceConfig` 自动化图片匹配工具。
+*   `SceneSetupMenu.cs`: 一键构建多场景结构的编辑器工具。
 
 ### E. `Assets/UI` (UI 表现架构 - UI Toolkit)
 每个主要面板由三部分组成：
@@ -66,6 +77,7 @@
 *   **`.cs` (控制器)**: 绑定元素并处理交互逻辑。
 
 #### 核心面板与组件：
+*   **LoginPanel & MainLobby**: `01_Login` 和 `02_MainLobby` 场景中的 UI 主体面板。
 *   **操作面板 (`ActionPanel`)**: 按钮布局与可选吃牌组合逻辑。
 *   **结算面板 (`ResultPanel`)**: 汇总算番详情，驱动流局或胡牌界面。
 *   **牌库编辑器 (`DeckEditor`)**: 34 种牌选择界面与异化值计算提示。
