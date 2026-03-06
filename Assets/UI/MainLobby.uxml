@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ui:UXML
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:ui="UnityEngine.UIElements"
+    xmlns:editor="UnityEditor.UIElements"
+    xsi:noNamespaceSchemaLocation="../../UIElementsSchema/UIElements.xsd"
+>
+    <ui:Style src="MainLobbyStyles.uss" />
+    <ui:VisualElement name="LobbyRoot" class="lobby-root">
+        <!-- Sidebar Navigation -->
+        <ui:VisualElement name="Sidebar" class="sidebar">
+            <ui:Label text="Super Majiang" class="sidebar-title" />
+            <ui:Button name="TabHome" text="Home" class="nav-button active-tab" />
+            <ui:Button name="TabWorkshop" text="Deck Workshop" class="nav-button" />
+            <ui:Button name="TabSettings" text="Settings" class="nav-button" />
+        </ui:VisualElement>
+
+        <!-- Main Content Area -->
+        <ui:VisualElement name="ContentArea" class="content-area">
+            
+            <!-- Home View -->
+            <ui:VisualElement name="ViewHome" class="view-container">
+                <ui:Label name="WelcomeLabel" text="Welcome, Player" class="view-title" />
+                <ui:Label name="ScoreLabel" text="Alienation Score: 0" class="view-subtitle" />
+                <ui:Button name="MatchmakingButton" text="Start Matchmaking" class="action-button" />
+            </ui:VisualElement>
+
+            <!-- Workshop View -->
+            <ui:VisualElement name="ViewWorkshop" class="view-container" style="display: none;">
+                <ui:Label text="Deck Workshop" class="view-title" />
+                <ui:Label text="(Deck Editor placeholder)" class="view-subtitle" />
+            </ui:VisualElement>
+
+            <!-- Settings View -->
+            <ui:VisualElement name="ViewSettings" class="view-container" style="display: none;">
+                <ui:Label text="Settings" class="view-title" />
+                <ui:Label text="(Settings placeholder)" class="view-subtitle" />
+            </ui:VisualElement>
+
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>

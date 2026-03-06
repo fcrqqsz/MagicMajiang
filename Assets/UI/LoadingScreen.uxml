@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ui:UXML
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:ui="UnityEngine.UIElements"
+    xmlns:editor="UnityEditor.UIElements"
+    xsi:noNamespaceSchemaLocation="../../UIElementsSchema/UIElements.xsd">
+    <ui:VisualElement name="LoadingContainer" style="flex-grow: 1; align-items: center; justify-content: center; background-color: rgba(0, 0, 0, 0.8); position: absolute; left: 0; top: 0; right: 0; bottom: 0;">
+        <ui:Label text="Loading..." style="color: rgb(255, 255, 255); font-size: 36px; -unity-font-style: bold;" />
+    </ui:VisualElement>
+</ui:UXML>

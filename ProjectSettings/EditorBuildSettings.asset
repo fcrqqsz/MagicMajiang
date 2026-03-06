@@ -4,5 +4,26 @@
 EditorBuildSettings:
   m_ObjectHideFlags: 0
   serializedVersion: 2
-  m_Scenes: []
+  m_Scenes:
+  - enabled: 1
+    path: Assets/Scenes/00_Persistent.unity
+    guid: ff6b86f7e0b20c84e8bd88695cbe8dec
+  - enabled: 1
+    path: Assets/Scenes/01_Login.unity
+    guid: bfd8b6dbf60a1e24e982a254b5f9bc4b
+  - enabled: 1
+    path: Assets/Scenes/02_MainLobby.unity
+    guid: 55ff1673642ad07499c3730d58702a97
+  - enabled: 1
+    path: Assets/Scenes/03_Game.unity
+    guid: 237949e64e24965488548bff42b79885
+  m_BuildProfiles: []
   m_configObjects: {}
+  m_SlimFeaturesWeixinMiniGame:
+    AllocateOverhead: 1
+    DecompressASTC: 0
+    DecompressDXT: 1
+    DecompressETC: 1
+    FreeTypeSfntPng: 1
+    LightProbe: 2
+    UseStringInternPool: 2

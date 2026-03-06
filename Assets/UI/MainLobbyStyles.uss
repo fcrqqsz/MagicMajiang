@@ -1,0 +1,79 @@
+.lobby-root {
+    flex-grow: 1;
+    flex-direction: row;
+    background-color: rgb(30, 30, 30);
+}
+
+.sidebar {
+    width: 250px;
+    background-color: rgb(20, 20, 20);
+    padding: 20px;
+}
+
+.sidebar-title {
+    font-size: 24px;
+    -unity-font-style: bold;
+    color: rgb(220, 220, 220);
+    margin-bottom: 30px;
+}
+
+.nav-button {
+    padding: 12px;
+    font-size: 16px;
+    background-color: transparent;
+    color: rgb(180, 180, 180);
+    border-width: 0;
+    -unity-text-align: middle-left;
+}
+
+.nav-button:hover {
+    background-color: rgb(40, 40, 40);
+    color: white;
+}
+
+.nav-button.active-tab {
+    background-color: rgb(60, 60, 60);
+    color: white;
+    -unity-font-style: bold;
+}
+
+.content-area {
+    flex-grow: 1;
+    padding: 40px;
+}
+
+.view-container {
+    flex-grow: 1;
+}
+
+.view-title {
+    font-size: 36px;
+    -unity-font-style: bold;
+    color: white;
+    margin-bottom: 10px;
+}
+
+.view-subtitle {
+    font-size: 18px;
+    color: rgb(180, 180, 180);
+    margin-bottom: 30px;
+}
+
+.action-button {
+    padding: 15px 30px;
+    font-size: 24px;
+    -unity-font-style: bold;
+    background-color: rgb(200, 100, 50);
+    color: white;
+    border-radius: 8px;
+    border-width: 0;
+    align-self: flex-start;
+}
+
+.action-button:hover {
+    background-color: rgb(220, 120, 70);
+}
+
+.action-button:active {
+    background-color: rgb(180, 80, 30);
+}

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ui:UXML
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:ui="UnityEngine.UIElements"
+    xmlns:editor="UnityEditor.UIElements"
+    xsi:noNamespaceSchemaLocation="../../UIElementsSchema/UIElements.xsd"
+>
+    <ui:Style src="LoginPanelStyles.uss" />
+    <ui:VisualElement name="LoginContainer" class="login-container">
+        <ui:Label text="Super Majiang" class="login-title" />
+        <ui:VisualElement class="login-form">
+            <ui:TextField name="UsernameInput" label="Username" text="Guest" class="login-input" />
+            <ui:TextField name="PasswordInput" label="Password" password="true" text="123456" class="login-input" />
+            <ui:Button name="LoginButton" text="Login" class="login-button" />
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>
