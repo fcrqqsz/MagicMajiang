@@ -7,6 +7,7 @@
 *   **特色玩法**: Roguelike 天赋系统、自定义 34 张牌库及异化值机制。
 
 2. 最近进展 (Recent Progress)
+*   **超时取消机制 + 服务端快照 (2026-03-06)**: 解决超时出牌三大问题：(1) 手牌不同步 — 服务端 `ServerGameState` 镜像手牌，超时从快照取真实牌出牌；(2) async void 无法取消 — 通过 `CancellationToken` + `ct.Register(() => tcs.TrySetCanceled())` 实现可取消的 async 操作；(3) 虚构兜底牌 — `AwaitWithTimeout` 的 fallback 改为 `Func<T>` 延迟求值。新增 `HandController.ForceRemoveTile()` 移除牌到牌河但不触发事件。
 *   **多局对战系统 (2026-03-05)**: 实现 `GameSession` 多局状态管理，支持单局/东风局/半庄/全庄。含圈风轮转、门风分配、国标计分（底分+番数制）。修复了 `FanContext` 风位 bug（圈风刻/门风刻永远匹配西风）。`ResultPanel` 支持多局结算流程。
 *   **架构重构**: 完成了 "Fat Client, Thin Server" 架构，拆分了 `GameServer` 与 Client Agents，为本地/AI 统一逻辑打下基础。
 *   **AI 基础**: 实现了 `SimpleAIClient`，支持基础的出牌、吃碰杠胡决策。
@@ -32,6 +33,13 @@
     *   *解法*: 确保 USS 引用 `-unity-font-definition` (SDF 资产) 而非原始字体文件。
 *   **DoTween 序列同步**:
     *   *解法*: 在 `HandController` 中处理并发动作时，需使用 `Sequence` 确保动画不冲突。
+*   **超时出牌手牌不同步 (+1 bug)**:
+    *   *症状*: 服务端超时自动出牌后客户端手牌未移除，每次超时手牌数+1。
+    *   *原因*: `OnTimeout()` 仅清理 UI 状态，未移除手牌数据；`async void` 方法无法被外部中断，超时后代码继续跌落。
+    *   *解法*: (1) `ServerGameState` 维护手牌快照，超时时取真实牌；(2) `CancellationToken` 取消 async 操作；(3) `OnTimeout(TileData)` 传入自动出的牌，客户端调 `ForceRemoveTile` 同步。
+*   **超时虚构兜底牌 (new TileData 不在手牌中)**:
+    *   *症状*: 吃碰后超时用 `new TileData(Suit.Wind, 1, ...)` 作 fallback，该牌不在手牌中，状态腐坏。
+    *   *解法*: `AwaitWithTimeout` 的 fallback 改为 `Func<T>` 延迟求值，超时时从 `ServerGameState.GetAutoDiscardTile()` 取真实手牌。
 *   **DoTween 对象销毁报错 (Target or field is missing/null)**:
     *   *症状*: 当 AI 极速连击（如瞬间打牌后被瞬间吃牌），导致刚执行动画的牌被立即 `Destroy` 时，DOTween 尝试访问已销毁的 Transform。
     *   *解法*: 对所有针对动态生成/销毁的 GameObject 进行的 DoTween 动画（如 `DOLocalMove`），必须链式调用 `.SetLink(gameObject)`，强制绑定动画生命周期与 GameObject。

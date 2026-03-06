@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using UnityEngine;
 using MahjongGame.Core.Network;
@@ -14,7 +15,8 @@ namespace MahjongGame.Core.Agents
     public class SimpleAIClient : IPlayerClient
     {
         public int PlayerId { get; private set; }
-        
+        public CancellationToken TurnCancellationToken { get; set; }
+
         private IServer _server;
         
         // AI 在本地维护自己的状态
@@ -46,122 +48,130 @@ namespace MahjongGame.Core.Agents
 
         public async void OnTileDrawn(TileData drawnTile)
         {
-            _hand.Add(drawnTile);
-            SortHand(); // 摸牌后先理牌
-
-            // 模拟 AI 思考延迟
-            await Task.Delay(500);
-
-            // 1. 本地校验自摸或杠
-            // 注意：此时 _hand 已经包含了 drawnTile (Count=14)
-            var actions = ActionValidator.CheckSelfActions(_hand, _melds, drawnTile);
-            if (actions.HasAction)
+            var ct = TurnCancellationToken;
+            try
             {
-                if (actions.CanHu)
+                _hand.Add(drawnTile);
+                SortHand();
+
+                await Task.Delay(500, ct);
+
+                var actions = ActionValidator.CheckSelfActions(_hand, _melds, drawnTile);
+                if (actions.HasAction)
                 {
-                    // 胖客户端：本地调用核心逻辑算番
-                    int totalFan;
-                    List<string> fanDetails;
-                    bool canWin = MahjongLogic.CheckWinWithFan(_hand, _melds, drawnTile, true, out totalFan, out fanDetails, _roundWind, _seatWind);
-                    
-                    if (canWin)
+                    if (actions.CanHu)
                     {
-                        var action = new ClientAction(PlayerId, ClientActionType.Hu, drawnTile);
-                        action.SetHuDetails(totalFan, fanDetails);
-                        _server.SubmitAction(action);
-                        return;
+                        int totalFan;
+                        List<string> fanDetails;
+                        bool canWin = MahjongLogic.CheckWinWithFan(_hand, _melds, drawnTile, true, out totalFan, out fanDetails, _roundWind, _seatWind);
+
+                        if (canWin)
+                        {
+                            var action = new ClientAction(PlayerId, ClientActionType.Hu, drawnTile);
+                            action.SetHuDetails(totalFan, fanDetails);
+                            _server.SubmitAction(action);
+                            return;
+                        }
                     }
                 }
-                
-                // 暂时不处理暗杠/加杠，直接跳过到打牌阶段
-            }
 
-            // 2. 决定打出一张牌 (简单的孤张判定策略)
-            TileData tileToDiscard = ChooseTileToDiscard();
-            _hand.Remove(tileToDiscard);
-            
-            Debug.Log($"[AI {PlayerId}] 决定打出: {tileToDiscard}");
-            _server.SubmitAction(ClientAction.Discard(PlayerId, tileToDiscard));
+                TileData tileToDiscard = ChooseTileToDiscard();
+                _hand.Remove(tileToDiscard);
+
+                Debug.Log($"[AI {PlayerId}] 决定打出: {tileToDiscard}");
+                _server.SubmitAction(ClientAction.Discard(PlayerId, tileToDiscard));
+            }
+            catch (OperationCanceledException)
+            {
+                // 超时 — OnTimeout 会处理手牌同步
+            }
         }
 
         public async void OnOtherPlayerDiscarded(int discarderId, TileData discardedTile)
         {
-            // 模拟 AI 思考延迟
-            await Task.Delay(UnityEngine.Random.Range(200, 600));
-
-            bool isNextPlayer = (discarderId + 1) % 4 == PlayerId;
-
-            // 本地计算权限
-            var actions = ActionValidator.CheckActions(_hand, _melds, discardedTile, isNextPlayer);
-
-            if (actions.HasAction)
+            var ct = TurnCancellationToken;
+            try
             {
-                if (actions.CanHu)
+                await Task.Delay(UnityEngine.Random.Range(200, 600), ct);
+
+                bool isNextPlayer = (discarderId + 1) % 4 == PlayerId;
+
+                var actions = ActionValidator.CheckActions(_hand, _melds, discardedTile, isNextPlayer);
+
+                if (actions.HasAction)
                 {
-                    int totalFan;
-                    List<string> fanDetails;
-                    // 他人打出的牌，加入手牌计算番数
-                    bool canWin = MahjongLogic.CheckWinWithFan(_hand, _melds, discardedTile, false, out totalFan, out fanDetails, _roundWind, _seatWind);
-                    if (canWin)
+                    if (actions.CanHu)
                     {
-                        var action = new ClientAction(PlayerId, ClientActionType.Hu, discardedTile);
-                        action.SetHuDetails(totalFan, fanDetails);
-                        _server.SubmitAction(action);
+                        int totalFan;
+                        List<string> fanDetails;
+                        bool canWin = MahjongLogic.CheckWinWithFan(_hand, _melds, discardedTile, false, out totalFan, out fanDetails, _roundWind, _seatWind);
+                        if (canWin)
+                        {
+                            var action = new ClientAction(PlayerId, ClientActionType.Hu, discardedTile);
+                            action.SetHuDetails(totalFan, fanDetails);
+                            _server.SubmitAction(action);
+                            return;
+                        }
+                    }
+
+                    if (actions.CanPon && UnityEngine.Random.value > 0.5f)
+                    {
+                        _server.SubmitAction(new ClientAction(PlayerId, ClientActionType.Pon, discardedTile));
                         return;
+                    }
+                    else if (isNextPlayer && (actions.CanChiLeft || actions.CanChiMiddle || actions.CanChiRight) && UnityEngine.Random.value > 0.5f)
+                    {
+                        var chiOptions = ActionValidator.GetChiCombinations(_hand, discardedTile);
+                        if (chiOptions.Count > 0)
+                        {
+                            _server.SubmitAction(new ClientAction(PlayerId, ClientActionType.Chi, discardedTile, chiOptions[0]));
+                            return;
+                        }
                     }
                 }
 
-                // 简单的吃碰响应（50% 概率）
-                if (actions.CanPon && UnityEngine.Random.value > 0.5f)
-                {
-                    _server.SubmitAction(new ClientAction(PlayerId, ClientActionType.Pon, discardedTile));
-                    return;
-                }
-                // AI 吃牌决策：如果是上家，且能吃，且50%概率
-                else if (isNextPlayer && (actions.CanChiLeft || actions.CanChiMiddle || actions.CanChiRight) && UnityEngine.Random.value > 0.5f)
-                {
-                    // 找出所有能吃的组合
-                    var chiOptions = ActionValidator.GetChiCombinations(_hand, discardedTile);
-                    if (chiOptions.Count > 0) {
-                        // 简化AI：选择第一个能吃的组合
-                        _server.SubmitAction(new ClientAction(PlayerId, ClientActionType.Chi, discardedTile, chiOptions[0]));
-                        return;
-                    }
-                }
+                _server.SubmitAction(ClientAction.Skip(PlayerId));
             }
-
-            // 没有动作或者放弃
-            _server.SubmitAction(ClientAction.Skip(PlayerId));
+            catch (OperationCanceledException)
+            {
+                // 响应超时 — 服务端自动填充 Skip
+            }
         }
 
         public async void OnActionResolved(int actionPlayerId, ClientActionType actionType, TileData targetTile, int[] chiCombinations)
         {
-            // 如果是自己执行了吃碰杠，更新手牌和副露，然后需要打出一张牌
             if (actionPlayerId == PlayerId)
             {
-                if (actionType == ClientActionType.Pon)
+                var ct = TurnCancellationToken;
+                try
                 {
-                    ExecutePonLocally(targetTile);
-                    await Task.Delay(500); // 思考出牌
-                    SortHand(); // 吃碰后理牌，再决定打哪张
-                    TileData tileToDiscard = ChooseTileToDiscard();
-                    _hand.Remove(tileToDiscard);
-                    _server.SubmitAction(ClientAction.Discard(PlayerId, tileToDiscard));
+                    if (actionType == ClientActionType.Pon)
+                    {
+                        ExecutePonLocally(targetTile);
+                        await Task.Delay(500, ct);
+                        SortHand();
+                        TileData tileToDiscard = ChooseTileToDiscard();
+                        _hand.Remove(tileToDiscard);
+                        _server.SubmitAction(ClientAction.Discard(PlayerId, tileToDiscard));
+                    }
+                    else if (actionType == ClientActionType.Chi)
+                    {
+                        ExecuteChiLocally(targetTile, chiCombinations);
+                        await Task.Delay(500, ct);
+                        SortHand();
+                        TileData tileToDiscard = ChooseTileToDiscard();
+                        _hand.Remove(tileToDiscard);
+                        _server.SubmitAction(ClientAction.Discard(PlayerId, tileToDiscard));
+                    }
+                    else if (actionType == ClientActionType.MingGan)
+                    {
+                        ExecuteMingGanLocally(targetTile);
+                        SortHand();
+                    }
                 }
-                else if (actionType == ClientActionType.Chi)
+                catch (OperationCanceledException)
                 {
-                    ExecuteChiLocally(targetTile, chiCombinations);
-                    await Task.Delay(500);
-                    SortHand(); // 吃碰后理牌，再决定打哪张
-                    TileData tileToDiscard = ChooseTileToDiscard();
-                    _hand.Remove(tileToDiscard);
-                    _server.SubmitAction(ClientAction.Discard(PlayerId, tileToDiscard));
-                }
-                else if (actionType == ClientActionType.MingGan)
-                {
-                    ExecuteMingGanLocally(targetTile);
-                    SortHand(); // 杠完理牌
-                    // 杠牌后服务器会重新分发岭上牌，所以这里不需要出牌
+                    // 超时 — OnTimeout 会处理手牌同步
                 }
             }
         }
@@ -186,6 +196,17 @@ namespace MahjongGame.Core.Agents
         public void OnSessionEnd(int[] finalScores)
         {
             Debug.Log($"[AI {PlayerId}] 对战结束");
+        }
+
+        public void OnTimeout(TileData autoDiscardedTile)
+        {
+            if (autoDiscardedTile != null)
+            {
+                var match = _hand.FirstOrDefault(
+                    t => t.TileSuit == autoDiscardedTile.TileSuit
+                      && t.Value == autoDiscardedTile.Value);
+                if (match != null) _hand.Remove(match);
+            }
         }
 
         // --- 本地内部逻辑 ---

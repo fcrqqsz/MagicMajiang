@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using UnityEngine;
 using MahjongGame.Core.Agents;
@@ -23,6 +24,10 @@ namespace MahjongGame.Core.Network
         private bool _isGameActive = false;
         private GameSession _session;
 
+        // 超时配置 (毫秒)
+        public int ActionTimeoutMs { get; set; } = 30000;
+        public int ResponseTimeoutMs { get; set; } = 10000;
+
         // 当前局结果 (供 GameManager 读取)
         public int WinnerId { get; private set; } = -1;
         public int WinFan { get; private set; }
@@ -36,6 +41,11 @@ namespace MahjongGame.Core.Network
 
         // 临时流转控制
         private bool _skipNextDraw = false;
+        private TileData _lastDrawnTile; // 记录当前摸牌，供超时自动出牌使用
+
+        // 服务端场面快照 + 取消令牌
+        private ServerGameState _gameState;
+        private CancellationTokenSource _turnCts;
 
         // 局结束事件，GameManager 监听此事件驱动多局循环
         public event System.Action OnRoundFinished;
@@ -53,6 +63,9 @@ namespace MahjongGame.Core.Network
             WinIsSelfDraw = false;
             LoserId = -1;
             IsDrawGame = false;
+
+            // 初始化服务端场面快照
+            _gameState = new ServerGameState(clients.Count);
 
             // 洗牌
             DeckManager.Instance.BuildWall(configs);
@@ -80,9 +93,35 @@ namespace MahjongGame.Core.Network
             {
                 await RunGameLoop();
             }
+            catch (TaskCanceledException)
+            {
+                Debug.Log("[GameServer] 游戏已被强制终止。");
+            }
             catch (Exception ex)
             {
                 Debug.LogError($"[GameServer] 游戏循环异常: {ex}");
+            }
+        }
+
+        public void StopGame()
+        {
+            _isGameActive = false;
+            
+            // 取消当前的回合等待 CTS
+            if (_turnCts != null && !_turnCts.IsCancellationRequested)
+            {
+                _turnCts.Cancel();
+            }
+
+            // 强制完成或者取消正在等待的 TaskCompletionSource
+            if (_pendingActionTcs != null && !_pendingActionTcs.Task.IsCompleted)
+            {
+                _pendingActionTcs.TrySetCanceled();
+            }
+
+            if (_responsesTcs != null && !_responsesTcs.Task.IsCompleted)
+            {
+                _responsesTcs.TrySetCanceled();
             }
         }
 
@@ -118,7 +157,35 @@ namespace MahjongGame.Core.Network
                 }
                 
                 client.OnGameStart(startingHand);
+                _gameState.InitHand(_clients.IndexOf(client), startingHand);
             }
+        }
+
+        /// <summary>
+        /// 带超时的 TCS 等待辅助方法。超时时调用 onTimeout 回调并用 fallback 值完成 TCS。
+        /// </summary>
+        private async Task<T> AwaitWithTimeout<T>(TaskCompletionSource<T> tcs, int timeoutMs, Action onTimeout, Func<T> fallbackFactory)
+        {
+            if (timeoutMs <= 0)
+                return await tcs.Task;
+
+            using (var cts = new CancellationTokenSource())
+            {
+                var timeoutTask = Task.Delay(timeoutMs, cts.Token);
+                var completed = await Task.WhenAny(tcs.Task, timeoutTask);
+
+                if (completed == timeoutTask && !tcs.Task.IsCompleted)
+                {
+                    onTimeout?.Invoke();
+                    tcs.TrySetResult(fallbackFactory());
+                }
+                else
+                {
+                    cts.Cancel(); // 正常完成，取消定时器避免泄漏
+                }
+            }
+
+            return await tcs.Task;
         }
 
         private async Task RunGameLoop()
@@ -136,9 +203,16 @@ namespace MahjongGame.Core.Network
                 // 1. 摸牌阶段
                 if (!_skipNextDraw)
                 {
-                    TileData drawnTile = DeckManager.Instance.DrawTile();
+                    _lastDrawnTile = DeckManager.Instance.DrawTile();
+                    _gameState.AddTile(_currentPlayerIndex, _lastDrawnTile);
+
+                    // 创建 CTS 并设置到当前玩家（在 OnTileDrawn 之前，让客户端拿到 token）
+                    _turnCts?.Dispose();
+                    _turnCts = new CancellationTokenSource();
+                    currentPlayer.TurnCancellationToken = _turnCts.Token;
+
                     // 这里发送给当前玩家具体牌数据
-                    currentPlayer.OnTileDrawn(drawnTile);
+                    currentPlayer.OnTileDrawn(_lastDrawnTile);
 
                     // 广播给其他人，某人摸牌了 (不包含具体牌数据)
                     for (int i = 0; i < _clients.Count; i++)
@@ -149,13 +223,32 @@ namespace MahjongGame.Core.Network
                         }
                     }
                 }
+                else
+                {
+                    _lastDrawnTile = null; // 吃碰后没有摸牌
+
+                    // 吃碰后也需要创建 CTS（等待出牌）
+                    _turnCts = new CancellationTokenSource();
+                    currentPlayer.TurnCancellationToken = _turnCts.Token;
+                }
                 _skipNextDraw = false;
 
-                // 2. 等待当前玩家出牌或自摸、暗杠
+                // 2. 等待当前玩家出牌或自摸、暗杠（带超时）
                 _pendingActionTcs = new TaskCompletionSource<ClientAction>();
-                
-                // 【等待客户端调用 SubmitAction】
-                ClientAction action = await _pendingActionTcs.Task;
+
+                TileData _autoDiscardCache = null;
+                ClientAction action = await AwaitWithTimeout(
+                    _pendingActionTcs,
+                    ActionTimeoutMs,
+                    onTimeout: () =>
+                    {
+                        _autoDiscardCache = _gameState.GetAutoDiscardTile(_currentPlayerIndex, _lastDrawnTile);
+                        Debug.LogWarning($"[GameServer] 玩家 {_currentPlayerIndex} 主回合超时，自动出牌: {_autoDiscardCache}");
+                        _turnCts.Cancel();
+                        currentPlayer.OnTimeout(_autoDiscardCache);
+                    },
+                    fallbackFactory: () => ClientAction.Discard(_currentPlayerIndex, _autoDiscardCache)
+                );
                 _pendingActionTcs = null;
 
                 if (action.ActionType == ClientActionType.Hu)
@@ -166,18 +259,28 @@ namespace MahjongGame.Core.Network
                 }
                 else if (action.ActionType == ClientActionType.AnGan || action.ActionType == ClientActionType.JiaGang)
                 {
-                    // 杠牌，广播动作，不下发牌直接重置回合（当前玩家继续摸岭上牌）
+                    // 杠牌，更新快照并广播动作
+                    _gameState.ApplyMeld(_currentPlayerIndex, action.ActionType, action.TargetTile, action.ChiCombinations);
                     BroadcastAction(action);
                     continue; // 直接重新循环
                 }
                 else if (action.ActionType == ClientActionType.Discard)
                 {
                     TileData discardedTile = action.TargetTile;
+                    _gameState.RemoveTile(action.PlayerId, discardedTile);
 
                     // 3. 广播他人打牌，并收集响应
                     _pendingResponses.Clear();
                     _responsesTcs = new TaskCompletionSource<bool>();
-                    
+
+                    // 创建响应阶段 CTS，设置到所有非当前玩家
+                    _turnCts = new CancellationTokenSource();
+                    for (int i = 0; i < _clients.Count; i++)
+                    {
+                        if (i != _currentPlayerIndex)
+                            _clients[i].TurnCancellationToken = _turnCts.Token;
+                    }
+
                     // 通知其他玩家
                     for (int i = 0; i < _clients.Count; i++)
                     {
@@ -187,8 +290,25 @@ namespace MahjongGame.Core.Network
                         }
                     }
 
-                    // 等待所有其他3家回复（如果有AI可能瞬间完成，本地玩家会等UI）
-                    await _responsesTcs.Task;
+                    // 等待所有其他3家回复（带超时）
+                    await AwaitWithTimeout(
+                        _responsesTcs,
+                        ResponseTimeoutMs,
+                        onTimeout: () =>
+                        {
+                            Debug.LogWarning("[GameServer] 响应收集超时，为未回复玩家自动填充 Skip");
+                            _turnCts.Cancel();
+                            for (int i = 0; i < _clients.Count; i++)
+                            {
+                                if (i != _currentPlayerIndex && !_pendingResponses.ContainsKey(i))
+                                {
+                                    _clients[i].OnTimeout(null);
+                                    _pendingResponses[i] = ClientAction.Skip(i);
+                                }
+                            }
+                        },
+                        fallbackFactory: () => true
+                    );
                     _responsesTcs = null;
 
                     // 4. 裁决响应优先级 (胡 > 碰/杠 > 吃)
@@ -203,16 +323,18 @@ namespace MahjongGame.Core.Network
                         }
                         else
                         {
-                            // 执行碰/杠/吃
+                            // 执行碰/杠/吃，更新快照
+                            _gameState.ApplyMeld(resolvedAction.PlayerId, resolvedAction.ActionType,
+                                resolvedAction.TargetTile, resolvedAction.ChiCombinations);
                             BroadcastAction(resolvedAction);
-                            
+
                             // 跳转回合
                             _currentPlayerIndex = resolvedAction.PlayerId;
-                            
+
                             if (resolvedAction.ActionType == ClientActionType.MingGan)
                             {
                                 // 杠牌需要摸岭上开花，不跳过摸牌
-                                _skipNextDraw = false; 
+                                _skipNextDraw = false;
                             }
                             else
                             {

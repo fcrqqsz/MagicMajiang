@@ -15,9 +15,10 @@
 
 ## Architecture
 **胖客户端，瘦服务端 (Fat Client, Thin Server)**:
-- `GameServer`: 仅负责洗牌、发牌、状态流转、并发仲裁
+- `GameServer`: 仅负责洗牌、发牌、状态流转、并发仲裁；维护 `ServerGameState` 手牌/副露快照
 - `LocalPlayerClient` / `SimpleAIClient`: 本地计算吃碰杠胡权限和算番，将意图发往服务端
 - 通过 `IPlayerClient` 接口统一本地玩家与 AI
+- **超时取消机制**: 服务端通过 `CancellationToken` 取消客户端 async 操作，`ServerGameState` 提供真实手牌兜底出牌
 
 **多局对战系统**:
 - `GameSession`: 管理多局状态（圈风轮转、门风分配、累计分数）
@@ -48,7 +49,8 @@ Assets/Scripts/
 │   ├── TileVisual.cs        # 单张牌视觉容器
 │   ├── Network/
 │   │   ├── Protocol.cs      # 通信数据结构 (ClientAction)
-│   │   ├── GameServer.cs    # 异步核心循环
+│   │   ├── GameServer.cs    # 异步核心循环 (含 CTS 管理)
+│   │   ├── ServerGameState.cs # 服务端手牌/副露快照 (超时兜底/重连)
 │   │   └── GameSession.cs   # 多局对战状态管理 (圈风/门风/计分)
 │   ├── Agents/
 │   │   ├── IPlayerClient.cs # 客户端代理接口
@@ -93,6 +95,9 @@ Assets/UI/                   # UI Toolkit 面板
 - `FanRuleRegistry` 是纯 C# 单例，属性懒加载，避免空引用
 - 胡牌计算使用多路径拆解算法，遍历所有方案取番数最大值
 - UI Toolkit 字体引用 `-unity-font-definition` (SDF 资产)，不用原始字体文件
+- **超时取消**: 客户端 async 方法通过 `CancellationToken` 实现可取消（`ct.Register(() => tcs.TrySetCanceled())`），外层统一 `catch (OperationCanceledException)`
+- **服务端快照**: `ServerGameState` 镜像每个玩家手牌/副露，超时时从快照取真实牌自动出牌，避免虚构兜底牌
+- `HandController.ForceRemoveTile()`: 超时自动出牌专用，移除牌到牌河但不触发 `OnTileDiscardedEvent` 避免竞态
 
 ### Debugging
 - `GameManager` 中 `useDebugHand` 可在 Inspector 配置测试牌型
@@ -111,6 +116,7 @@ Assets/UI/                   # UI Toolkit 面板
 - 结算手牌缩略图复盘
 - 异化牌视觉反馈
 - 对象池性能优化
+- ~~超时取消机制~~ (已完成: CancellationToken + ServerGameState)
 
 ## Reference Docs
 - `summary.md`: 项目进度快照与排故日志

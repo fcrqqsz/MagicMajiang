@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Threading;
 using MahjongGame.Core;
 
 namespace MahjongGame.Core.Agents
@@ -9,6 +10,11 @@ namespace MahjongGame.Core.Agents
     public interface IPlayerClient
     {
         int PlayerId { get; }
+
+        /// <summary>
+        /// 服务端在每个等待阶段前设置，客户端用于取消正在执行的 async 操作
+        /// </summary>
+        CancellationToken TurnCancellationToken { get; set; }
 
         /// <summary>
         /// 游戏开始时，服务端同步初始手牌给客户端
@@ -57,5 +63,11 @@ namespace MahjongGame.Core.Agents
         /// 整个对战结束，广播最终分数
         /// </summary>
         void OnSessionEnd(int[] finalScores);
+
+        /// <summary>
+        /// 服务端超时自动处理后，通知客户端清理UI状态并同步手牌
+        /// </summary>
+        /// <param name="autoDiscardedTile">服务端自动出的牌，null表示响应超时（跳过）</param>
+        void OnTimeout(TileData autoDiscardedTile);
     }
 }

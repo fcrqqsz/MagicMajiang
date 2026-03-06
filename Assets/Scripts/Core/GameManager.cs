@@ -31,6 +31,12 @@ namespace MahjongGame.Core
         public bool forceAIDiscard = false;
         public List<TileData> aiCheatDiscards = new List<TileData>();
 
+        [Header("Timeout")]
+        [Tooltip("主回合超时时间(秒)，0表示不超时")]
+        public float actionTimeout = 30f;
+        [Tooltip("响应收集超时时间(秒)，0表示不超时")]
+        public float responseTimeout = 10f;
+
         // 存储当前局各玩家的牌库配置
         public Dictionary<int, DeckConfig> ActiveConfigs { get; private set; } = new Dictionary<int, DeckConfig>();
 
@@ -43,6 +49,14 @@ namespace MahjongGame.Core
         void Awake()
         {
             Instance = this;
+        }
+
+        void OnDestroy()
+        {
+            if (_currentServer != null)
+            {
+                _currentServer.StopGame();
+            }
         }
 
         public OpponentViewController GetOpponentView(int playerId)
@@ -117,6 +131,8 @@ namespace MahjongGame.Core
 
             // 创建服务器和客户端
             _currentServer = new GameServer();
+            _currentServer.ActionTimeoutMs = (int)(actionTimeout * 1000);
+            _currentServer.ResponseTimeoutMs = (int)(responseTimeout * 1000);
             _clients = new List<IPlayerClient>();
 
             _clients.Add(new LocalPlayerClient(0, _currentServer, playerHandController));

@@ -27,13 +27,14 @@
     *   `DeckConfig.cs`: 玩家自定义牌库配置及异化值计算。
 *   **网络与代理 (`Core/Network/` & `Core/Agents/`)**:
     *   `Protocol.cs`: 客户端与服务端通信的数据结构 (`ClientAction`)。
-    *   `GameServer.cs`: 异步核心循环，管理单局状态与并发仲裁。
+    *   `GameServer.cs`: 异步核心循环，管理单局状态与并发仲裁。集成 `CancellationTokenSource` 管理回合取消。
+    *   `ServerGameState.cs`: 服务端手牌/副露快照。每次摸牌、出牌、副露时同步更新，超时时提供真实手牌自动出牌，未来可用于重连恢复。
     *   `GameSession.cs`: 多局对战状态管理（圈风轮转、门风分配、国标计分、局数追踪）。
-    *   `IPlayerClient.cs`: 客户端代理通用接口。
-    *   `SimpleAIClient.cs`: 规则化 AI 客户端。
-    *   `LocalPlayerClient.cs`: 本地真实玩家客户端，负责桥接 UI 与输入。
+    *   `IPlayerClient.cs`: 客户端代理通用接口。含 `CancellationToken TurnCancellationToken` 属性供服务端设置取消令牌。
+    *   `SimpleAIClient.cs`: 规则化 AI 客户端。async 方法支持 CancellationToken 取消。
+    *   `LocalPlayerClient.cs`: 本地真实玩家客户端，负责桥接 UI 与输入。async 方法支持 CancellationToken 取消。
 *   **表现层控制器 (MonoBehaviour)**:
-    *   `HandController.cs`: 管理 3D 手牌生成、布局、DoTween 动画及交互。
+    *   `HandController.cs`: 管理 3D 手牌生成、布局、DoTween 动画及交互。含 `ForceRemoveTile()` 超时出牌专用方法。
     *   `RiverController.cs`: 管理牌河的 3D 排布。
     *   `TileVisual.cs`: 单张牌的视觉容器，处理牌面图片切换。
     *   `TileResourceConfig.cs`: 基于 `ScriptableObject` 的资源索引表。

@@ -370,6 +370,31 @@ namespace MahjongGame.Core
             OnTileDiscardedEvent?.Invoke(tile.Data);
         }
 
+        /// <summary>
+        /// 强制移除一张牌（超时自动出牌用），不触发 OnTileDiscardedEvent
+        /// </summary>
+        public void ForceRemoveTile(TileData tileData)
+        {
+            var tile = _handTiles.FirstOrDefault(
+                t => t.Data.TileSuit == tileData.TileSuit && t.Data.Value == tileData.Value);
+            if (tile == null) return;
+
+            _handTiles.Remove(tile);
+            _selectedTile = null;
+            _lastDrawnTile = null;
+
+            if (myRiver != null)
+                myRiver.AddTileToRiver(tile);
+            else
+            {
+                tile.transform.DOKill();
+                Destroy(tile.gameObject);
+            }
+
+            SortHand();
+            UpdateHandPositions();
+        }
+
         public void SortHand()
         {
             _handTiles.Sort((a, b) =>
@@ -410,7 +435,7 @@ namespace MahjongGame.Core
             Melds.Clear();
         }
 
-        private bool _isInteractable = false; 
+        private bool _isInteractable = false;
         private Dictionary<int, List<MahjongLogic.WaitDetail>> _cachedWaitHints = new Dictionary<int, List<MahjongLogic.WaitDetail>>();
 
         public void SetInteractable(bool canInteract)

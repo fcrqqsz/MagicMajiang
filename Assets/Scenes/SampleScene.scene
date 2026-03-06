@@ -1097,6 +1097,7 @@ MonoBehaviour:
   rightOpponent: {fileID: 1258930456}
   topOpponent: {fileID: 1523404013}
   leftOpponent: {fileID: 93327062}
+  gameMode: 3
   useDebugHand: 1
   debugHand:
   - ID: 0
@@ -1185,6 +1186,8 @@ MonoBehaviour:
     OriginalOwnerID: 0
     IsModified: 1
     SpecialEffectID: 
+  actionTimeout: 30
+  responseTimeout: 10
 --- !u!4 &1461636647
 Transform:
   m_ObjectHideFlags: 0

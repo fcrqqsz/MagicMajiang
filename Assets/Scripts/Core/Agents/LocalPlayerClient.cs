@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using UnityEngine;
 using MahjongGame.Core.Network;
@@ -15,7 +16,8 @@ namespace MahjongGame.Core.Agents
     public class LocalPlayerClient : IPlayerClient
     {
         public int PlayerId { get; private set; }
-        
+        public CancellationToken TurnCancellationToken { get; set; }
+
         private IServer _server;
         private HandController _handController;
 
@@ -60,163 +62,183 @@ namespace MahjongGame.Core.Agents
 
         public async void OnTileDrawn(TileData drawnTile)
         {
-            // 表现层：摸牌动画
-            _handController.DrawCardData(drawnTile); 
-            await Task.Delay(300); // 稍微等待动画
-
-            var handData = _handController.GetHandData();
-            var melds = _handController.Melds;
-
-            // 1. 检查自摸、暗杠
-            var actions = ActionValidator.CheckSelfActions(handData, melds, drawnTile);
-            if (actions.HasAction)
+            var ct = TurnCancellationToken;
+            try
             {
-                bool actionTaken = false;
-                _isWaitingForUI = true;
-                
-                ActionPanelController.Instance.Show(actions, (choice) => 
+                // 表现层：摸牌动画
+                _handController.DrawCardData(drawnTile);
+                await Task.Delay(300, ct);
+
+                var handData = _handController.GetHandData();
+                var melds = _handController.Melds;
+
+                // 1. 检查自摸、暗杠
+                var actions = ActionValidator.CheckSelfActions(handData, melds, drawnTile);
+                if (actions.HasAction)
                 {
-                    if (!_isWaitingForUI) return;
+                    bool actionTaken = false;
+                    _isWaitingForUI = true;
 
-                    if (choice == "Hu")
+                    ActionPanelController.Instance.Show(actions, (choice) =>
                     {
-                        int totalFan;
-                        List<string> fanDetails;
-                        MahjongLogic.CheckWinWithFan(handData, melds, drawnTile, true, out totalFan, out fanDetails, _roundWind, _seatWind);
-                        
-                        var action = new ClientAction(PlayerId, ClientActionType.Hu, drawnTile);
-                        action.SetHuDetails(totalFan, fanDetails);
-                        _server.SubmitAction(action);
-                        actionTaken = true;
-                    }
-                    else if (choice == "Gan")
+                        if (!_isWaitingForUI) return;
+
+                        if (choice == "Hu")
+                        {
+                            int totalFan;
+                            List<string> fanDetails;
+                            MahjongLogic.CheckWinWithFan(handData, melds, drawnTile, true, out totalFan, out fanDetails, _roundWind, _seatWind);
+
+                            var action = new ClientAction(PlayerId, ClientActionType.Hu, drawnTile);
+                            action.SetHuDetails(totalFan, fanDetails);
+                            _server.SubmitAction(action);
+                            actionTaken = true;
+                        }
+                        else if (choice == "Gan")
+                        {
+                            var anGanOpts = _handController.GetAnGanOptions();
+                            if (anGanOpts.Count > 0)
+                            {
+                                _server.SubmitAction(new ClientAction(PlayerId, ClientActionType.AnGan, anGanOpts[0]));
+                            }
+                            else
+                            {
+                                var jiaGanOpts = _handController.GetJiaGangOptions();
+                                _server.SubmitAction(new ClientAction(PlayerId, ClientActionType.JiaGang, jiaGanOpts[0]));
+                            }
+                            actionTaken = true;
+                        }
+
+                        _isWaitingForUI = false;
+                        ActionPanelController.Instance.Hide();
+                    });
+
+                    while (_isWaitingForUI)
                     {
-                        // 简化：默认发送暗杠
-                        var anGanOpts = _handController.GetAnGanOptions();
-                        if (anGanOpts.Count > 0)
-                        {
-                            _server.SubmitAction(new ClientAction(PlayerId, ClientActionType.AnGan, anGanOpts[0]));
-                        }
-                        else
-                        {
-                            var jiaGanOpts = _handController.GetJiaGangOptions();
-                            _server.SubmitAction(new ClientAction(PlayerId, ClientActionType.JiaGang, jiaGanOpts[0]));
-                        }
-                        actionTaken = true;
+                        ct.ThrowIfCancellationRequested();
+                        await Task.Yield();
                     }
-                    
-                    _isWaitingForUI = false;
-                    ActionPanelController.Instance.Hide();
-                });
 
-                // 等待 UI 操作
-                while (_isWaitingForUI) await Task.Yield();
+                    if (actionTaken) return;
+                }
 
-                if (actionTaken) return; // 如果玩家选择了胡或杠，就直接返回，不进入打牌阶段
+                // 2. 等待玩家打出牌
+                _handController.SetInteractable(true);
+
+                var tcs = new TaskCompletionSource<TileData>();
+                Action<TileData> onDiscard = (tile) => tcs.TrySetResult(tile);
+                using (ct.Register(() => tcs.TrySetCanceled()))
+                {
+                    _handController.OnTileDiscardedEvent += onDiscard;
+                    try
+                    {
+                        var discardedTile = await tcs.Task;
+                        _handController.OnTileDiscardedEvent -= onDiscard;
+                        _handController.SetInteractable(false);
+                        _server.SubmitAction(ClientAction.Discard(PlayerId, discardedTile));
+                    }
+                    catch (TaskCanceledException)
+                    {
+                        _handController.OnTileDiscardedEvent -= onDiscard;
+                        throw;
+                    }
+                }
             }
-
-            // 2. 等待玩家打出牌
-            _handController.SetInteractable(true);
-            
-            // 这里我们需要一种机制来等待玩家在 3D 场景中点击某张牌并打出
-            // 暂用一个轮询来模拟等待（在实际重构中，可以让 HandController 在打牌时触发事件）
-            TileData discardedTile = null;
-            
-            // 为了保持接口简单，我们假设向 HandController 注册了一个一次性的回调
-            var tcs = new TaskCompletionSource<TileData>();
-            Action<TileData> onDiscard = (tile) => tcs.TrySetResult(tile);
-            
-            _handController.OnTileDiscardedEvent += onDiscard;
-            discardedTile = await tcs.Task;
-            _handController.OnTileDiscardedEvent -= onDiscard;
-
-            _handController.SetInteractable(false);
-            
-            _server.SubmitAction(ClientAction.Discard(PlayerId, discardedTile));
+            catch (OperationCanceledException)
+            {
+                // 超时取消 — OnTimeout 已处理 UI 清理和手牌同步
+                _handController.SetInteractable(false);
+            }
         }
 
         public async void OnOtherPlayerDiscarded(int discarderId, TileData discardedTile)
         {
-            _lastDiscarderId = discarderId; // 记录最后出牌人
-            
-            // 表现层：其他玩家打出牌，渲染到其牌河
-            var view = GameManager.Instance.GetOpponentView(discarderId);
-            if (view != null) view.DiscardTile(discardedTile);
-
-            var handData = _handController.GetHandData();
-            var melds = _handController.Melds;
-            bool isNextPlayer = (discarderId + 1) % 4 == PlayerId;
-
-            var actions = ActionValidator.CheckActions(handData, melds, discardedTile, isNextPlayer);
-
-            if (actions.HasAction)
+            var ct = TurnCancellationToken;
+            try
             {
-                _isWaitingForUI = true;
-                bool actionTaken = false;
+                _lastDiscarderId = discarderId;
 
-                ActionPanelController.Instance.Show(actions, (choice) => 
+                // 表现层：其他玩家打出牌，渲染到其牌河
+                var view = GameManager.Instance.GetOpponentView(discarderId);
+                if (view != null) view.DiscardTile(discardedTile);
+
+                var handData = _handController.GetHandData();
+                var melds = _handController.Melds;
+                bool isNextPlayer = (discarderId + 1) % 4 == PlayerId;
+
+                var actions = ActionValidator.CheckActions(handData, melds, discardedTile, isNextPlayer);
+
+                if (actions.HasAction)
                 {
-                    if (!_isWaitingForUI) return;
+                    _isWaitingForUI = true;
+                    bool actionTaken = false;
 
-                    if (choice == "Hu")
+                    ActionPanelController.Instance.Show(actions, (choice) =>
                     {
-                        int totalFan;
-                        List<string> fanDetails;
-                        MahjongLogic.CheckWinWithFan(handData, melds, discardedTile, false, out totalFan, out fanDetails, _roundWind, _seatWind);
-                        
-                        var action = new ClientAction(PlayerId, ClientActionType.Hu, discardedTile);
-                        action.SetHuDetails(totalFan, fanDetails);
-                        _server.SubmitAction(action);
-                        actionTaken = true;
-                    }
-                    else if (choice == "Pon")
-                    {
-                        _server.SubmitAction(new ClientAction(PlayerId, ClientActionType.Pon, discardedTile));
-                        actionTaken = true;
-                    }
-                    else if (choice == "Gan")
-                    {
-                        _server.SubmitAction(new ClientAction(PlayerId, ClientActionType.MingGan, discardedTile));
-                        actionTaken = true;
-                    }
-                    else if (choice == "Chi")
-                    {
-                        // 获取所有能吃的组合
-                        var chiOptions = ActionValidator.GetChiCombinations(handData, discardedTile);
-                        
-                        if (chiOptions.Count == 1)
+                        if (!_isWaitingForUI) return;
+
+                        if (choice == "Hu")
                         {
-                            // 只有一种吃法，直接提交
-                            _server.SubmitAction(new ClientAction(PlayerId, ClientActionType.Chi, discardedTile, chiOptions[0]));
+                            int totalFan;
+                            List<string> fanDetails;
+                            MahjongLogic.CheckWinWithFan(handData, melds, discardedTile, false, out totalFan, out fanDetails, _roundWind, _seatWind);
+
+                            var action = new ClientAction(PlayerId, ClientActionType.Hu, discardedTile);
+                            action.SetHuDetails(totalFan, fanDetails);
+                            _server.SubmitAction(action);
                             actionTaken = true;
                         }
-                        else if (chiOptions.Count > 1)
+                        else if (choice == "Pon")
                         {
-                            // 多种吃法，显示二级菜单
-                            // 将 int[] 转换为显示字符串，例如 "2,3"
-                            List<string> optionStrs = chiOptions.Select(arr => $"{arr[0]},{arr[1]}").ToList();
-                            
-                            ActionPanelController.Instance.ShowChiSelection(optionStrs, (selectedIndex) => 
-                            {
-                                _server.SubmitAction(new ClientAction(PlayerId, ClientActionType.Chi, discardedTile, chiOptions[selectedIndex]));
-                                // 注意：这里是回调内部，不能直接设置外部的 actionTaken 变量来跳出外部循环
-                                // 但因为 ShowChiSelection 会关闭面板，我们可以在这里直接结束等待
-                                _isWaitingForUI = false; 
-                            });
-                            return; // 退出当前的 lambda，等待二级菜单回调
+                            _server.SubmitAction(new ClientAction(PlayerId, ClientActionType.Pon, discardedTile));
+                            actionTaken = true;
                         }
+                        else if (choice == "Gan")
+                        {
+                            _server.SubmitAction(new ClientAction(PlayerId, ClientActionType.MingGan, discardedTile));
+                            actionTaken = true;
+                        }
+                        else if (choice == "Chi")
+                        {
+                            var chiOptions = ActionValidator.GetChiCombinations(handData, discardedTile);
+
+                            if (chiOptions.Count == 1)
+                            {
+                                _server.SubmitAction(new ClientAction(PlayerId, ClientActionType.Chi, discardedTile, chiOptions[0]));
+                                actionTaken = true;
+                            }
+                            else if (chiOptions.Count > 1)
+                            {
+                                List<string> optionStrs = chiOptions.Select(arr => $"{arr[0]},{arr[1]}").ToList();
+
+                                ActionPanelController.Instance.ShowChiSelection(optionStrs, (selectedIndex) =>
+                                {
+                                    _server.SubmitAction(new ClientAction(PlayerId, ClientActionType.Chi, discardedTile, chiOptions[selectedIndex]));
+                                    _isWaitingForUI = false;
+                                });
+                                return;
+                            }
+                        }
+
+                        _isWaitingForUI = false;
+                        ActionPanelController.Instance.Hide();
+                    });
+
+                    while (_isWaitingForUI)
+                    {
+                        ct.ThrowIfCancellationRequested();
+                        await Task.Yield();
                     }
 
-                    _isWaitingForUI = false;
-                    ActionPanelController.Instance.Hide();
-                });
+                    if (actionTaken) return;
+                }
 
-                while (_isWaitingForUI) await Task.Yield();
-
-                if (actionTaken) return;
+                _server.SubmitAction(ClientAction.Skip(PlayerId));
             }
-
-            _server.SubmitAction(ClientAction.Skip(PlayerId));
+            catch (OperationCanceledException)
+            {
+                // 响应超时 — 服务端自动填充 Skip
+            }
         }
 
         public void OnActionResolved(int actionPlayerId, ClientActionType actionType, TileData targetTile, int[] chiCombinations)
@@ -280,15 +302,32 @@ namespace MahjongGame.Core.Agents
 
         private async void WaitForDiscardAfterAction()
         {
-            var tcs = new TaskCompletionSource<TileData>();
-            Action<TileData> onDiscard = (tile) => tcs.TrySetResult(tile);
-            
-            _handController.OnTileDiscardedEvent += onDiscard;
-            TileData discardedTile = await tcs.Task;
-            _handController.OnTileDiscardedEvent -= onDiscard;
-
-            _handController.SetInteractable(false);
-            _server.SubmitAction(ClientAction.Discard(PlayerId, discardedTile));
+            var ct = TurnCancellationToken;
+            try
+            {
+                var tcs = new TaskCompletionSource<TileData>();
+                Action<TileData> onDiscard = (tile) => tcs.TrySetResult(tile);
+                using (ct.Register(() => tcs.TrySetCanceled()))
+                {
+                    _handController.OnTileDiscardedEvent += onDiscard;
+                    try
+                    {
+                        var discardedTile = await tcs.Task;
+                        _handController.OnTileDiscardedEvent -= onDiscard;
+                        _handController.SetInteractable(false);
+                        _server.SubmitAction(ClientAction.Discard(PlayerId, discardedTile));
+                    }
+                    catch (TaskCanceledException)
+                    {
+                        _handController.OnTileDiscardedEvent -= onDiscard;
+                        throw;
+                    }
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                _handController.SetInteractable(false);
+            }
         }
 
         public void OnDrawGame()
@@ -321,6 +360,21 @@ namespace MahjongGame.Core.Agents
         public void OnSessionEnd(int[] finalScores)
         {
             Debug.Log($"[LocalPlayer] 对战结束 - 分数: {string.Join(",", finalScores)}");
+        }
+
+        public void OnTimeout(TileData autoDiscardedTile)
+        {
+            _isWaitingForUI = false;
+            ActionPanelController.Instance.Hide();
+            _handController.SetInteractable(false);
+
+            // 同步手牌：移除被自动出的牌（视觉+数据）
+            if (autoDiscardedTile != null)
+            {
+                _handController.ForceRemoveTile(autoDiscardedTile);
+            }
+
+            Debug.LogWarning($"[LocalPlayer] 操作超时，自动出牌: {autoDiscardedTile}");
         }
     }
 }
