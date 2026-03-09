@@ -127,10 +127,11 @@ namespace MahjongGame.Core.Network
 
         private void DealStartingHands()
         {
-            foreach (var client in _clients)
+            for (int ci = 0; ci < _clients.Count; ci++)
             {
+                var client = _clients[ci];
                 List<TileData> startingHand = new List<TileData>();
-                
+
                 bool useDebug = GameManager.Instance != null && GameManager.Instance.useDebugHand && client is LocalPlayerClient;
 
                 if (useDebug)
@@ -141,7 +142,7 @@ namespace MahjongGame.Core.Network
                         var t = debugHand[i];
                         startingHand.Add(new TileData(t.TileSuit, t.Value, t.OriginalOwnerID));
                     }
-                    
+
                     int remaining = 13 - startingHand.Count;
                     for (int i = 0; i < remaining; i++)
                     {
@@ -155,9 +156,9 @@ namespace MahjongGame.Core.Network
                         startingHand.Add(DeckManager.Instance.DrawTile());
                     }
                 }
-                
+
                 client.OnGameStart(startingHand);
-                _gameState.InitHand(_clients.IndexOf(client), startingHand);
+                _gameState.InitHand(ci, startingHand);
             }
         }
 
@@ -228,6 +229,7 @@ namespace MahjongGame.Core.Network
                     _lastDrawnTile = null; // 吃碰后没有摸牌
 
                     // 吃碰后也需要创建 CTS（等待出牌）
+                    _turnCts?.Dispose();
                     _turnCts = new CancellationTokenSource();
                     currentPlayer.TurnCancellationToken = _turnCts.Token;
                 }
@@ -274,6 +276,7 @@ namespace MahjongGame.Core.Network
                     _responsesTcs = new TaskCompletionSource<bool>();
 
                     // 创建响应阶段 CTS，设置到所有非当前玩家
+                    _turnCts?.Dispose();
                     _turnCts = new CancellationTokenSource();
                     for (int i = 0; i < _clients.Count; i++)
                     {
