@@ -1,8 +1,8 @@
 using System.Threading.Tasks;
 using UnityEngine;
-using SuperMajiang.Network.Interfaces;
+using MahjongGame.Core.Network.Interfaces;
 
-namespace SuperMajiang.Network.Mock
+namespace MahjongGame.Core.Network.Mock
 {
     public class MockAuthService : IAuthService
     {

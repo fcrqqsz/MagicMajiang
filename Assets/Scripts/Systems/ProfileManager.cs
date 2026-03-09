@@ -1,31 +1,30 @@
 using System.IO;
 using UnityEngine;
-using SuperMajiang.Network.Data;
+using MahjongGame.Core.Network.Data;
 
-namespace SuperMajiang.Systems
+namespace MahjongGame.Systems
 {
-    public class ProfileManager : MonoBehaviour
+    public class ProfileManager
     {
-        public static ProfileManager Instance { get; private set; }
+        private static ProfileManager _instance;
+        public static ProfileManager Instance
+        {
+            get
+            {
+                if (_instance == null)
+                    _instance = new ProfileManager();
+                return _instance;
+            }
+        }
 
         public PlayerProfile CurrentProfile { get; private set; }
-        
-        private string profilePath;
 
-        private void Awake()
+        private readonly string profilePath;
+
+        private ProfileManager()
         {
-            if (Instance == null)
-            {
-                Instance = this;
-                transform.SetParent(null);
-                DontDestroyOnLoad(gameObject);
-                profilePath = Path.Combine(Application.persistentDataPath, "profile.json");
-                LoadProfile();
-            }
-            else
-            {
-                Destroy(gameObject);
-            }
+            profilePath = Path.Combine(Application.persistentDataPath, "profile.json");
+            LoadProfile();
         }
 
         public void LoadProfile()

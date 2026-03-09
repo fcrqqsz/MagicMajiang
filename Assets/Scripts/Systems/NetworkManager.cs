@@ -1,10 +1,12 @@
+using System;
 using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.SceneManagement;
-using SuperMajiang.Network.Interfaces;
-using SuperMajiang.Network.Mock;
+using MahjongGame.Core;
+using MahjongGame.Core.Network.Interfaces;
+using MahjongGame.Core.Network.Mock;
 
-namespace SuperMajiang.Systems
+namespace MahjongGame.Systems
 {
     public class NetworkManager : MonoBehaviour
     {
@@ -20,7 +22,7 @@ namespace SuperMajiang.Systems
                 Instance = this;
                 transform.SetParent(null);
                 DontDestroyOnLoad(gameObject);
-                
+
                 // Initialize Mock Services
                 AuthService = new MockAuthService();
                 MatchmakingService = new MockMatchmakingService();
@@ -34,59 +36,84 @@ namespace SuperMajiang.Systems
         private void Start()
         {
             // Auto load login scene additively
-            LoadSceneAdditiveAsync("01_Login");
+            _ = LoadSceneAdditiveAsync(SceneNames.Login);
         }
 
-        public async void LoadSceneAdditiveAsync(string sceneName)
+        public async Task LoadSceneAdditiveAsync(string sceneName)
         {
-            if (LoadingScreenController.Instance != null)
-                LoadingScreenController.Instance.Show();
-
-            AsyncOperation asyncLoad = SceneManager.LoadSceneAsync(sceneName, LoadSceneMode.Additive);
-            
-            while (!asyncLoad.isDone)
+            try
             {
-                await Task.Yield();
-            }
+                if (LoadingScreenController.Instance != null)
+                    LoadingScreenController.Instance.Show();
 
-            if (LoadingScreenController.Instance != null)
-                LoadingScreenController.Instance.Hide();
-        }
+                AsyncOperation asyncLoad = SceneManager.LoadSceneAsync(sceneName, LoadSceneMode.Additive);
 
-        public async void UnloadSceneAsync(string sceneName)
-        {
-            AsyncOperation asyncUnload = SceneManager.UnloadSceneAsync(sceneName);
-            if (asyncUnload != null)
-            {
-                while (!asyncUnload.isDone)
+                while (!asyncLoad.isDone)
                 {
                     await Task.Yield();
                 }
+
+                if (LoadingScreenController.Instance != null)
+                    LoadingScreenController.Instance.Hide();
+            }
+            catch (Exception e)
+            {
+                Debug.LogError($"Failed to load scene '{sceneName}': {e.Message}");
+                if (LoadingScreenController.Instance != null)
+                    LoadingScreenController.Instance.Hide();
+            }
+        }
+
+        public async Task UnloadSceneAsync(string sceneName)
+        {
+            try
+            {
+                AsyncOperation asyncUnload = SceneManager.UnloadSceneAsync(sceneName);
+                if (asyncUnload != null)
+                {
+                    while (!asyncUnload.isDone)
+                    {
+                        await Task.Yield();
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                Debug.LogError($"Failed to unload scene '{sceneName}': {e.Message}");
             }
         }
 
         public async Task LoadSceneAndUnloadCurrentAsync(string sceneToLoad, string sceneToUnload)
         {
-            if (LoadingScreenController.Instance != null)
-                LoadingScreenController.Instance.Show();
-
-            AsyncOperation asyncLoad = SceneManager.LoadSceneAsync(sceneToLoad, LoadSceneMode.Additive);
-            while (!asyncLoad.isDone)
+            try
             {
-                await Task.Yield();
-            }
+                if (LoadingScreenController.Instance != null)
+                    LoadingScreenController.Instance.Show();
 
-            AsyncOperation asyncUnload = SceneManager.UnloadSceneAsync(sceneToUnload);
-            if (asyncUnload != null)
-            {
-                while (!asyncUnload.isDone)
+                AsyncOperation asyncLoad = SceneManager.LoadSceneAsync(sceneToLoad, LoadSceneMode.Additive);
+                while (!asyncLoad.isDone)
                 {
                     await Task.Yield();
                 }
-            }
 
-            if (LoadingScreenController.Instance != null)
-                LoadingScreenController.Instance.Hide();
+                AsyncOperation asyncUnload = SceneManager.UnloadSceneAsync(sceneToUnload);
+                if (asyncUnload != null)
+                {
+                    while (!asyncUnload.isDone)
+                    {
+                        await Task.Yield();
+                    }
+                }
+
+                if (LoadingScreenController.Instance != null)
+                    LoadingScreenController.Instance.Hide();
+            }
+            catch (Exception e)
+            {
+                Debug.LogError($"Failed scene transition '{sceneToLoad}' <- '{sceneToUnload}': {e.Message}");
+                if (LoadingScreenController.Instance != null)
+                    LoadingScreenController.Instance.Hide();
+            }
         }
     }
 }

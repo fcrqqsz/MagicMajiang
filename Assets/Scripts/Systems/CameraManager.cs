@@ -1,7 +1,8 @@
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using MahjongGame.Core;
 
-namespace SuperMajiang.Systems
+namespace MahjongGame.Systems
 {
     public class CameraManager : MonoBehaviour
     {
@@ -37,16 +38,12 @@ namespace SuperMajiang.Systems
         {
             if (PersistentCamera == null) return;
 
-            // Define which scenes need the persistent camera and which have their own
-            if (scene.name == "03_Game")
+            if (scene.name == SceneNames.Game)
             {
-                // Game scene has its own 3D camera, so we disable the persistent one
-                // to prevent rendering overlap and save performance.
                 PersistentCamera.enabled = false;
             }
-            else if (scene.name == "01_Login" || scene.name == "02_MainLobby")
+            else if (scene.name == SceneNames.Login || scene.name == SceneNames.MainLobby)
             {
-                // UI only scenes need the persistent camera to render the background and UI
                 PersistentCamera.enabled = true;
             }
         }

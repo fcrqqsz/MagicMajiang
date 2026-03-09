@@ -1,8 +1,9 @@
 using UnityEngine;
 using UnityEngine.UIElements;
-using SuperMajiang.Systems;
+using MahjongGame.Core;
+using MahjongGame.Systems;
 
-namespace SuperMajiang.UI
+namespace MahjongGame.UI
 {
     public class LoginPanelController : MonoBehaviour
     {
@@ -41,8 +42,14 @@ namespace SuperMajiang.UI
 
         private async void OnLoginClicked()
         {
+            if (NetworkManager.Instance == null)
+            {
+                Debug.LogError("NetworkManager not ready");
+                return;
+            }
+
             if (loginButton != null) loginButton.SetEnabled(false);
-            
+
             string user = usernameInput != null ? usernameInput.value : "";
             string pass = passwordInput != null ? passwordInput.value : "";
 
@@ -50,8 +57,7 @@ namespace SuperMajiang.UI
 
             if (success)
             {
-                // Unload login and load main lobby
-                await NetworkManager.Instance.LoadSceneAndUnloadCurrentAsync("02_MainLobby", "01_Login");
+                await NetworkManager.Instance.LoadSceneAndUnloadCurrentAsync(SceneNames.MainLobby, SceneNames.Login);
             }
             else
             {

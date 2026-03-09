@@ -1,7 +1,7 @@
 using UnityEngine;
 using UnityEngine.UIElements;
 
-namespace SuperMajiang.Systems
+namespace MahjongGame.Systems
 {
     public class LoadingScreenController : MonoBehaviour
     {
@@ -30,11 +30,16 @@ namespace SuperMajiang.Systems
             if (document == null)
                 document = GetComponent<UIDocument>();
 
-            if (document != null && document.rootVisualElement != null)
+            if (document != null)
             {
-                root = document.rootVisualElement;
-                loadingContainer = root.Q<VisualElement>("LoadingContainer");
-                Hide();
+                document.sortingOrder = 1000;
+
+                if (document.rootVisualElement != null)
+                {
+                    root = document.rootVisualElement;
+                    loadingContainer = root.Q<VisualElement>("LoadingContainer");
+                    Hide();
+                }
             }
         }
 

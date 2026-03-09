@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace SuperMajiang.Network.Data
+namespace MahjongGame.Core.Network.Data
 {
     [System.Serializable]
     public class PlayerProfile

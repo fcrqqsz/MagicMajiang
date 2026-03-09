@@ -1,6 +1,6 @@
 using System.Threading.Tasks;
 
-namespace SuperMajiang.Network.Interfaces
+namespace MahjongGame.Core.Network.Interfaces
 {
     public interface IAuthService
     {

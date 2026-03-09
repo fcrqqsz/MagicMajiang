@@ -1,8 +1,9 @@
 using UnityEngine;
 using UnityEngine.UIElements;
-using SuperMajiang.Systems;
+using MahjongGame.Core;
+using MahjongGame.Systems;
 
-namespace SuperMajiang.UI
+namespace MahjongGame.UI
 {
     public class LobbyController : MonoBehaviour
     {
@@ -23,6 +24,10 @@ namespace SuperMajiang.UI
         private Label welcomeLabel;
         private Button matchmakingButton;
 
+        private void OnTabHomeClicked() => ShowTab("Home");
+        private void OnTabWorkshopClicked() => ShowTab("Workshop");
+        private void OnTabSettingsClicked() => ShowTab("Settings");
+
         private void OnEnable()
         {
             if (document == null)
@@ -42,15 +47,15 @@ namespace SuperMajiang.UI
             welcomeLabel = root.Q<Label>("WelcomeLabel");
             matchmakingButton = root.Q<Button>("MatchmakingButton");
 
-            if (tabHome != null) tabHome.clicked += () => ShowTab("Home");
-            if (tabWorkshop != null) tabWorkshop.clicked += () => ShowTab("Workshop");
-            if (tabSettings != null) tabSettings.clicked += () => ShowTab("Settings");
+            if (tabHome != null) tabHome.clicked += OnTabHomeClicked;
+            if (tabWorkshop != null) tabWorkshop.clicked += OnTabWorkshopClicked;
+            if (tabSettings != null) tabSettings.clicked += OnTabSettingsClicked;
 
             if (matchmakingButton != null) matchmakingButton.clicked += OnMatchmakingClicked;
 
             if (ProfileManager.Instance != null && ProfileManager.Instance.CurrentProfile != null)
             {
-                if (welcomeLabel != null) 
+                if (welcomeLabel != null)
                     welcomeLabel.text = $"Welcome, {ProfileManager.Instance.CurrentProfile.Nickname}";
             }
 
@@ -59,6 +64,9 @@ namespace SuperMajiang.UI
 
         private void OnDisable()
         {
+            if (tabHome != null) tabHome.clicked -= OnTabHomeClicked;
+            if (tabWorkshop != null) tabWorkshop.clicked -= OnTabWorkshopClicked;
+            if (tabSettings != null) tabSettings.clicked -= OnTabSettingsClicked;
             if (matchmakingButton != null) matchmakingButton.clicked -= OnMatchmakingClicked;
         }
 
@@ -87,6 +95,12 @@ namespace SuperMajiang.UI
 
         private async void OnMatchmakingClicked()
         {
+            if (NetworkManager.Instance == null)
+            {
+                Debug.LogError("NetworkManager not ready");
+                return;
+            }
+
             if (matchmakingButton != null) matchmakingButton.SetEnabled(false);
 
             string roomId = await NetworkManager.Instance.MatchmakingService.FindRoomAsync();
@@ -94,8 +108,7 @@ namespace SuperMajiang.UI
             if (!string.IsNullOrEmpty(roomId))
             {
                 Debug.Log($"Joining Room: {roomId}");
-                // In full implementation, we'd pass room context to the Game Scene or Room Scene.
-                await NetworkManager.Instance.LoadSceneAndUnloadCurrentAsync("03_Game", "02_MainLobby");
+                await NetworkManager.Instance.LoadSceneAndUnloadCurrentAsync(SceneNames.Game, SceneNames.MainLobby);
             }
             else
             {

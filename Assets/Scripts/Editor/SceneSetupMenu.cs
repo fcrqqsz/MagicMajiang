@@ -2,6 +2,8 @@ using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using System.IO;
+using System.Collections.Generic;
+using System.Linq;
 
 public class SceneSetupMenu
 {
@@ -43,15 +45,28 @@ public class SceneSetupMenu
             Debug.Log($"Created {newGameScene}");
         }
 
-        // Add to build settings
-        var buildScenes = new EditorBuildSettingsScene[4];
-        buildScenes[0] = new EditorBuildSettingsScene("Assets/Scenes/00_Persistent.unity", true);
-        buildScenes[1] = new EditorBuildSettingsScene("Assets/Scenes/01_Login.unity", true);
-        buildScenes[2] = new EditorBuildSettingsScene("Assets/Scenes/02_MainLobby.unity", true);
-        buildScenes[3] = new EditorBuildSettingsScene("Assets/Scenes/03_Game.unity", true);
+        // Merge with existing build settings instead of overwriting
+        var requiredScenes = new string[]
+        {
+            "Assets/Scenes/00_Persistent.unity",
+            "Assets/Scenes/01_Login.unity",
+            "Assets/Scenes/02_MainLobby.unity",
+            "Assets/Scenes/03_Game.unity"
+        };
 
-        EditorBuildSettings.scenes = buildScenes;
-        Debug.Log("Build settings updated with 4 scenes.");
+        var existingScenes = EditorBuildSettings.scenes.ToList();
+        var existingPaths = new HashSet<string>(existingScenes.Select(s => s.path));
+
+        foreach (string scenePath in requiredScenes)
+        {
+            if (!existingPaths.Contains(scenePath))
+            {
+                existingScenes.Add(new EditorBuildSettingsScene(scenePath, true));
+            }
+        }
+
+        EditorBuildSettings.scenes = existingScenes.ToArray();
+        Debug.Log($"Build settings updated. Total scenes: {existingScenes.Count}");
         AssetDatabase.SaveAssets();
     }
 }
