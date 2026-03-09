@@ -1,7 +1,7 @@
 # GEMINI.md - SuperMajiang Project Context
 
 ## Project Overview
-**SuperMajiang** is a single-player Roguelike Mahjong game built with Unity.
+**SuperMajiang** is a Roguelike Mahjong game built with Unity, currently single-player but designed to support multiplayer online in the future.
 *   **Core Rules:** Based on Chinese Official Mahjong (MCR/Guobiao) with 81 scoring elements (Fan).
 *   **Key Features:**
     *   **Roguelike Talents:** Ability to modify game rules via a talent system.
