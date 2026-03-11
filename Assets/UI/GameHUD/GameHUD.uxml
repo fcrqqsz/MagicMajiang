@@ -1,0 +1,57 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" editor-extension-mode="False">
+    <Style src="project://database/Assets/UI/GameHUD/GameHUDStyles.uss" />
+    <ui:VisualElement name="HUDRoot" class="hud-root" picking-mode="Ignore">
+
+        <!-- 左上角信息栏 -->
+        <ui:VisualElement name="InfoBar" class="info-bar" picking-mode="Ignore">
+            <ui:Label name="InfoLabel" text="单局-余136张" class="info-label" picking-mode="Ignore" />
+        </ui:VisualElement>
+
+        <!-- 中央菱形 -->
+        <ui:VisualElement name="DiamondWrapper" class="diamond-wrapper" picking-mode="Ignore">
+            <ui:VisualElement name="Diamond" class="diamond" picking-mode="Ignore">
+
+                <!-- 上方座位 (对家 index=2) -->
+                <ui:VisualElement name="SeatTop" class="seat seat-top" picking-mode="Ignore">
+                    <ui:VisualElement name="GlowTop" class="glow" picking-mode="Ignore" />
+                    <ui:Label name="WindTop" text="北" class="wind-label" picking-mode="Ignore" />
+                    <ui:Label name="ScoreTop" text="0" class="score-label" picking-mode="Ignore" />
+                </ui:VisualElement>
+
+                <!-- 左侧座位 (上家 index=3) -->
+                <ui:VisualElement name="SeatLeft" class="seat seat-left" picking-mode="Ignore">
+                    <ui:VisualElement name="GlowLeft" class="glow" picking-mode="Ignore" />
+                    <ui:Label name="WindLeft" text="西" class="wind-label" picking-mode="Ignore" />
+                    <ui:Label name="ScoreLeft" text="0" class="score-label" picking-mode="Ignore" />
+                </ui:VisualElement>
+
+                <!-- 中心倒计时 -->
+                <ui:VisualElement name="TimerCenter" class="timer-center" picking-mode="Ignore">
+                    <ui:VisualElement name="ArcTop" class="arc-segment arc-top" picking-mode="Ignore" />
+                    <ui:VisualElement name="ArcRight" class="arc-segment arc-right" picking-mode="Ignore" />
+                    <ui:VisualElement name="ArcBottom" class="arc-segment arc-bottom" picking-mode="Ignore" />
+                    <ui:VisualElement name="ArcLeft" class="arc-segment arc-left" picking-mode="Ignore" />
+                    <ui:VisualElement name="TimerInner" class="timer-inner" picking-mode="Ignore">
+                        <ui:Label name="TimerText" text="30" class="timer-text" picking-mode="Ignore" />
+                    </ui:VisualElement>
+                </ui:VisualElement>
+
+                <!-- 右侧座位 (下家 index=1) -->
+                <ui:VisualElement name="SeatRight" class="seat seat-right" picking-mode="Ignore">
+                    <ui:VisualElement name="GlowRight" class="glow" picking-mode="Ignore" />
+                    <ui:Label name="WindRight" text="东" class="wind-label" picking-mode="Ignore" />
+                    <ui:Label name="ScoreRight" text="0" class="score-label" picking-mode="Ignore" />
+                </ui:VisualElement>
+
+                <!-- 下方座位 (自己 index=0) -->
+                <ui:VisualElement name="SeatBottom" class="seat seat-bottom" picking-mode="Ignore">
+                    <ui:VisualElement name="GlowBottom" class="glow" picking-mode="Ignore" />
+                    <ui:Label name="WindBottom" text="南" class="wind-label" picking-mode="Ignore" />
+                    <ui:Label name="ScoreBottom" text="0" class="score-label" picking-mode="Ignore" />
+                </ui:VisualElement>
+
+            </ui:VisualElement>
+        </ui:VisualElement>
+
+    </ui:VisualElement>
+</ui:UXML>

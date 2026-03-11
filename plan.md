@@ -29,8 +29,9 @@
     *   [x] 核心算番支持：遍历手牌提供打出某张牌后的听牌列表及最大番数 (`MahjongLogic.GetWaitHints`)。
     *   [x] UI Toolkit 表现：实现 `WaitHintPanel` 横向列表，并在玩家点击选中牌时动态展示。
 *   **大厅卡组与设置对接 (Lobby Integration)**:
-    *   [ ] 将目前在 Game 场景内的 `DeckEditor` 迁移到 `02_MainLobby` 场景中的 Deck Workshop 标签页下。
-    *   [ ] 连通 `ProfileManager.CurrentProfile.Settings` 到 Settings 标签页。
+    *   [x] 连通 `ProfileManager.CurrentProfile.Settings` 到 Settings 标签页。
+    *   [x] 预留未来商业化展示与拓展（新增 Collection 页与对应的 Profile 结构）。
+    *   [ ] 将目前在 Game 场景内的 `DeckEditor` 迁移到 `02_MainLobby` 场景中的 Deck Workshop 标签页下（UI 容器已就位，待迁移核心逻辑）。
 *   **多局对战 UI 完善**:
     *   [ ] 游戏界面显示当前圈风、门风、第几局的状态栏。
     *   [ ] DeckEditor 面板添加 GameMode 下拉选择框供玩家选择。

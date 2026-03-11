@@ -12,6 +12,7 @@
             <ui:Label text="Super Majiang" class="sidebar-title" />
             <ui:Button name="TabHome" text="Home" class="nav-button active-tab" />
             <ui:Button name="TabWorkshop" text="Deck Workshop" class="nav-button" />
+            <ui:Button name="TabCollection" text="Collection/Shop" class="nav-button" tooltip="Coming Soon!" enable="false" style="opacity: 0.5;" />
             <ui:Button name="TabSettings" text="Settings" class="nav-button" />
         </ui:VisualElement>
 
@@ -28,13 +29,26 @@
             <!-- Workshop View -->
             <ui:VisualElement name="ViewWorkshop" class="view-container" style="display: none;">
                 <ui:Label text="Deck Workshop" class="view-title" />
-                <ui:Label text="(Deck Editor placeholder)" class="view-subtitle" />
+                <ui:Label text="Select and build your custom mahjong deck." class="view-subtitle" />
+                <!-- UI for Gacha/Cosmetic preview will go here in the future -->
+                <ui:VisualElement name="DeckEditorContainer" />
+            </ui:VisualElement>
+
+            <!-- Collection View -->
+            <ui:VisualElement name="ViewCollection" class="view-container" style="display: none;">
+                <ui:Label text="Collection &amp; Shop" class="view-title" />
+                <ui:Label text="Unlock cosmetics, gacha, and new tile skins. (Coming Soon)" class="view-subtitle" />
             </ui:VisualElement>
 
             <!-- Settings View -->
             <ui:VisualElement name="ViewSettings" class="view-container" style="display: none;">
                 <ui:Label text="Settings" class="view-title" />
-                <ui:Label text="(Settings placeholder)" class="view-subtitle" />
+                <ui:VisualElement class="settings-group">
+                    <ui:Slider name="MasterVolumeSlider" label="Master Volume" low-value="0" high-value="1" />
+                    <ui:Slider name="MusicVolumeSlider" label="Music Volume" low-value="0" high-value="1" />
+                    <ui:Slider name="SFXVolumeSlider" label="SFX Volume" low-value="0" high-value="1" />
+                    <ui:Toggle name="DebugModeToggle" label="Debug Mode" />
+                </ui:VisualElement>
             </ui:VisualElement>
 
         </ui:VisualElement>

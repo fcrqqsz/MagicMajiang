@@ -46,6 +46,10 @@ namespace MahjongGame.Core
         private List<IPlayerClient> _clients;
         private DeckConfig _hostConfig;
 
+        // 事件委托缓存，用于正确取消订阅
+        private System.Action<int, float> _onTurnStartedHandler;
+        private System.Action _onTurnEndedHandler;
+
         void Awake()
         {
             Instance = this;
@@ -143,6 +147,23 @@ namespace MahjongGame.Core
             // 监听局结束事件
             _currentServer.OnRoundFinished += OnRoundFinished;
 
+            // HUD: 更新局信息 + 监听回合事件
+            if (GameHUDController.Instance != null)
+            {
+                GameHUDController.Instance.UpdateRoundInfo(Session);
+
+                _onTurnStartedHandler = (playerIdx, timeout) =>
+                {
+                    GameHUDController.Instance?.StartTimer(timeout, playerIdx);
+                };
+                _onTurnEndedHandler = () =>
+                {
+                    GameHUDController.Instance?.StopTimer();
+                };
+                _currentServer.OnTurnStarted += _onTurnStartedHandler;
+                _currentServer.OnTurnEnded += _onTurnEndedHandler;
+            }
+
             // 启动
             _currentServer.StartGame(_clients, allConfigs, Session);
         }
@@ -152,10 +173,19 @@ namespace MahjongGame.Core
             if (_currentServer != null)
             {
                 _currentServer.OnRoundFinished -= OnRoundFinished;
+                _currentServer.OnTurnStarted -= _onTurnStartedHandler;
+                _currentServer.OnTurnEnded -= _onTurnEndedHandler;
             }
 
             // 推进到下一局
             Session.AdvanceRound();
+
+            // HUD: 停止计时 + 更新分数
+            if (GameHUDController.Instance != null)
+            {
+                GameHUDController.Instance.StopTimer();
+                GameHUDController.Instance.UpdateScores(Session.Scores);
+            }
 
             // 通知 ResultPanelController 当前对战状态
             if (ResultPanelController.Instance != null)

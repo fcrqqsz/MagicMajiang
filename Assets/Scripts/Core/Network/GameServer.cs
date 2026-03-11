@@ -50,6 +50,10 @@ namespace MahjongGame.Core.Network
         // 局结束事件，GameManager 监听此事件驱动多局循环
         public event System.Action OnRoundFinished;
 
+        // 回合切换事件 (供 HUD 倒计时使用)
+        public event System.Action<int, float> OnTurnStarted;  // (playerIndex, timeoutSeconds)
+        public event System.Action OnTurnEnded;
+
         public async void StartGame(List<IPlayerClient> clients, List<DeckConfig> configs, GameSession session = null)
         {
             _clients = clients;
@@ -212,6 +216,8 @@ namespace MahjongGame.Core.Network
                     _turnCts = new CancellationTokenSource();
                     currentPlayer.TurnCancellationToken = _turnCts.Token;
 
+                    OnTurnStarted?.Invoke(_currentPlayerIndex, ActionTimeoutMs / 1000f);
+
                     // 这里发送给当前玩家具体牌数据
                     currentPlayer.OnTileDrawn(_lastDrawnTile);
 
@@ -232,6 +238,8 @@ namespace MahjongGame.Core.Network
                     _turnCts?.Dispose();
                     _turnCts = new CancellationTokenSource();
                     currentPlayer.TurnCancellationToken = _turnCts.Token;
+
+                    OnTurnStarted?.Invoke(_currentPlayerIndex, ActionTimeoutMs / 1000f);
                 }
                 _skipNextDraw = false;
 
@@ -274,6 +282,8 @@ namespace MahjongGame.Core.Network
                     // 3. 广播他人打牌，并收集响应
                     _pendingResponses.Clear();
                     _responsesTcs = new TaskCompletionSource<bool>();
+
+                    OnTurnEnded?.Invoke();
 
                     // 创建响应阶段 CTS，设置到所有非当前玩家
                     _turnCts?.Dispose();
@@ -354,6 +364,7 @@ namespace MahjongGame.Core.Network
                 }
 
                 // 5. 正常流转到下一家
+                OnTurnEnded?.Invoke();
                 _currentPlayerIndex = (_currentPlayerIndex + 1) % _clients.Count;
             }
         }
@@ -412,6 +423,7 @@ namespace MahjongGame.Core.Network
         private void HandlePlayerWin(ClientAction winAction, bool isSelfDraw, int loserId = -1)
         {
             _isGameActive = false;
+            OnTurnEnded?.Invoke();
             WinnerId = winAction.PlayerId;
             WinFan = winAction.TotalFan;
             WinIsSelfDraw = isSelfDraw;
@@ -434,6 +446,7 @@ namespace MahjongGame.Core.Network
         private void HandleDrawGame()
         {
             _isGameActive = false;
+            OnTurnEnded?.Invoke();
             IsDrawGame = true;
 
             foreach (var client in _clients)
