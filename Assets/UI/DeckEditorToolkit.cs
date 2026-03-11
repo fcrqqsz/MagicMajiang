@@ -19,6 +19,9 @@ namespace MahjongGame.UI
         // 拖入 DeckEditorStyles.uss (可选，如果UXML里没引用的化)
         [SerializeField] private StyleSheet _styleSheet;
 
+        // 当牌库编辑完成并点击保存时触发
+        public event Action<DeckConfig> OnDeckSaved;
+
         // UI 元素引用
         private VisualElement _root;
         private VisualElement _mainGrid;
@@ -249,8 +252,27 @@ namespace MahjongGame.UI
 
         private void OnStartGameClicked()
         {
-            gameObject.SetActive(false);
-            if (GameManager.Instance != null) GameManager.Instance.StartGameWithConfig(_currentConfig);
+            OnDeckSaved?.Invoke(_currentConfig);
+        }
+
+        public void LoadConfig(DeckConfig config)
+        {
+            if (config != null)
+            {
+                _currentConfig = config;
+            }
+            else
+            {
+                _currentConfig = DeckConfig.CreateStandard();
+            }
+            RefreshUI();
+        }
+
+        private void RefreshUI()
+        {
+            _currentConfig.CalculateAlienationScore();
+            foreach (var refresh in _allItemRefreshers) refresh();
+            RefreshStats();
         }
 
         private string GetTileImagePath(Suit suit, int value)

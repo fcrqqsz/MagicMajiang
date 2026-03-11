@@ -18,7 +18,7 @@
         </ui:ScrollView>
 
         <ui:VisualElement class="footer-container">
-            <ui:Button name="BtnStart" text="START GAME" class="start-button" />
+            <ui:Button name="BtnStart" text="Save &amp; Equip" class="start-button" />
         </ui:VisualElement>
     </ui:VisualElement>
 </ui:UXML>

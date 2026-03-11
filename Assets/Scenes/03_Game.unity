@@ -1154,8 +1154,8 @@ GameObject:
   m_Component:
   - component: {fileID: 1461636647}
   - component: {fileID: 1461636646}
-  - component: {fileID: 1461636645}
   - component: {fileID: 1461636648}
+  - component: {fileID: 1461636649}
   m_Layer: 0
   m_HasEditorInfo: 1
   m_Name: GameSystem
@@ -1164,19 +1164,6 @@ GameObject:
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
---- !u!114 &1461636645
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1461636644}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: c592a14a49720f74c86d403023c248f2, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  tileConfig: {fileID: 11400000, guid: 1eb609938bd550a4792c179d410c7757, type: 2}
 --- !u!114 &1461636646
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1313,6 +1300,19 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   _activeTalents:
   - {fileID: 11400000, guid: 396b86c5639c4b548b8bb921c555e22f, type: 2}
+--- !u!114 &1461636649
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1461636644}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c592a14a49720f74c86d403023c248f2, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  tileConfig: {fileID: 11400000, guid: 1eb609938bd550a4792c179d410c7757, type: 2}
 --- !u!1 &1523404012
 GameObject:
   m_ObjectHideFlags: 0
@@ -1605,71 +1605,6 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1644690743}
   m_CullTransparentMesh: 1
---- !u!1 &1822837522
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 7
-  m_Component:
-  - component: {fileID: 1822837525}
-  - component: {fileID: 1822837524}
-  - component: {fileID: 1822837523}
-  m_Layer: 5
-  m_HasEditorInfo: 1
-  m_Name: UIDocument_DeckBuilding
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!114 &1822837523
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1822837522}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: ba9a7e841d8ff944386ed746b09d4ce2, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  _document: {fileID: 1822837524}
-  _itemTemplate: {fileID: 9197481963319205126, guid: c746b7207f66e084a8e13e5b5b1a6097, type: 3}
-  _styleSheet: {fileID: 7433441132597879392, guid: 3b32a0ed90d21db4ead183579d31ce72, type: 3}
---- !u!114 &1822837524
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1822837522}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 19102, guid: 0000000000000000e000000000000000, type: 0}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  m_PanelSettings: {fileID: 11400000, guid: c2d3c97d2dda9784893eee8e852159d0, type: 2}
-  m_ParentUI: {fileID: 0}
-  sourceAsset: {fileID: 9197481963319205126, guid: 3e3a4ea2c26060242aaa20b6a4679c33, type: 3}
-  m_SortingOrder: 0
---- !u!4 &1822837525
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1822837522}
-  serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1869956567
 GameObject:
   m_ObjectHideFlags: 0
@@ -1928,7 +1863,6 @@ SceneRoots:
   - {fileID: 776909411}
   - {fileID: 1109730181}
   - {fileID: 1589879659}
-  - {fileID: 1822837525}
   - {fileID: 1055703951}
   - {fileID: 1081238160}
   - {fileID: 453729973}

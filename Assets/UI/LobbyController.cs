@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEngine.UIElements;
 using MahjongGame.Core;
+using MahjongGame.Core.Network.Data;
 using MahjongGame.Systems;
 
 namespace MahjongGame.UI
@@ -9,6 +10,9 @@ namespace MahjongGame.UI
     {
         [SerializeField]
         private UIDocument document;
+
+        [SerializeField]
+        private DeckEditorToolkit deckEditorToolkit;
 
         // Tabs
         private Button tabHome;
@@ -80,6 +84,11 @@ namespace MahjongGame.UI
 
             RegisterSettingsCallbacks();
 
+            if (deckEditorToolkit != null)
+            {
+                deckEditorToolkit.OnDeckSaved += HandleDeckSaved;
+            }
+
             ShowTab("Home");
         }
 
@@ -90,6 +99,32 @@ namespace MahjongGame.UI
             if (tabCollection != null) tabCollection.clicked -= OnTabCollectionClicked;
             if (tabSettings != null) tabSettings.clicked -= OnTabSettingsClicked;
             if (matchmakingButton != null) matchmakingButton.clicked -= OnMatchmakingClicked;
+
+            if (deckEditorToolkit != null)
+            {
+                deckEditorToolkit.OnDeckSaved -= HandleDeckSaved;
+            }
+        }
+
+        private void HandleDeckSaved(DeckConfig newConfig)
+        {
+            Debug.Log("Deck Saved! Alienation Score: " + newConfig.AlienationScore);
+            
+            if (ProfileManager.Instance != null && ProfileManager.Instance.CurrentProfile != null)
+            {
+                if (ProfileManager.Instance.CurrentProfile.SavedDecks.Count == 0)
+                {
+                    ProfileManager.Instance.CurrentProfile.SavedDecks.Add(new SavedDeck { DeckId = System.Guid.NewGuid().ToString(), DeckName = "My Custom Deck", AlienationScore = newConfig.AlienationScore, Config = newConfig });
+                }
+                else
+                {
+                    ProfileManager.Instance.CurrentProfile.SavedDecks[0].AlienationScore = newConfig.AlienationScore;
+                    ProfileManager.Instance.CurrentProfile.SavedDecks[0].Config = newConfig;
+                }
+                ProfileManager.Instance.SaveProfile();
+            }
+
+            ShowTab("Home");
         }
 
         private void LoadSettingsUI()
@@ -132,6 +167,12 @@ namespace MahjongGame.UI
             if (tabWorkshop != null) UpdateTabStyle(tabWorkshop, tabName == "Workshop");
             if (tabCollection != null) UpdateTabStyle(tabCollection, tabName == "Collection");
             if (tabSettings != null) UpdateTabStyle(tabSettings, tabName == "Settings");
+
+            // Handle independent DeckEditor UI
+            if (deckEditorToolkit != null)
+            {
+                deckEditorToolkit.gameObject.SetActive(tabName == "Workshop");
+            }
         }
 
         private void UpdateTabStyle(Button btn, bool isActive)

@@ -9,11 +9,16 @@ namespace MahjongGame.Core
     /// 负责定义“我要带几张什么牌”，并计算异化值
     /// </summary>
     [System.Serializable]
-    public class DeckConfig
+    public class DeckConfig : ISerializationCallbackReceiver
     {
         // 存储每种牌的数量： Key="Suit_Value", Value=Count
         // 例如: "Man_1" -> 3 (带了3张一万)
         private Dictionary<string, int> _cardCounts = new Dictionary<string, int>();
+
+        [SerializeField, HideInInspector]
+        private List<string> _keys = new List<string>();
+        [SerializeField, HideInInspector]
+        private List<int> _values = new List<int>();
 
         // 缓存计算出的异化值
         public int AlienationScore { get; private set; } = 0;
@@ -25,6 +30,26 @@ namespace MahjongGame.Core
         {
             // 初始化默认为空
             Clear();
+        }
+
+        public void OnBeforeSerialize()
+        {
+            _keys.Clear();
+            _values.Clear();
+            foreach (var kvp in _cardCounts)
+            {
+                _keys.Add(kvp.Key);
+                _values.Add(kvp.Value);
+            }
+        }
+
+        public void OnAfterDeserialize()
+        {
+            _cardCounts.Clear();
+            for (int i = 0; i < Mathf.Min(_keys.Count, _values.Count); i++)
+            {
+                _cardCounts.Add(_keys[i], _values[i]);
+            }
         }
 
         public void Clear()

@@ -55,6 +55,22 @@ namespace MahjongGame.Core
             Instance = this;
         }
 
+        void Start()
+        {
+            DeckConfig targetConfig = DeckConfig.CreateStandard();
+            
+            // Try to load from ProfileManager
+            if (ProfileManager.Instance != null && ProfileManager.Instance.CurrentProfile != null)
+            {
+                if (ProfileManager.Instance.CurrentProfile.SavedDecks.Count > 0)
+                {
+                    targetConfig = ProfileManager.Instance.CurrentProfile.SavedDecks[0].Config;
+                }
+            }
+
+            StartGameWithConfig(targetConfig);
+        }
+
         void OnDestroy()
         {
             if (_currentServer != null)
