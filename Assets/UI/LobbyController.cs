@@ -33,6 +33,12 @@ namespace MahjongGame.UI
         private Button matchmakingButton;
         private Button btnDeckPrev;
         private Button btnDeckNext;
+
+        // GameMode Selector
+        private Label modeNameLabel;
+        private Button btnModePrev;
+        private Button btnModeNext;
+        private static readonly string[] GameModeNames = { "单局", "东风局", "半庄", "全庄" };
         
         // Settings Elements
         private Slider masterVolumeSlider;
@@ -76,6 +82,10 @@ namespace MahjongGame.UI
             btnDeckPrev = root.Q<Button>("BtnDeckPrev");
             btnDeckNext = root.Q<Button>("BtnDeckNext");
 
+            modeNameLabel = root.Q<Label>("ModeNameLabel");
+            btnModePrev = root.Q<Button>("BtnModePrev");
+            btnModeNext = root.Q<Button>("BtnModeNext");
+
             masterVolumeSlider = root.Q<Slider>("MasterVolumeSlider");
             musicVolumeSlider = root.Q<Slider>("MusicVolumeSlider");
             sfxVolumeSlider = root.Q<Slider>("SFXVolumeSlider");
@@ -89,6 +99,8 @@ namespace MahjongGame.UI
             if (matchmakingButton != null) matchmakingButton.clicked += OnMatchmakingClicked;
             if (btnDeckPrev != null) btnDeckPrev.clicked += OnDeckPrevClicked;
             if (btnDeckNext != null) btnDeckNext.clicked += OnDeckNextClicked;
+            if (btnModePrev != null) btnModePrev.clicked += OnModePrevClicked;
+            if (btnModeNext != null) btnModeNext.clicked += OnModeNextClicked;
 
             if (ProfileManager.Instance != null && ProfileManager.Instance.CurrentProfile != null)
             {
@@ -118,6 +130,8 @@ namespace MahjongGame.UI
             if (matchmakingButton != null) matchmakingButton.clicked -= OnMatchmakingClicked;
             if (btnDeckPrev != null) btnDeckPrev.clicked -= OnDeckPrevClicked;
             if (btnDeckNext != null) btnDeckNext.clicked -= OnDeckNextClicked;
+            if (btnModePrev != null) btnModePrev.clicked -= OnModePrevClicked;
+            if (btnModeNext != null) btnModeNext.clicked -= OnModeNextClicked;
 
             if (deckEditorToolkit != null)
             {
@@ -168,6 +182,34 @@ namespace MahjongGame.UI
 
         private void OnDeckPrevClicked() => CycleDeck(-1);
         private void OnDeckNextClicked() => CycleDeck(1);
+
+        private void OnModePrevClicked() => CycleMode(-1);
+        private void OnModeNextClicked() => CycleMode(1);
+
+        private void CycleMode(int direction)
+        {
+            if (ProfileManager.Instance?.CurrentProfile == null) return;
+
+            var settings = ProfileManager.Instance.CurrentProfile.Settings;
+            int count = GameModeNames.Length;
+            settings.SelectedGameMode = ((settings.SelectedGameMode + direction) % count + count) % count;
+            ProfileManager.Instance.SaveProfile();
+            RefreshGameModeDisplay();
+        }
+
+        private void RefreshGameModeDisplay()
+        {
+            if (modeNameLabel == null) return;
+
+            int modeIdx = 0;
+            if (ProfileManager.Instance?.CurrentProfile != null)
+                modeIdx = ProfileManager.Instance.CurrentProfile.Settings.SelectedGameMode;
+
+            if (modeIdx < 0 || modeIdx >= GameModeNames.Length)
+                modeIdx = 0;
+
+            modeNameLabel.text = $"对战模式: {GameModeNames[modeIdx]}";
+        }
 
         private void CycleDeck(int direction)
         {
@@ -256,6 +298,7 @@ namespace MahjongGame.UI
             if (tabName == "Home")
             {
                 RefreshHomeDeckInfo();
+                RefreshGameModeDisplay();
             }
         }
 

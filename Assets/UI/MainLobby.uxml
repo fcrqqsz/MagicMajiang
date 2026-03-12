@@ -23,11 +23,16 @@
             <ui:VisualElement name="ViewHome" class="view-container">
                 <ui:Label name="WelcomeLabel" text="Welcome, Player" class="view-title" />
                 <ui:VisualElement name="DeckSelector" class="deck-selector">
-                    <ui:Button name="BtnDeckPrev" text="◀" class="deck-arrow-btn" />
+                    <ui:Button name="BtnDeckPrev" text="&lt;" class="deck-arrow-btn" />
                     <ui:Label name="DeckNameLabel" text="当前牌库: 标准牌库（默认）" class="view-subtitle deck-name-display" />
-                    <ui:Button name="BtnDeckNext" text="▶" class="deck-arrow-btn" />
+                    <ui:Button name="BtnDeckNext" text="&gt;" class="deck-arrow-btn" />
                 </ui:VisualElement>
                 <ui:Label name="ScoreLabel" text="异化值: 0" class="view-subtitle" />
+                <ui:VisualElement name="GameModeSelector" class="deck-selector">
+                    <ui:Button name="BtnModePrev" text="&lt;" class="deck-arrow-btn" />
+                    <ui:Label name="ModeNameLabel" text="对战模式: 单局" class="view-subtitle deck-name-display" />
+                    <ui:Button name="BtnModeNext" text="&gt;" class="deck-arrow-btn" />
+                </ui:VisualElement>
                 <ui:Button name="MatchmakingButton" text="Start Matchmaking" class="action-button" />
             </ui:VisualElement>
 

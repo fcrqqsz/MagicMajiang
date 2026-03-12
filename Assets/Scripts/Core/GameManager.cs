@@ -108,7 +108,14 @@ namespace MahjongGame.Core
         /// </summary>
         public void StartGameWithConfig(DeckConfig hostConfig)
         {
-            StartSession(gameMode, hostConfig);
+            GameMode selectedMode = gameMode; // SerializeField fallback
+            if (ProfileManager.Instance?.CurrentProfile != null)
+            {
+                int modeIdx = ProfileManager.Instance.CurrentProfile.Settings.SelectedGameMode;
+                if (modeIdx >= 0 && modeIdx <= 3)
+                    selectedMode = (GameMode)modeIdx;
+            }
+            StartSession(selectedMode, hostConfig);
         }
 
         /// <summary>

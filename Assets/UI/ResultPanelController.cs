@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Collections;
 using MahjongGame.Core;
 using MahjongGame.Core.Network;
+using MahjongGame.Systems;
 
 namespace MahjongGame.UI
 {
@@ -52,11 +53,11 @@ namespace MahjongGame.UI
 
         private void UpdateButtonText()
         {
-            if (_session == null || _session.Mode == GameMode.Single)
+            if (_session == null)
             {
-                _btnRestart.text = "再来一局";
+                _btnRestart.text = "返回主菜单";
             }
-            else if (_session.IsSessionOver())
+            else if (_session.Mode == GameMode.Single || _session.IsSessionOver())
             {
                 _btnRestart.text = "查看总结算";
             }
@@ -261,34 +262,40 @@ namespace MahjongGame.UI
 
         private void OnRestartClicked()
         {
-            // 隐藏面板
+            // 关键：先隐藏面板，避免在可见状态下修改内容触发字体图集异常
             _overlay.RemoveFromClassList("overlay--visible");
             _overlay.style.display = DisplayStyle.None;
+            StopAllCoroutines();
+            CancelInvoke();
 
-            if (_session != null && _session.Mode != GameMode.Single)
+            if (_isShowingFinalResult)
             {
-                if (_session.IsSessionOver())
-                {
-                    if (_isShowingFinalResult)
-                    {
-                        SceneManager.LoadScene(SceneManager.GetActiveScene().name);
-                    }
-                    else
-                    {
-                        GameManager.Instance.EndSession();
-                        ShowSessionResult();
-                    }
-                }
-                else
-                {
-                    // 还有下一局 → 开始下一局
-                    GameManager.Instance.StartNextRound();
-                }
+                // 已在总结算界面 → 返回主菜单
+                ReturnToLobby();
+            }
+            else if (_session != null && !_session.IsSessionOver() && _session.Mode != GameMode.Single)
+            {
+                // 多局模式，还有下一局
+                GameManager.Instance.StartNextRound();
             }
             else
             {
-                // 单局模式：重载场景
-                SceneManager.LoadScene(SceneManager.GetActiveScene().name);
+                // 单局模式 或 多局对战已结束 → 显示总结算
+                GameManager.Instance.EndSession();
+                ShowSessionResult();
+            }
+        }
+
+        private async void ReturnToLobby()
+        {
+            if (NetworkManager.Instance != null)
+            {
+                await NetworkManager.Instance.LoadSceneAndUnloadCurrentAsync(SceneNames.MainLobby, SceneNames.Game);
+            }
+            else
+            {
+                // Fallback: 直接从 Game 场景启动时没有 NetworkManager
+                SceneManager.LoadScene(SceneNames.Game);
             }
         }
     }

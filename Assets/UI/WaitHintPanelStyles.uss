@@ -24,9 +24,6 @@
     min-width: 300px;
     /* 13张牌，每张 90px (含边距 20px)，加上左侧标题的宽度(约 120px) 和内边距，需要约 1400px */
     max-width: 1800px; 
-    
-    /* 确保在最上层 */
-    z-index: 999;
 }
 
 .wait-hint-title {

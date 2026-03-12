@@ -161,7 +161,7 @@ namespace MahjongGame.UI
                 var nameLabel = new Label(deck.DeckName);
                 nameLabel.AddToClassList("deck-name-label");
 
-                var btnDelete = new Button(() => OnDeleteDeckClicked(index)) { text = "✕" };
+                var btnDelete = new Button(() => OnDeleteDeckClicked(index)) { text = "×" };
                 btnDelete.AddToClassList("btn-delete-deck");
                 if (_savedDecks.Count <= 1) btnDelete.SetEnabled(false);
 

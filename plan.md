@@ -15,10 +15,15 @@
 *   [x] **结算系统对接**: `ResultPanel` 已支持详细番种列表展示及得分滚动特效。
 *   [x] **对局流转展示**: 完善了流局、玩家失败（AI胡牌）的视觉反馈。
 *   [x] **多局结算面板**: `ResultPanel` 支持下一局/总结算切换，显示四家累计分数与排名。
-*   [x] **多场景架构与大厅枢纽**: 
+*   [x] **多场景架构与大厅枢纽**:
     *   [x] 实现了 `00_Persistent` 挂载 `NetworkManager`, `ProfileManager`, `LoadingScreenController`, `CameraManager` 等不死组件。
     *   [x] 基于 UI Toolkit 实现了 `01_Login`（登录）与 `02_MainLobby`（大厅功能枢纽）场景。
     *   [x] 基于 `SceneManager.LoadSceneAsync` Additive 模式实现了场景淡入淡出及过渡。
+*   [x] **DeckEditor 模块化重构 (2026-03-12)**:
+    *   [x] 将 `DeckEditorToolkit` 解耦为可复用模板，集成到大厅 Deck Workshop 标签页。
+    *   [x] 新增侧边栏多卡组管理（最多 5 套），支持新建/切换/删除卡组。
+    *   [x] 重构 DeckEditor 样式与布局（`DeckEditorStyles.uss` / `DeckEditorView.uxml`），优化视觉体验。
+    *   [x] `LobbyController` 整合 DeckEditor 打开/关闭流程与卡组数据持久化。
 
 ---
 
@@ -28,14 +33,14 @@
 *   **[已完成] 听牌提示 (Wait Hint)**:
     *   [x] 核心算番支持：遍历手牌提供打出某张牌后的听牌列表及最大番数 (`MahjongLogic.GetWaitHints`)。
     *   [x] UI Toolkit 表现：实现 `WaitHintPanel` 横向列表，并在玩家点击选中牌时动态展示。
-*   **大厅卡组与设置对接 (Lobby Integration)**:
+*   **[已完成] 大厅卡组与设置对接 (Lobby Integration)**:
     *   [x] 连通 `ProfileManager.CurrentProfile.Settings` 到 Settings 标签页。
     *   [x] 预留未来商业化展示与拓展（新增 Collection 页与对应的 Profile 结构）。
-    *   [x] 将目前在 Game 场景内的 `DeckEditor` 迁移到 `02_MainLobby` 场景中的 Deck Workshop 标签页下（UI 容器已就位，待迁移核心逻辑）。
+    *   [x] 将 `DeckEditor` 解耦为模块化模板，迁移到 `02_MainLobby` 的 Deck Workshop 标签页，支持侧边栏多卡组管理。
     *   [x] Home 页面卡组选择器：左右箭头循环切换 `SavedDecks`，即时持久化 `SelectedDeckIndex`，单卡组时箭头禁用。
-*   **多局对战 UI 完善**:
-    *   [ ] 游戏界面显示当前圈风、门风、第几局的状态栏。
-    *   [ ] DeckEditor 面板添加 GameMode 下拉选择框供玩家选择。
+*   **[已完成] 多局对战 UI 完善**:
+    *   [x] 游戏界面显示当前圈风、门风、第几局的状态栏。
+    *   [x] Home 页 GameMode 选择器：左右箭头循环切换四种模式（单局/东风局/半庄/全庄），即时持久化到 ProfileSettings。
 *   **异化牌视觉反馈**:
     *   [ ] 根据 `TileData` 的异化状态（天赋修改），通过 `TileVisual` 改变牌背颜色或增加发光特效。
 *   **牌河指针 (River Pointer)**:
