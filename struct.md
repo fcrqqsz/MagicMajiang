@@ -77,7 +77,7 @@
 *   **`.cs` (控制器)**: 绑定元素并处理交互逻辑。
 
 #### 核心面板与组件：
-*   **LoginPanel & MainLobby**: `01_Login` 和 `02_MainLobby` 场景中的 UI 主体面板。
+*   **LoginPanel & MainLobby**: `01_Login` 和 `02_MainLobby` 场景中的 UI 主体面板。Home 页包含 `DeckSelector`（左右箭头循环切换卡组）、异化值显示及匹配入口。
 *   **操作面板 (`ActionPanel`)**: 按钮布局与可选吃牌组合逻辑。
 *   **结算面板 (`ResultPanel`)**: 汇总算番详情，驱动流局或胡牌界面。
 *   **牌库编辑器 (`DeckEditor`)**: 34 种牌选择界面与异化值计算提示。

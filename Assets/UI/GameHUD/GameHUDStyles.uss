@@ -54,32 +54,28 @@
     justify-content: center;
 }
 
-/* 上方 (对家) */
+/* 上方 (对家) — 未旋转正方形的左上角 → 旋转后为菱形顶点 */
 .seat-top {
-    top: 6px;
-    left: 50%;
-    translate: -50% 0;
+    top: 8px;
+    left: 8px;
 }
 
-/* 下方 (自己) */
+/* 下方 (自己) — 未旋转正方形的右下角 → 旋转后为菱形底点 */
 .seat-bottom {
-    bottom: 6px;
-    left: 50%;
-    translate: -50% 0;
+    bottom: 8px;
+    right: 8px;
 }
 
-/* 左侧 (上家) */
+/* 左侧 (上家) — 未旋转正方形的左下角 → 旋转后为菱形左点 */
 .seat-left {
-    left: 6px;
-    top: 50%;
-    translate: 0 -50%;
+    bottom: 8px;
+    left: 8px;
 }
 
-/* 右侧 (下家) */
+/* 右侧 (下家) — 未旋转正方形的右上角 → 旋转后为菱形右点 */
 .seat-right {
-    right: 6px;
-    top: 50%;
-    translate: 0 -50%;
+    top: 8px;
+    right: 8px;
 }
 
 /* ======= 风位标签 ======= */
@@ -101,7 +97,7 @@
 
 /* ======= 分数标签 ======= */
 .score-label {
-    font-size: 14px;
+    font-size: 25px;
     color: #C0C0C0;
     -unity-text-align: middle-center;
     -unity-font-definition: url('project://database/Assets/Font/MSYH.TTC');

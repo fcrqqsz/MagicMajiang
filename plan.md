@@ -32,6 +32,7 @@
     *   [x] 连通 `ProfileManager.CurrentProfile.Settings` 到 Settings 标签页。
     *   [x] 预留未来商业化展示与拓展（新增 Collection 页与对应的 Profile 结构）。
     *   [x] 将目前在 Game 场景内的 `DeckEditor` 迁移到 `02_MainLobby` 场景中的 Deck Workshop 标签页下（UI 容器已就位，待迁移核心逻辑）。
+    *   [x] Home 页面卡组选择器：左右箭头循环切换 `SavedDecks`，即时持久化 `SelectedDeckIndex`，单卡组时箭头禁用。
 *   **多局对战 UI 完善**:
     *   [ ] 游戏界面显示当前圈风、门风、第几局的状态栏。
     *   [ ] DeckEditor 面板添加 GameMode 下拉选择框供玩家选择。

@@ -8,6 +8,7 @@ namespace MahjongGame.Core.Network.Data
         public string UID;
         public string Nickname;
         public ProfileSettings Settings = new ProfileSettings();
+        public int SelectedDeckIndex;
         public List<SavedDeck> SavedDecks = new List<SavedDeck>();
         // Future Proofing: Gacha & Cosmetics
         public List<string> Inventory = new List<string>();

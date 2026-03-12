@@ -1,24 +1,35 @@
 <ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" editor-extension-mode="False">
     <ui:VisualElement class="main-container">
-        <ui:VisualElement class="header-container">
-            <ui:VisualElement class="header-stats">
-                <ui:Label name="TotalText" text="Total: 0 / 34" class="stat-label" />
-                <ui:Label name="ScoreText" text="Alienation: 0" class="stat-label" />
+        <ui:VisualElement name="EditorArea" class="editor-area">
+            <ui:VisualElement class="header-container">
+                <ui:VisualElement class="header-stats">
+                    <ui:Label name="TotalText" text="Total: 0 / 34" class="stat-label" />
+                    <ui:Label name="ScoreText" text="Alienation: 0" class="stat-label" />
+                </ui:VisualElement>
+                <ui:VisualElement class="header-controls">
+                    <ui:Button name="BtnClearAll" text="清空" class="control-btn" />
+                    <ui:Button name="BtnResetAll" text="重置" class="control-btn" />
+                </ui:VisualElement>
             </ui:VisualElement>
-            <ui:VisualElement class="header-controls">
-                <ui:Button name="BtnClearAll" text="清空" class="control-btn" />
-                <ui:Button name="BtnResetAll" text="重置" class="control-btn" />
+
+            <ui:ScrollView class="grid-scroll-view">
+                <ui:VisualElement name="MainGrid" class="main-grid">
+                    <!-- Each row will be created dynamically in C# -->
+                </ui:VisualElement>
+            </ui:ScrollView>
+
+            <ui:VisualElement class="footer-container">
+                <ui:Button name="BtnSave" text="保存" class="footer-btn footer-btn-save" />
+                <ui:Button name="BtnExit" text="退出" class="footer-btn footer-btn-exit" />
             </ui:VisualElement>
         </ui:VisualElement>
 
-        <ui:ScrollView class="grid-scroll-view">
-            <ui:VisualElement name="MainGrid" class="main-grid">
-                <!-- Each row will be created dynamically in C# -->
-            </ui:VisualElement>
-        </ui:ScrollView>
-
-        <ui:VisualElement class="footer-container">
-            <ui:Button name="BtnStart" text="Save &amp; Equip" class="start-button" />
+        <ui:VisualElement name="DeckSidebar" class="deck-sidebar">
+            <ui:Label text="牌库列表" class="sidebar-title" />
+            <ui:ScrollView name="DeckListScroll" class="deck-list-scroll">
+                <ui:VisualElement name="DeckListContainer" class="deck-list-container" />
+            </ui:ScrollView>
+            <ui:Button name="BtnNewDeck" text="＋ 新建牌库" class="btn-new-deck" />
         </ui:VisualElement>
     </ui:VisualElement>
 </ui:UXML>

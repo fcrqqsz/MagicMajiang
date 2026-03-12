@@ -77,3 +77,33 @@
 .action-button:active {
     background-color: rgb(180, 80, 30);
 }
+
+.deck-selector {
+    flex-direction: row;
+    align-items: center;
+    margin-bottom: 30px;
+}
+
+.deck-arrow-btn {
+    background-color: transparent;
+    border-width: 0;
+    font-size: 24px;
+    color: rgb(180, 180, 180);
+    padding: 8px 12px;
+    border-radius: 4px;
+}
+
+.deck-arrow-btn:hover {
+    color: white;
+    background-color: rgb(60, 60, 60);
+}
+
+.deck-arrow-btn:disabled {
+    opacity: 0.3;
+}
+
+.deck-name-display {
+    flex-grow: 1;
+    -unity-text-align: middle-center;
+    margin-bottom: 0;
+}

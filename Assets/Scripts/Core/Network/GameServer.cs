@@ -283,8 +283,6 @@ namespace MahjongGame.Core.Network
                     _pendingResponses.Clear();
                     _responsesTcs = new TaskCompletionSource<bool>();
 
-                    OnTurnEnded?.Invoke();
-
                     // 创建响应阶段 CTS，设置到所有非当前玩家
                     _turnCts?.Dispose();
                     _turnCts = new CancellationTokenSource();

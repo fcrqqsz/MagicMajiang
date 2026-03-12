@@ -58,13 +58,17 @@ namespace MahjongGame.Core
         void Start()
         {
             DeckConfig targetConfig = DeckConfig.CreateStandard();
-            
-            // Try to load from ProfileManager
+
+            // Try to load from ProfileManager using selected deck index
             if (ProfileManager.Instance != null && ProfileManager.Instance.CurrentProfile != null)
             {
-                if (ProfileManager.Instance.CurrentProfile.SavedDecks.Count > 0)
+                var profile = ProfileManager.Instance.CurrentProfile;
+                int idx = profile.SelectedDeckIndex;
+                if (profile.SavedDecks.Count > 0)
                 {
-                    targetConfig = ProfileManager.Instance.CurrentProfile.SavedDecks[0].Config;
+                    if (idx < 0 || idx >= profile.SavedDecks.Count)
+                        idx = 0;
+                    targetConfig = profile.SavedDecks[idx].Config;
                 }
             }
 

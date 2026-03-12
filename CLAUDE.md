@@ -77,6 +77,8 @@ Assets/Scripts/
     └── TileConfigEditor.cs  # 编辑器扩展
 
 Assets/UI/                   # UI Toolkit 面板
+├── MainLobby.uxml/uss       # 大厅主界面 (含 DeckSelector 卡组切换器)
+├── LobbyController.cs       # 大厅逻辑 (标签页切换、卡组选择、匹配入口)
 ├── ActionPanel/             # 操作按钮面板
 ├── ResultPanel/             # 结算面板 (番种详情)
 ├── DeckEditor/              # 牌库编辑器
@@ -117,6 +119,7 @@ Assets/UI/                   # UI Toolkit 面板
 - 异化牌视觉反馈
 - 对象池性能优化
 - ~~超时取消机制~~ (已完成: CancellationToken + ServerGameState)
+- ~~Home 页卡组选择器~~ (已完成: DeckSelector 左右箭头循环切换)
 
 ## Reference Docs
 - `summary.md`: 项目进度快照与排故日志
