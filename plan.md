@@ -53,8 +53,8 @@
     *   [x] Home 页 GameMode 选择器：左右箭头循环切换四种模式（单局/东风局/半庄/全庄），即时持久化到 ProfileSettings。
 *   **异化牌视觉反馈**:
     *   [ ] 根据 `TileData` 的异化状态（天赋修改），通过 `TileVisual` 改变牌背颜色或增加发光特效。
-*   **牌河指针 (River Pointer)**:
-    *   [ ] 在 `RiverController` 中实现一个动态”浮标”，标记当前最新出的那张牌。
+*   **[已完成] 牌河指针 (River Pointer)**:
+    *   [x] 在 `TileVisual` 和 `RiverController` 中实现基于材质自发光 (Emission) 的高亮呼吸灯，始终标记当前最新出的那张牌。
 
 ### Medium Priority (中优先级 - 视觉增强与复盘)
 *   **结算手牌缩略图**: 
