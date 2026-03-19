@@ -56,14 +56,12 @@ namespace MahjongGame.Core.Agents
 
         public void OnPlayerDrawn(int playerId)
         {
-            RiverController.ClearHighlight();
             var view = GameManager.Instance.GetOpponentView(playerId);
             if (view != null) view.DrawCard();
         }
 
         public async void OnTileDrawn(TileData drawnTile)
         {
-            RiverController.ClearHighlight();
             var ct = TurnCancellationToken;
             try
             {
@@ -245,8 +243,6 @@ namespace MahjongGame.Core.Agents
 
         public void OnActionResolved(int actionPlayerId, ClientActionType actionType, TileData targetTile, int[] chiCombinations)
         {
-            RiverController.ClearHighlight();
-            
             // 从打出该牌的玩家牌河中移除这张牌 (不论是谁吃碰杠)
             if (actionType != ClientActionType.AnGan && actionType != ClientActionType.JiaGang && _lastDiscarderId != -1)
             {
