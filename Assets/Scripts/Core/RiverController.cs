@@ -14,6 +14,17 @@ namespace MahjongGame.Core
         // 存储已经打入牌河的牌
         private List<TileVisual> _discardedTiles = new List<TileVisual>();
 
+        private static TileVisual _currentHighlightedTile;
+
+        public static void ClearHighlight()
+        {
+            if (_currentHighlightedTile != null)
+            {
+                _currentHighlightedTile.SetHighlight(false);
+                _currentHighlightedTile = null;
+            }
+        }
+
         /// <summary>
         /// 接收一张打出的牌
         /// </summary>
@@ -36,6 +47,11 @@ namespace MahjongGame.Core
             tile.transform.DOKill(); // 先杀掉可能还在进行的其它动画
             tile.transform.DOLocalMove(targetPos, 0.5f);
             tile.transform.DOLocalRotate(new Vector3(90, 0, 0), 0.5f); // 牌河里的牌通常是倒下的
+
+            // 5. 高亮新打出的牌
+            ClearHighlight();
+            tile.SetHighlight(true);
+            _currentHighlightedTile = tile;
         }
 
         // 获取最后打出的一张牌 (用于吃碰杠判定)
@@ -70,6 +86,13 @@ namespace MahjongGame.Core
 
             TileVisual last = _discardedTiles[_discardedTiles.Count - 1];
             _discardedTiles.RemoveAt(_discardedTiles.Count - 1);
+            
+            // 清理高亮引用并安全停止动画
+            if (_currentHighlightedTile == last)
+            {
+                _currentHighlightedTile = null;
+            }
+            last.SetHighlight(false);
             
             last.transform.DOKill(); // 在销毁前必须终止任何正在执行的 DoTween 动画
             Destroy(last.gameObject);
