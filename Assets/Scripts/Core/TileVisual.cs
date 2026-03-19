@@ -1,4 +1,5 @@
 using UnityEngine;
+using DG.Tweening;
 
 namespace MahjongGame.Core
 {
@@ -22,6 +23,43 @@ namespace MahjongGame.Core
 
         // 持有控制器的引用 (类似于 C++ 的 Parent Pointer)
         private MahjongHandViewBase _ownerController;
+        
+        private Material _instanceMaterial;
+
+        public void SetHighlight(bool enable)
+        {
+            if (_renderer == null) return;
+
+            if (_instanceMaterial == null)
+            {
+                _instanceMaterial = _renderer.material;
+            }
+
+            if (enable)
+            {
+                _instanceMaterial.EnableKeyword("_EMISSION");
+                _instanceMaterial.DOKill();
+                _instanceMaterial.SetColor("_EmissionColor", Color.black);
+                _instanceMaterial.DOColor(new Color(0.4f, 0.4f, 0.4f), "_EmissionColor", 0.6f)
+                    .SetLoops(-1, LoopType.Yoyo)
+                    .SetEase(Ease.InOutSine);
+            }
+            else
+            {
+                _instanceMaterial.DOKill();
+                _instanceMaterial.SetColor("_EmissionColor", Color.black);
+                _instanceMaterial.DisableKeyword("_EMISSION");
+            }
+        }
+
+        private void OnDestroy()
+        {
+            if (_instanceMaterial != null)
+            {
+                _instanceMaterial.DOKill();
+                Destroy(_instanceMaterial);
+            }
+        }
 
         private void Awake()
         {
