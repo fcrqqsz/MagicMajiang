@@ -3,6 +3,7 @@ using UnityEngine.UIElements;
 using MahjongGame.Core;
 using MahjongGame.Core.Network.Data;
 using MahjongGame.Systems;
+using MahjongGame.Talents;
 
 namespace MahjongGame.UI
 {
@@ -167,7 +168,7 @@ namespace MahjongGame.UI
 
                 var deck = profile.SavedDecks[idx];
                 deckName = deck.DeckName;
-                alienation = deck.AlienationScore;
+                alienation = DeckConfig.CalculateTotalAlienation(deck.Config, deck.Talents);
             }
 
             if (deckNameLabel != null)

@@ -59,12 +59,70 @@
 *   `LoadingScreenController.cs`: UI Toolkit 加载遮罩控制。
 *   `CameraManager.cs`: 多场景动态相机切换控制。
 *   `GameManager.cs`: 游戏初始化入口，组装 Server 与 Clients，驱动多局循环。
-*   `DeckManager.cs`: 牌山构建、洗牌、发牌管理。
-*   `TalentManager.cs`: 天赋系统的分发中转站。
+*   `DeckManager.cs`: 牌山构建、洗牌、发牌管理。`GetWallTiles()` 暴露牌山引用供天赋修改，`ShuffleWall()` 公开由 GameServer 在天赋处理后显式调用。
 
 ### C. `Assets/Scripts/Talent` (Roguelike 天赋系统)
-*   `TalentBase.cs`: 天赋抽象基类。
-*   `Impl/`: 具体天赋实现。
+纯 C# 管道架构，镜像算番系统的 Strategy + Reflection 模式。
+
+*   **基础设施**:
+    *   `TalentRuleAttribute.cs`: 标记属性，定义天赋的 Id、DisplayName、Description、Tier、AlienationCost、Phases。
+    *   `TalentRule.cs`: 运行时抽象基类，提供 5 个阶段钩子虚方法（OnWallBuilding / OnDraw / OnDiscard / OnActionValidation / OnScoring）。
+    *   `TalentContext.cs`: 上下文数据类，传递当前玩家 ID、牌山引用、GameState 快照等信息。
+    *   `TalentSlotConfig.cs`: 可序列化 6 槽位配置（index 0=大, 1-2=中, 3-5=小），支持向下兼容装配。
+    *   `TalentRegistry.cs`: 纯 C# 懒加载单例，反射自动发现 `[TalentRuleAttribute]` 标记的类，提供 `CreateInstance`、`GetDisplayName`、`GetDescription`、`GetCost`、`GetTier` 等查询方法。
+    *   `TalentManager.cs`: 管道执行器（非单例，每局由 GameServer 创建）。维护 `_playerTalents` 和 `_phasePipelines`，按 Priority 排序、Scope 过滤后链式调用。
+    *   `TalentDefinition.cs`: ScriptableObject 元数据（图标/显示名/描述），仅供 UI 展示，运行时逻辑不依赖。
+*   **具体实现 (`Impl/`)**:
+    *   `MidasTouchTalent.cs`: 点金手——摸牌时将风牌/箭牌转化为发财。
+
+#### 天赋定义规范
+
+新增天赋需要：
+
+1. **创建实现类**（`Assets/Scripts/Talent/Impl/` 下），继承 `TalentRule`，添加 `[TalentRuleAttribute]`：
+   ```csharp
+   [TalentRule(
+       "unique_id",          // 唯一标识符，snake_case
+       "显示名称",            // 中文友好名称
+       "天赋效果的简短描述",   // 一句话描述
+       TalentTier.Medium,    // 品阶: Small / Medium / Large
+       15,                   // 异化值消耗
+       TalentPhase.OnDraw    // 生效阶段 (可多个, params)
+   )]
+   public class MyTalent : TalentRule
+   {
+       public override TalentScope Scope => TalentScope.Self; // Self=仅自己, Global=全局
+       public override int Priority => 0; // 同阶段内执行优先级，越高越先
+
+       public override TileData OnDraw(TalentContext ctx, TileData tile)
+       {
+           if (!ctx.IsOwnersTurn) return tile; // Self 天赋需检查
+           // 修改 tile 并返回
+           tile.IsModified = true;
+           tile.SpecialEffectID = Id;
+           return tile;
+       }
+   }
+   ```
+
+2. **自动注册**：无需手动注册，`TalentRegistry` 启动时反射扫描自动发现。
+
+3. **可选 SO 资产**：如需图标，创建 `TalentDefinition` ScriptableObject（`Assets/ScriptableObjects/Talents/`），`talentId` 与 Attribute 的 Id 对应。
+
+4. **阶段钩子签名**：
+   | 阶段 | 方法签名 | 说明 |
+   |------|---------|------|
+   | WallBuilding | `void OnWallBuilding(TalentContext ctx)` | 通过 `ctx.WallTiles` 直接修改牌山 |
+   | OnDraw | `TileData OnDraw(TalentContext ctx, TileData tile)` | 返回修改后的牌，管道链式 |
+   | OnDiscard | `TileData OnDiscard(TalentContext ctx, TileData tile)` | 返回修改后的牌，管道链式 |
+   | ActionValidation | `bool OnActionValidation(TalentContext ctx, ClientActionType, TileData)` | 返回 false 可禁止动作 |
+   | Scoring | `void OnScoring(TalentContext ctx, FanContext fanCtx)` | 修改 FanContext 影响算番 |
+
+5. **设计约束**：
+   - 天赋逻辑必须纯 C#，不依赖 MonoBehaviour 或 Unity 生命周期
+   - `Scope.Self` 天赋在钩子中应检查 `ctx.IsOwnersTurn` 或 `ctx.CurrentPlayerId == ctx.TalentOwnerId`
+   - `Scope.Global` 天赋影响所有玩家，应配高异化值作为代价
+   - 修改 `TileData` 后应设置 `IsModified = true` 和 `SpecialEffectID = Id`
 
 ### D. `Assets/Scripts/Editor` (编辑器扩展)
 *   `TileConfigEditor.cs`: `TileResourceConfig` 自动化图片匹配工具。
@@ -80,5 +138,6 @@
 *   **LoginPanel & MainLobby**: `01_Login` 和 `02_MainLobby` 场景中的 UI 主体面板。Home 页包含 `DeckSelector`（左右箭头循环切换卡组）、异化值显示及匹配入口。
 *   **操作面板 (`ActionPanel`)**: 按钮布局与可选吃牌组合逻辑。
 *   **结算面板 (`ResultPanel`)**: 汇总算番详情，驱动流局或胡牌界面。
-*   **牌库编辑器 (`DeckEditor`)**: 34 种牌选择界面与异化值计算提示。
+*   **牌库编辑器 (`DeckEditor`)**: 34 种牌选择界面与异化值计算提示。含天赋槽 UI（6 槽位选择、弹窗选择器、详情区域）。
+*   **天赋模板**: `TalentSlotTemplate.uxml/uss`（槽位显示）、`TalentItemTemplate.uxml`（列表项）。
 *   **复用模板**: `TileItemTemplate.uxml` 等小组件。

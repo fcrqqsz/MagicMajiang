@@ -24,6 +24,16 @@
     *   [x] 新增侧边栏多卡组管理（最多 5 套），支持新建/切换/删除卡组。
     *   [x] 重构 DeckEditor 样式与布局（`DeckEditorStyles.uss` / `DeckEditorView.uxml`），优化视觉体验。
     *   [x] `LobbyController` 整合 DeckEditor 打开/关闭流程与卡组数据持久化。
+*   [x] **天赋系统重构 (2026-03-17)**:
+    *   [x] 拆除旧 MonoBehaviour 单例 `TalentManager` 和 ScriptableObject 基类 `TalentBase`。
+    *   [x] 新建纯 C# 天赋架构：`TalentRuleAttribute` 标记 + `TalentRegistry` 反射注册 + `TalentRule` 抽象基类。
+    *   [x] 实现 `TalentManager` 管道执行器（非单例，每局创建），覆盖 5 阶段钩子（牌山构建/摸牌/出牌/动作校验/算番）。
+    *   [x] 服务端 `GameServer` 集成天赋管道注入点（牌山构建、摸牌、出牌）。
+    *   [x] `TalentSlotConfig` 6 槽位系统（大×1 + 中×2 + 小×3），向下兼容。
+    *   [x] 牌库编辑器 `DeckEditorToolkit` 新增天赋槽 UI（选择弹窗、详情区域、品阶竖线分隔）。
+    *   [x] `SavedDeck` 嵌入天赋配置，异化值合计牌+天赋（`CalculateTotalAlienation`）。
+    *   [x] `MidasTouchTalent` 迁移到新体系，`TalentRuleAttribute` 含 DisplayName/Description 字段。
+    *   [x] Home 页异化值显示合计牌库+天赋。
 
 ---
 
@@ -51,11 +61,15 @@
     *   [ ] 在 `ResultPanel` 中增加胡牌瞬间的 2D 手牌（含副露）排布，方便玩家复盘。
 
 ### Low Priority (低优先级 - 压力测试与表现细节)
-*   **逻辑健壮性压力测试**: 
+*   **天赋槽图标显示**:
+    *   [ ] 为 `TalentDefinition` SO 资产配置天赋图标（Sprite），在牌库编辑器槽位中显示。
+    *   [ ] 恢复 `TalentSlotTemplate.uxml` 中的 `IconContainer` 元素，`RefreshTalentSlots` 中绑定图标。
+    *   [ ] 可选：Home 页卡组名下方显示已装配天赋的小图标。
+*   **逻辑健壮性压力测试**:
     *   [ ] 针对异化牌库（如同种牌 8 张以上）的极端组合进行算番拆解算法验证。
-*   **发牌与摸牌动画**: 
+*   **发牌与摸牌动画**:
     *   [ ] 使用 DoTween 实现牌从牌山飞入位置的序列动画，而非瞬间生成。
-    *   [ ] 优化“新摸牌”与“已有手牌”之间的 `drawGap` 动态管理。
+    *   [ ] 优化”新摸牌”与”已有手牌”之间的 `drawGap` 动态管理。
 
 ---
 

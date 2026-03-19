@@ -34,4 +34,20 @@ namespace MahjongGame.Core
         HalfGame,   // 半庄 (8局, 东+南)
         FullGame    // 全庄 (16局, 东+南+西+北)
     }
+
+    // 天赋品阶
+    public enum TalentTier { Small, Medium, Large }
+
+    // 天赋作用阶段
+    public enum TalentPhase
+    {
+        WallBuilding,     // 牌山构建后、洗牌前
+        OnDraw,           // 摸牌时
+        OnDiscard,        // 出牌时
+        ActionValidation, // 吃碰杠胡判定
+        Scoring           // 算番阶段
+    }
+
+    // 天赋影响范围
+    public enum TalentScope { Self, Global }
 }

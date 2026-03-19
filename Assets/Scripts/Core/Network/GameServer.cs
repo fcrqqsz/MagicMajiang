@@ -5,7 +5,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using UnityEngine;
 using MahjongGame.Core.Agents;
-using MahjongGame.Systems; // 需要访问 DeckManager 或重构 DeckManager
+using MahjongGame.Systems;
+using MahjongGame.Talents;
 
 namespace MahjongGame.Core.Network
 {
@@ -47,6 +48,10 @@ namespace MahjongGame.Core.Network
         private ServerGameState _gameState;
         private CancellationTokenSource _turnCts;
 
+        // 天赋系统
+        private TalentManager _talentManager;
+        private Dictionary<int, DeckConfig> _deckConfigs;
+
         // 局结束事件，GameManager 监听此事件驱动多局循环
         public event System.Action OnRoundFinished;
 
@@ -54,7 +59,8 @@ namespace MahjongGame.Core.Network
         public event System.Action<int, float> OnTurnStarted;  // (playerIndex, timeoutSeconds)
         public event System.Action OnTurnEnded;
 
-        public async void StartGame(List<IPlayerClient> clients, List<DeckConfig> configs, GameSession session = null)
+        public async void StartGame(List<IPlayerClient> clients, List<DeckConfig> configs,
+            GameSession session = null, Dictionary<int, TalentSlotConfig> talentConfigs = null)
         {
             _clients = clients;
             _session = session;
@@ -68,11 +74,26 @@ namespace MahjongGame.Core.Network
             LoserId = -1;
             IsDrawGame = false;
 
+            // 缓存牌库配置
+            _deckConfigs = new Dictionary<int, DeckConfig>();
+            for (int i = 0; i < configs.Count; i++)
+                _deckConfigs[i] = configs[i];
+
             // 初始化服务端场面快照
             _gameState = new ServerGameState(clients.Count);
 
-            // 洗牌
+            // 初始化天赋系统
+            _talentManager = new TalentManager();
+            _talentManager.Initialize(talentConfigs);
+
+            // 构建牌山（不洗牌）
             DeckManager.Instance.BuildWall(configs);
+
+            // 天赋: 牌山构建阶段
+            _talentManager.ExecuteWallBuilding(DeckManager.Instance.GetWallTiles(), _gameState, _session, _deckConfigs);
+
+            // 洗牌
+            DeckManager.Instance.ShuffleWall();
 
             // 广播圈风/门风信息
             if (_session != null)
@@ -209,6 +230,7 @@ namespace MahjongGame.Core.Network
                 if (!_skipNextDraw)
                 {
                     _lastDrawnTile = DeckManager.Instance.DrawTile();
+                    _lastDrawnTile = _talentManager.ExecuteOnDraw(_currentPlayerIndex, _lastDrawnTile, _gameState, _session, _deckConfigs);
                     _gameState.AddTile(_currentPlayerIndex, _lastDrawnTile);
 
                     // 创建 CTS 并设置到当前玩家（在 OnTileDrawn 之前，让客户端拿到 token）
@@ -277,6 +299,7 @@ namespace MahjongGame.Core.Network
                 else if (action.ActionType == ClientActionType.Discard)
                 {
                     TileData discardedTile = action.TargetTile;
+                    discardedTile = _talentManager.ExecuteOnDiscard(action.PlayerId, discardedTile, _gameState, _session, _deckConfigs);
                     _gameState.RemoveTile(action.PlayerId, discardedTile);
 
                     // 3. 广播他人打牌，并收集响应

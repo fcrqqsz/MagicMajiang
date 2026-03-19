@@ -32,6 +32,15 @@
 - 支持 `GetMatchCount` 多重触发，兼容自定义牌库番数累加
 - 新增规则需考虑优先级与 `ExcludedRuleIds` 排斥逻辑
 
+**天赋系统**: 纯 C# 管道架构，服务端统一执行
+- 天赋通过 `[TalentRuleAttribute]` 标记，由 `TalentRegistry` 反射自动注册（镜像 `FanRuleRegistry` 模式）
+- `TalentManager` 非单例，每局由 `GameServer` 创建，避免跨局状态残留
+- 覆盖五个阶段钩子：牌山构建 / 摸牌 / 出牌 / 动作校验 / 算番
+- `OnDraw`/`OnDiscard` 返回修改后的 `TileData`，形成管道链式调用
+- 6 槽位配置（大×1 + 中×2 + 小×3），向下兼容（大槽可装中/小天赋）
+- 异化值 = 牌库异化值 + 天赋异化值之和（`DeckConfig.CalculateTotalAlienation`）
+- 天赋配置嵌入 `SavedDeck.Talents`，旧存档无此字段时默认空值，向后兼容
+
 **单例模式**: 逻辑层使用纯 C# 懒加载单例，不依赖 MonoBehaviour/场景状态
 
 ## Directory Structure
@@ -68,20 +77,29 @@ Assets/Scripts/
 │               └── MCR_32Plus.cs # 32+番 (18种)
 ├── Systems/                 # 全局管理
 │   ├── GameManager.cs       # 游戏初始化入口, 多局循环驱动
-│   ├── DeckManager.cs       # 牌山构建、洗牌、发牌
-│   └── TalentManager.cs    # 天赋系统分发
-├── Talent/                  # Roguelike 天赋
-│   ├── TalentBase.cs
-│   └── Impl/               # 具体天赋实现
+│   └── DeckManager.cs       # 牌山构建、洗牌、发牌
+├── Talent/                  # Roguelike 天赋系统
+│   ├── TalentRuleAttribute.cs # 标记属性 (id, displayName, description, tier, cost, phases)
+│   ├── TalentRule.cs        # 运行时抽象基类 (阶段钩子)
+│   ├── TalentContext.cs     # 上下文数据类
+│   ├── TalentSlotConfig.cs  # 可序列化 6 槽位配置
+│   ├── TalentRegistry.cs    # 纯 C# 懒加载单例注册中心
+│   ├── TalentManager.cs     # 纯 C# 管道执行器 (每局创建)
+│   ├── TalentDefinition.cs  # SO 元数据 (UI 图标/描述, 可选)
+│   └── Impl/                # 具体天赋实现
+│       └── MidasTouchTalent.cs
 └── Editor/
     └── TileConfigEditor.cs  # 编辑器扩展
 
 Assets/UI/                   # UI Toolkit 面板
 ├── MainLobby.uxml/uss       # 大厅主界面 (含 DeckSelector 卡组切换器)
 ├── LobbyController.cs       # 大厅逻辑 (标签页切换、卡组选择、匹配入口)
+├── DeckEditorToolkit.cs     # 牌库编辑器 (含天赋槽 UI)
+├── TalentSlotTemplate.uxml/uss # 天赋槽位模板与样式
+├── TalentItemTemplate.uxml  # 天赋列表项模板
 ├── ActionPanel/             # 操作按钮面板
 ├── ResultPanel/             # 结算面板 (番种详情)
-├── DeckEditor/              # 牌库编辑器
+├── DeckEditor/              # 牌库编辑器视图与样式
 └── Templates/               # 复用模板 (TileItemTemplate 等)
 ```
 
@@ -94,7 +112,7 @@ Assets/UI/                   # UI Toolkit 面板
 
 ### Key Patterns
 - DoTween 动画绑定动态 GameObject 时，**必须**链式调用 `.SetLink(gameObject)` 防止销毁报错
-- `FanRuleRegistry` 是纯 C# 单例，属性懒加载，避免空引用
+- `FanRuleRegistry` / `TalentRegistry` 均为纯 C# 单例，属性懒加载，避免空引用
 - 胡牌计算使用多路径拆解算法，遍历所有方案取番数最大值
 - UI Toolkit 字体引用 `-unity-font-definition` (SDF 资产)，不用原始字体文件
 - **超时取消**: 客户端 async 方法通过 `CancellationToken` 实现可取消（`ct.Register(() => tcs.TrySetCanceled())`），外层统一 `catch (OperationCanceledException)`
@@ -113,13 +131,15 @@ Assets/UI/                   # UI Toolkit 面板
 
 ## Current Priorities
 参阅 `plan.md` 获取完整任务列表。当前重点:
-- 多局对战 UI 完善（风位显示、分数面板）
+- 异化牌视觉反馈
+- 牌河指针
 - 发牌与摸牌 DoTween 动画
 - 结算手牌缩略图复盘
-- 异化牌视觉反馈
 - 对象池性能优化
 - ~~超时取消机制~~ (已完成: CancellationToken + ServerGameState)
 - ~~Home 页卡组选择器~~ (已完成: DeckSelector 左右箭头循环切换)
+- ~~多局对战 UI 完善~~ (已完成: 风位显示、分数面板、GameMode 选择器)
+- ~~天赋系统重构~~ (已完成: 纯 C# 管道架构、服务端执行、6 槽位 UI、MidasTouch 迁移)
 
 ## Reference Docs
 - `summary.md`: 项目进度快照与排故日志

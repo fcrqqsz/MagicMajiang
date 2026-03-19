@@ -1,0 +1,13 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" editor-extension-mode="False">
+    <ui:VisualElement name="Root" class="talent-item">
+        <ui:VisualElement name="IconImage" class="talent-item-icon" />
+        <ui:VisualElement class="talent-item-info">
+            <ui:Label name="TalentName" text="天赋名称" class="talent-item-name" />
+            <ui:Label name="TalentDesc" text="天赋描述" class="talent-item-desc" />
+        </ui:VisualElement>
+        <ui:VisualElement class="talent-item-meta">
+            <ui:Label name="TierLabel" text="中" class="talent-item-tier" />
+            <ui:Label name="CostLabel" text="15" class="talent-item-cost" />
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>

@@ -1,0 +1,32 @@
+using MahjongGame.Core;
+using MahjongGame.Core.Fan;
+using MahjongGame.Core.Network;
+
+namespace MahjongGame.Talents
+{
+    public abstract class TalentRule
+    {
+        public string Id { get; set; }
+        public TalentTier Tier { get; set; }
+        public int AlienationCost { get; set; }
+        public TalentPhase[] Phases { get; set; }
+        public virtual TalentScope Scope => TalentScope.Self;
+        public virtual int Priority => 0;
+        public int OwnerPlayerId { get; set; }
+
+        public void Initialize(string id, TalentTier tier, int cost, TalentPhase[] phases)
+        {
+            Id = id;
+            Tier = tier;
+            AlienationCost = cost;
+            Phases = phases;
+        }
+
+        // 各阶段钩子，子类按需覆写
+        public virtual void OnWallBuilding(TalentContext ctx) { }
+        public virtual TileData OnDraw(TalentContext ctx, TileData tile) => tile;
+        public virtual TileData OnDiscard(TalentContext ctx, TileData tile) => tile;
+        public virtual bool OnActionValidation(TalentContext ctx, ClientActionType actionType, TileData targetTile) => true;
+        public virtual void OnScoring(TalentContext ctx, FanContext fanCtx) { }
+    }
+}

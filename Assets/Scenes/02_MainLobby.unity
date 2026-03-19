@@ -224,6 +224,14 @@ PrefabInstance:
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
       objectReference: {fileID: 0}
+    - target: {fileID: 8956532071012914618, guid: feda10adefcf1cb47b698fbdab11c54d, type: 3}
+      propertyPath: _talentSlotTemplate
+      value: 
+      objectReference: {fileID: 9197481963319205126, guid: b7f7504beff535e488fc27879b2767e9, type: 3}
+    - target: {fileID: 8956532071012914618, guid: feda10adefcf1cb47b698fbdab11c54d, type: 3}
+      propertyPath: _talentSlotStyleSheet
+      value: 
+      objectReference: {fileID: 7433441132597879392, guid: 267649ba1bc8c764f99897461a76bf96, type: 3}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []

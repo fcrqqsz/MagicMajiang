@@ -3,22 +3,25 @@ using MahjongGame.Core;
 
 namespace MahjongGame.Talents.Impl
 {
-    // 这一行很关键，让你能在 Project 窗口创建这个资源
-    [CreateAssetMenu(menuName = "Mahjong/Talents/Midas Touch")]
-    public class MidasTouchTalent : TalentBase
+    [TalentRule("midas_touch", "点金手", "摸牌时，将风牌和箭牌转化为发财",
+        TalentTier.Medium, 15, TalentPhase.OnDraw)]
+    public class MidasTouchTalent : TalentRule
     {
-        public override void OnTileDrawn(TileData drawnTile)
+        public override TalentScope Scope => TalentScope.Self;
+
+        public override TileData OnDraw(TalentContext ctx, TileData tile)
         {
-            // 判断逻辑：如果是 一万 (Man_1)
-            if (drawnTile.TileSuit == Suit.Dragon || drawnTile.TileSuit == Suit.Wind)
+            if (!ctx.IsOwnersTurn) return tile;
+
+            if (tile.TileSuit == Suit.Dragon || tile.TileSuit == Suit.Wind)
             {
-                Debug.Log($"<color=yellow>[天赋触发] {talentName}: 将{drawnTile.GetName()}变成了发财！</color>");
-                // 修改数据 (由于是引用传递，这会直接影响后续生成的牌)
-                drawnTile.TileSuit = Suit.Dragon;
-                drawnTile.Value = 2; // 2代表发
-                drawnTile.IsModified = true;
-                drawnTile.SpecialEffectID = this.id;
+                Debug.Log($"<color=yellow>[天赋触发] 点金手: 将{tile.GetName()}变成了发财！</color>");
+                tile.TileSuit = Suit.Dragon;
+                tile.Value = 2; // 发财
+                tile.IsModified = true;
+                tile.SpecialEffectID = Id;
             }
+            return tile;
         }
     }
 }

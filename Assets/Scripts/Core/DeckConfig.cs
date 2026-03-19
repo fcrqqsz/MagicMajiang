@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 using System.Linq;
+using MahjongGame.Talents;
 
 namespace MahjongGame.Core
 {
@@ -175,6 +176,23 @@ namespace MahjongGame.Core
             return config;
         }
         
+        /// <summary>
+        /// 计算牌库 + 天赋的总异化值
+        /// </summary>
+        public static int CalculateTotalAlienation(DeckConfig config, TalentSlotConfig talents)
+        {
+            config.CalculateAlienationScore();
+            int talentCost = 0;
+            if (talents != null)
+            {
+                foreach (var id in talents.GetAllEquippedIds())
+                {
+                    talentCost += TalentRegistry.Instance.GetCost(id);
+                }
+            }
+            return config.AlienationScore + talentCost;
+        }
+
         /// <summary>
         /// 将配置转换为实际的 TileData 列表
         /// </summary>

@@ -1,0 +1,7 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" editor-extension-mode="False">
+    <ui:VisualElement name="Root" class="talent-slot">
+        <ui:Label name="TierLabel" text="大" class="talent-slot-tier" />
+        <ui:Label name="NameLabel" text="空" class="talent-slot-name" />
+        <ui:Button name="BtnClear" text="×" class="talent-slot-clear" />
+    </ui:VisualElement>
+</ui:UXML>

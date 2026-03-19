@@ -52,15 +52,17 @@ namespace MahjongGame.Systems
             }
 
             Debug.Log($"总牌山构建完成，共 {_wallTiles.Count} 张牌。");
-            
-            // 4. 洗牌
-            ShuffleWall();
         }
+
+        /// <summary>
+        /// 获取牌山列表引用（供天赋系统在洗牌前修改）
+        /// </summary>
+        public List<TileData> GetWallTiles() => _wallTiles;
 
         /// <summary>
         /// Fisher-Yates 洗牌算法
         /// </summary>
-        private void ShuffleWall()
+        public void ShuffleWall()
         {
             // Unity 的 Random Range 是左闭右开 [min, max)
             for (int i = 0; i < _wallTiles.Count; i++)

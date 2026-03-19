@@ -276,8 +276,6 @@ namespace MahjongGame.Core
                 return;
             }
 
-            TalentManager.Instance.TriggerOnDraw(newData);
-
             AddTileDirectly(newData);
         }
 
@@ -350,8 +348,6 @@ namespace MahjongGame.Core
             {
                 UI.WaitHintController.Instance.HideHint();
             }
-
-            TalentManager.Instance.TriggerOnDiscard(tile.Data);
 
             _handTiles.Remove(tile);
             _selectedTile = null;
