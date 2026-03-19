@@ -39,8 +39,13 @@ namespace MahjongGame.Core
             {
                 _instanceMaterial.EnableKeyword("_EMISSION");
                 _instanceMaterial.DOKill();
-                _instanceMaterial.SetColor("_EmissionColor", Color.black);
-                _instanceMaterial.DOColor(new Color(0.4f, 0.4f, 0.4f), "_EmissionColor", 0.6f)
+                // 提高颜色强度，Unity 中发光强度可以通过将 RGB 值设置大于 1 来实现 Bloom 泛光效果 (需要开启 PostProcessing)
+                // 如果没有 PostProcessing，纯色如 Color.cyan 或 Color.yellow 会更明显
+                Color startColor = new Color(0.1f, 0.3f, 0.3f);
+                Color endColor = new Color(0.3f, 1.0f, 1.0f); // 明亮的青色/蓝绿色
+                
+                _instanceMaterial.SetColor("_EmissionColor", startColor);
+                _instanceMaterial.DOColor(endColor, "_EmissionColor", 0.5f)
                     .SetLoops(-1, LoopType.Yoyo)
                     .SetEase(Ease.InOutSine);
             }
@@ -67,6 +72,21 @@ namespace MahjongGame.Core
             if (faceRenderer == null)
             {
                 faceRenderer = GetComponentInChildren<SpriteRenderer>();
+            }
+            
+            // 自动寻找底座 Renderer
+            if (_renderer == null)
+            {
+                Renderer[] renderers = GetComponentsInChildren<Renderer>();
+                foreach (var r in renderers)
+                {
+                    // 排除掉牌面的 SpriteRenderer
+                    if (r != faceRenderer && !(r is SpriteRenderer))
+                    {
+                        _renderer = r;
+                        break;
+                    }
+                }
             }
         }
 
