@@ -782,36 +782,17 @@ namespace MahjongGame.UI
             // 创建弹出选择列表
             var overlay = new VisualElement();
             overlay.name = "TalentPickerOverlay";
-            overlay.style.position = Position.Absolute;
-            overlay.style.left = 0;
-            overlay.style.top = 0;
-            overlay.style.right = 0;
-            overlay.style.bottom = 0;
-            overlay.style.backgroundColor = new Color(0, 0, 0, 0.5f);
-            overlay.style.justifyContent = Justify.Center;
-            overlay.style.alignItems = Align.Center;
+            overlay.AddToClassList("talent-picker-overlay");
 
             var panel = new VisualElement();
-            panel.style.backgroundColor = new Color(0.15f, 0.15f, 0.2f, 0.95f);
-            panel.style.paddingTop = 16;
-            panel.style.paddingBottom = 16;
-            panel.style.paddingLeft = 16;
-            panel.style.paddingRight = 16;
-            panel.style.borderTopLeftRadius = 12;
-            panel.style.borderTopRightRadius = 12;
-            panel.style.borderBottomLeftRadius = 12;
-            panel.style.borderBottomRightRadius = 12;
-            panel.style.minWidth = 300;
-            panel.style.maxHeight = 400;
+            panel.AddToClassList("talent-picker-panel");
 
-            var title = new Label($"选择天赋 (槽位: {SlotTierLabels[slotIndex]})");
-            title.style.fontSize = 16;
-            title.style.color = Color.white;
-            title.style.marginBottom = 8;
+            var title = new Label($"选择天赋 — {SlotTierLabels[slotIndex]}槽位");
+            title.AddToClassList("talent-picker-title");
             panel.Add(title);
 
             var scrollView = new ScrollView();
-            scrollView.style.maxHeight = 300;
+            scrollView.AddToClassList("talent-picker-scroll");
 
             // "清空此槽位" 选项（如果当前已装备）
             if (!string.IsNullOrEmpty(currentSlotTalent))
@@ -823,39 +804,62 @@ namespace MahjongGame.UI
                     RefreshStats();
                     _root.Remove(overlay);
                 });
-                clearItem.text = "— 清空此槽位 —";
-                clearItem.style.marginBottom = 8;
-                clearItem.style.color = new Color(1f, 0.5f, 0.5f);
+                clearItem.text = "清空此槽位";
+                clearItem.AddToClassList("talent-picker-clear");
                 scrollView.Add(clearItem);
             }
 
             foreach (var id in available)
             {
-                string name = TalentRegistry.Instance.GetDisplayName(id);
+                string displayName = TalentRegistry.Instance.GetDisplayName(id);
                 string desc = TalentRegistry.Instance.GetDescription(id);
                 int cost = TalentRegistry.Instance.GetCost(id);
                 var tier = TalentRegistry.Instance.GetTier(id);
                 string tierName = tier == TalentTier.Large ? "大" : (tier == TalentTier.Medium ? "中" : "小");
+                string tierClass = tier == TalentTier.Large ? "tier-large" : (tier == TalentTier.Medium ? "tier-medium" : "tier-small");
                 bool isCurrent = id == currentSlotTalent;
 
-                var item = new Button(() =>
+                var item = new VisualElement();
+                item.AddToClassList("talent-picker-item");
+                if (isCurrent) item.AddToClassList("current-equipped");
+
+                var nameLabel = new Label(displayName);
+                nameLabel.AddToClassList("talent-picker-item-name");
+                item.Add(nameLabel);
+
+                var descLabel = new Label(desc);
+                descLabel.AddToClassList("talent-picker-item-desc");
+                item.Add(descLabel);
+
+                var metaRow = new VisualElement();
+                metaRow.AddToClassList("talent-picker-item-meta");
+
+                var tierLabel = new Label($"[{tierName}]");
+                tierLabel.AddToClassList("talent-picker-item-tier");
+                tierLabel.AddToClassList(tierClass);
+                metaRow.Add(tierLabel);
+
+                var costLabel = new Label($"异化值 +{cost}");
+                costLabel.AddToClassList("talent-picker-item-cost");
+                metaRow.Add(costLabel);
+
+                item.Add(metaRow);
+
+                item.RegisterCallback<ClickEvent>(evt =>
                 {
                     _currentTalents.SlotTalentIds[slotIndex] = id;
                     RefreshTalentSlots();
                     RefreshStats();
                     _root.Remove(overlay);
                 });
-                item.text = $"{name} [{tierName}] (异化值+{cost}){(isCurrent ? " ✓" : "")}\n{desc}";
-                item.style.marginBottom = 4;
-                item.style.unityTextAlign = TextAnchor.MiddleLeft;
-                if (isCurrent) item.style.opacity = 0.6f;
+
                 scrollView.Add(item);
             }
 
             panel.Add(scrollView);
 
             var btnCancel = new Button(() => _root.Remove(overlay)) { text = "取消" };
-            btnCancel.style.marginTop = 8;
+            btnCancel.AddToClassList("talent-picker-cancel");
             panel.Add(btnCancel);
 
             overlay.Add(panel);

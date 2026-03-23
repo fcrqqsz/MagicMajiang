@@ -74,6 +74,11 @@
     *   `TalentDefinition.cs`: ScriptableObject 元数据（图标/显示名/描述），仅供 UI 展示，运行时逻辑不依赖。
 *   **具体实现 (`Impl/`)**:
     *   `MidasTouchTalent.cs`: 点金手——摸牌时将风牌/箭牌转化为发财。
+    *   `PeekTalent.cs`: 窥探——发牌后通过 FloatingTilePanel 显示牌山顶部 4 张牌。
+    *   `DragonAscentTalent.cs`: 龙腾——宽松清龙判定。
+    *   `DrawRewardTalent.cs`: 摸牌奖励。
+    *   `HeadStartTalent.cs`: 先发制人——固定加番。
+    *   `StartingCapitalTalent.cs`: 启动资金。
 
 #### 天赋定义规范
 
@@ -138,6 +143,9 @@
 *   **LoginPanel & MainLobby**: `01_Login` 和 `02_MainLobby` 场景中的 UI 主体面板。Home 页包含 `DeckSelector`（左右箭头循环切换卡组）、异化值显示及匹配入口。
 *   **操作面板 (`ActionPanel`)**: 按钮布局与可选吃牌组合逻辑。
 *   **结算面板 (`ResultPanel`)**: 汇总算番详情，驱动流局或胡牌界面。
-*   **牌库编辑器 (`DeckEditor`)**: 34 种牌选择界面与异化值计算提示。含天赋槽 UI（6 槽位选择、弹窗选择器、详情区域）。
+*   **牌库编辑器 (`DeckEditor`)**: 34 种牌选择界面与异化值计算提示。含天赋槽 UI（6 槽位选择、弹窗选择器、详情区域）。天赋选择弹窗使用 CSS class 结构化布局（品阶颜色区分、名称/描述/异化值分行显示）。
 *   **天赋模板**: `TalentSlotTemplate.uxml/uss`（槽位显示）、`TalentItemTemplate.uxml`（列表项）。
+*   **通用悬浮牌面板 (`FloatingTilePanel`)**: `FloatingTilePanel.uxml/uss` + `FloatingTilePanelController.cs`，支持展示模式（自动关闭+手动关闭）和选择模式（点击回调），用于窥探天赋等需要展示牌面信息的场景。屏幕上方居中，淡入动画，不阻挡底层交互。
+*   **牌面图片工具**: `TileImageHelper.cs` 静态类，将 `Suit+Value` 映射为 `Resources` 路径，供 `WaitHintController`、`FloatingTilePanelController` 等共用。
+*   **听牌提示面板 (`WaitHintPanel`)**: `WaitHintPanel.uxml/uss` + `WaitHintController.cs`，横向显示听牌列表及最大番数。
 *   **复用模板**: `TileItemTemplate.uxml` 等小组件。

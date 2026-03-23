@@ -20,15 +20,14 @@ namespace MahjongGame.Core
         /// <summary>
         /// 当别人打出一张牌时，检查我能做什么
         /// </summary>
-        public static AllowedActions CheckActions(List<TileData> myHand, List<Meld> myMelds, TileData discardedTile, bool isNextPlayer)
+        public static AllowedActions CheckActions(List<TileData> myHand, List<Meld> myMelds, TileData discardedTile, bool isNextPlayer, ScoringOptions options = null, WindDirection roundWind = WindDirection.East, WindDirection seatWind = WindDirection.East)
         {
             AllowedActions actions = new AllowedActions();
             int[] handCounts = MahjongLogic.ConvertToFrequencyArray(myHand);
             int targetIdx = MahjongLogic.GetTileIndex(discardedTile);
 
-            // 1. 检查胡 (点炮)
-            // 将这张牌临时加入判定
-            if (MahjongLogic.IsWin(myHand, myMelds, discardedTile))
+            // 1. 检查胡 (点炮) — 含番数校验，番数不够不显示胡按钮
+            if (MahjongLogic.CheckWinWithFan(myHand, myMelds, discardedTile, false, out _, out _, roundWind, seatWind, options))
             {
                 actions.CanHu = true;
             }
@@ -70,20 +69,15 @@ namespace MahjongGame.Core
         /// <param name="myHand">手牌数据</param>
         /// <param name="myMelds">已有的副露</param>
         /// <param name="drawnTile">刚摸到的那张牌</param>
-        public static AllowedActions CheckSelfActions(List<TileData> myHand, List<Meld> myMelds, TileData drawnTile)
+        public static AllowedActions CheckSelfActions(List<TileData> myHand, List<Meld> myMelds, TileData drawnTile, ScoringOptions options = null, WindDirection roundWind = WindDirection.East, WindDirection seatWind = WindDirection.East)
         {
             AllowedActions actions = new AllowedActions();
 
             // 1. 检查自摸胡 (Tsumo)
-            // 注意：isSelfDraw = true
-            // 我们这里只做成胡判定，是否满足番数由 MahjongLogic 内部控制 (8番起胡)
             int fan;
             List<string> details;
-            
-            // 为了判定，我们需要把 handTile 和 drawnTile 结合，或者 MahjongLogic 已经能处理 hand 包含 drawn 的情况
-            // 假设 myHand 已经包含了 drawnTile (TurnManager 里是先 Draw 后 Check)
-            // 那么 CheckWinWithFan 的 winningTile 参数只是用来指明哪张是胡的牌
-            if (MahjongLogic.CheckWinWithFan(myHand, myMelds, drawnTile, true, out fan, out details))
+
+            if (MahjongLogic.CheckWinWithFan(myHand, myMelds, drawnTile, true, out fan, out details, roundWind, seatWind, options))
             {
                 actions.CanHu = true;
             }

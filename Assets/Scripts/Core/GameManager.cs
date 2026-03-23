@@ -129,7 +129,44 @@ namespace MahjongGame.Core
             _hostConfig = hostConfig;
             Session = new GameSession(mode);
 
+            // 初始资金天赋：对战开始时加分
+            var talentConfigs = BuildTalentConfigs();
+            if (talentConfigs.TryGetValue(0, out var p0Config))
+            {
+                if (p0Config.GetAllEquippedIds().Contains("starting_capital"))
+                {
+                    Session.Scores[0] += Talents.Impl.StartingCapitalTalent.BonusScore;
+                    Debug.Log($"<color=yellow>[天赋触发] 初始资金: 玩家0 初始分数+{Talents.Impl.StartingCapitalTalent.BonusScore}</color>");
+                }
+            }
+
             StartNextRound();
+        }
+
+        private Dictionary<int, TalentSlotConfig> BuildTalentConfigs()
+        {
+            var talentConfigs = new Dictionary<int, TalentSlotConfig>();
+            if (ProfileManager.Instance?.CurrentProfile != null)
+            {
+                var profile = ProfileManager.Instance.CurrentProfile;
+                int idx = profile.SelectedDeckIndex;
+                if (profile.SavedDecks.Count > 0)
+                {
+                    if (idx < 0 || idx >= profile.SavedDecks.Count) idx = 0;
+                    talentConfigs[0] = profile.SavedDecks[idx].Talents ?? new TalentSlotConfig();
+                }
+                else
+                {
+                    talentConfigs[0] = new TalentSlotConfig();
+                }
+            }
+            else
+            {
+                talentConfigs[0] = new TalentSlotConfig();
+            }
+            for (int i = 1; i < 4; i++)
+                talentConfigs[i] = new TalentSlotConfig();
+            return talentConfigs;
         }
 
         /// <summary>
@@ -192,29 +229,7 @@ namespace MahjongGame.Core
             }
 
             // 构建天赋配置
-            var talentConfigs = new Dictionary<int, TalentSlotConfig>();
-            // 玩家 0: 从存档读取天赋配置
-            if (ProfileManager.Instance?.CurrentProfile != null)
-            {
-                var profile = ProfileManager.Instance.CurrentProfile;
-                int idx = profile.SelectedDeckIndex;
-                if (profile.SavedDecks.Count > 0)
-                {
-                    if (idx < 0 || idx >= profile.SavedDecks.Count) idx = 0;
-                    talentConfigs[0] = profile.SavedDecks[idx].Talents ?? new TalentSlotConfig();
-                }
-                else
-                {
-                    talentConfigs[0] = new TalentSlotConfig();
-                }
-            }
-            else
-            {
-                talentConfigs[0] = new TalentSlotConfig();
-            }
-            // AI (1-3): 空天赋配置
-            for (int i = 1; i < 4; i++)
-                talentConfigs[i] = new TalentSlotConfig();
+            var talentConfigs = BuildTalentConfigs();
 
             // 启动
             _currentServer.StartGame(_clients, allConfigs, Session, talentConfigs);

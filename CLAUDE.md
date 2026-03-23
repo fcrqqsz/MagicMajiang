@@ -87,16 +87,26 @@ Assets/Scripts/
 │   ├── TalentManager.cs     # 纯 C# 管道执行器 (每局创建)
 │   ├── TalentDefinition.cs  # SO 元数据 (UI 图标/描述, 可选)
 │   └── Impl/                # 具体天赋实现
-│       └── MidasTouchTalent.cs
+│       ├── MidasTouchTalent.cs
+│       ├── PeekTalent.cs        # 窥探——发牌后显示牌山顶部4张
+│       ├── DragonAscentTalent.cs # 龙腾——宽松清龙判定
+│       ├── DrawRewardTalent.cs   # 摸牌奖励
+│       ├── HeadStartTalent.cs    # 先发制人——固定加番
+│       └── StartingCapitalTalent.cs # 启动资金
 └── Editor/
     └── TileConfigEditor.cs  # 编辑器扩展
 
 Assets/UI/                   # UI Toolkit 面板
 ├── MainLobby.uxml/uss       # 大厅主界面 (含 DeckSelector 卡组切换器)
 ├── LobbyController.cs       # 大厅逻辑 (标签页切换、卡组选择、匹配入口)
-├── DeckEditorToolkit.cs     # 牌库编辑器 (含天赋槽 UI)
+├── DeckEditorToolkit.cs     # 牌库编辑器 (含天赋槽 UI 与天赋选择弹窗)
 ├── TalentSlotTemplate.uxml/uss # 天赋槽位模板与样式
 ├── TalentItemTemplate.uxml  # 天赋列表项模板
+├── FloatingTilePanel.uxml/uss  # 通用悬浮牌面板 (窥探天赋等)
+├── FloatingTilePanelController.cs # 悬浮面板控制器 (展示/选择双模式)
+├── TileImageHelper.cs       # 牌面图片路径共享工具类
+├── WaitHintPanel.uxml/uss   # 听牌提示面板
+├── WaitHintController.cs    # 听牌提示控制器
 ├── ActionPanel/             # 操作按钮面板
 ├── ResultPanel/             # 结算面板 (番种详情)
 ├── DeckEditor/              # 牌库编辑器视图与样式
@@ -132,7 +142,6 @@ Assets/UI/                   # UI Toolkit 面板
 ## Current Priorities
 参阅 `plan.md` 获取完整任务列表。当前重点:
 - 异化牌视觉反馈
-- 牌河指针
 - 发牌与摸牌 DoTween 动画
 - 结算手牌缩略图复盘
 - 对象池性能优化
@@ -140,8 +149,12 @@ Assets/UI/                   # UI Toolkit 面板
 - ~~Home 页卡组选择器~~ (已完成: DeckSelector 左右箭头循环切换)
 - ~~多局对战 UI 完善~~ (已完成: 风位显示、分数面板、GameMode 选择器)
 - ~~天赋系统重构~~ (已完成: 纯 C# 管道架构、服务端执行、6 槽位 UI、MidasTouch 迁移)
+- ~~牌河指针~~ (已完成: Emission 呼吸灯高亮最新出牌)
+- ~~通用悬浮牌面板~~ (已完成: FloatingTilePanel 展示/选择双模式，窥探天赋接入)
+- ~~天赋选择弹窗美化~~ (已完成: CSS class 重构，品阶颜色区分，结构化布局)
 
 ## Reference Docs
 - `summary.md`: 项目进度快照与排故日志
-- `plan.md`: 开发任务与优化路线图
+- `plan.md`: 当前待办任务与长期优化路线图（仅未完成项）
+- `milestone.md`: 已完成里程碑归档（完成的任务记录在此）
 - `struct.md`: 详细架构索引

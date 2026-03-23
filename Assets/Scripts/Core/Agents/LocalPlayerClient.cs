@@ -29,6 +29,9 @@ namespace MahjongGame.Core.Agents
         private WindDirection _roundWind = WindDirection.East;
         private WindDirection _seatWind = WindDirection.East;
 
+        // 天赋加成
+        private ScoringOptions _scoringOptions;
+
         public LocalPlayerClient(int playerId, IServer server, HandController handController)
         {
             PlayerId = playerId;
@@ -73,7 +76,7 @@ namespace MahjongGame.Core.Agents
                 var melds = _handController.Melds;
 
                 // 1. 检查自摸、暗杠
-                var actions = ActionValidator.CheckSelfActions(handData, melds, drawnTile);
+                var actions = ActionValidator.CheckSelfActions(handData, melds, drawnTile, _scoringOptions, _roundWind, _seatWind);
                 if (actions.HasAction)
                 {
                     bool actionTaken = false;
@@ -87,7 +90,7 @@ namespace MahjongGame.Core.Agents
                         {
                             int totalFan;
                             List<string> fanDetails;
-                            MahjongLogic.CheckWinWithFan(handData, melds, drawnTile, true, out totalFan, out fanDetails, _roundWind, _seatWind);
+                            MahjongLogic.CheckWinWithFan(handData, melds, drawnTile, true, out totalFan, out fanDetails, _roundWind, _seatWind, _scoringOptions);
 
                             var action = new ClientAction(PlayerId, ClientActionType.Hu, drawnTile);
                             action.SetHuDetails(totalFan, fanDetails);
@@ -166,7 +169,7 @@ namespace MahjongGame.Core.Agents
                 var melds = _handController.Melds;
                 bool isNextPlayer = (discarderId + 1) % 4 == PlayerId;
 
-                var actions = ActionValidator.CheckActions(handData, melds, discardedTile, isNextPlayer);
+                var actions = ActionValidator.CheckActions(handData, melds, discardedTile, isNextPlayer, _scoringOptions, _roundWind, _seatWind);
 
                 if (actions.HasAction)
                 {
@@ -181,7 +184,7 @@ namespace MahjongGame.Core.Agents
                         {
                             int totalFan;
                             List<string> fanDetails;
-                            MahjongLogic.CheckWinWithFan(handData, melds, discardedTile, false, out totalFan, out fanDetails, _roundWind, _seatWind);
+                            MahjongLogic.CheckWinWithFan(handData, melds, discardedTile, false, out totalFan, out fanDetails, _roundWind, _seatWind, _scoringOptions);
 
                             var action = new ClientAction(PlayerId, ClientActionType.Hu, discardedTile);
                             action.SetHuDetails(totalFan, fanDetails);
@@ -375,6 +378,25 @@ namespace MahjongGame.Core.Agents
             }
 
             Debug.LogWarning($"[LocalPlayer] 操作超时，自动出牌: {autoDiscardedTile}");
+        }
+
+        public void OnTalentInfo(ScoringOptions scoringOptions)
+        {
+            _scoringOptions = scoringOptions;
+            _handController.ScoringOptions = scoringOptions;
+            if (scoringOptions != null && scoringOptions.BonusFan > 0)
+                Debug.Log($"[LocalPlayer] 天赋加成: 番数+{scoringOptions.BonusFan}");
+            if (scoringOptions != null && scoringOptions.RelaxedPureStraight)
+                Debug.Log($"[LocalPlayer] 天赋加成: 宽松清龙判定");
+        }
+
+        public void OnPeekWallTiles(List<TileData> topTiles)
+        {
+            if (FloatingTilePanelController.Instance != null)
+            {
+                FloatingTilePanelController.Instance.ShowTiles(
+                    $"窥探 - 牌山顶部 {topTiles.Count} 张", topTiles, 8f);
+            }
         }
     }
 }

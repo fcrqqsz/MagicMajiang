@@ -1,0 +1,104 @@
+.floating-panel-root {
+    position: absolute;
+    left: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    align-items: center;
+    justify-content: flex-start;
+    padding-top: 200px;
+    picking-mode: Ignore;
+}
+
+.floating-panel-body {
+    background-color: rgba(0, 0, 0, 0.9);
+    border-radius: 16px;
+    padding: 20px 30px;
+    border-width: 3px;
+    border-color: #D4AF37;
+    align-items: center;
+    min-width: 300px;
+    max-width: 1200px;
+    opacity: 0;
+    transition-property: opacity;
+    transition-duration: 0.3s;
+}
+
+.floating-panel-body.panel--visible {
+    opacity: 1;
+}
+
+.floating-panel-title {
+    color: white;
+    font-size: 38px;
+    -unity-font-style: bold;
+    margin-bottom: 15px;
+    -unity-text-align: middle-center;
+}
+
+.floating-tile-scroll {
+    flex-direction: row;
+    height: 150px;
+    flex-grow: 1;
+}
+
+.floating-tile-scroll .unity-scroll-view__content-container {
+    flex-direction: row;
+    align-items: center;
+}
+
+.floating-tile-item {
+    align-items: center;
+    margin: 0 12px;
+    width: 90px;
+    height: 130px;
+    justify-content: center;
+    border-radius: 8px;
+    transition-property: scale;
+    transition-duration: 0.15s;
+}
+
+.floating-tile-item:hover {
+    scale: 1.1;
+}
+
+.floating-tile-item.selectable:hover {
+    scale: 1.15;
+    border-width: 3px;
+    border-color: #FFD700;
+    border-radius: 10px;
+}
+
+.floating-tile-image {
+    width: 75px;
+    height: 105px;
+    background-color: white;
+    border-radius: 8px;
+    -unity-background-scale-mode: scale-to-fit;
+}
+
+.floating-panel-close-btn {
+    margin-top: 15px;
+    padding: 8px 40px;
+    font-size: 28px;
+    color: white;
+    background-color: rgba(80, 80, 80, 0.8);
+    border-radius: 10px;
+    border-width: 2px;
+    border-color: #D4AF37;
+    -unity-font-style: bold;
+}
+
+.floating-panel-close-btn:hover {
+    background-color: rgba(120, 120, 120, 0.9);
+}
+
+/* 隐藏状态 */
+.floating-panel-root.panel--hidden {
+    display: none;
+}
+
+/* 字体修正 (确保显示中文) */
+.unity-text-element {
+    -unity-font-definition: url('project://database/Assets/Font/MSYH.TTC');
+}

@@ -26,6 +26,8 @@ namespace MahjongGame.Core
         // 当前风位 (由 LocalPlayerClient.OnRoundStart 设置)
         public WindDirection RoundWind { get; set; } = WindDirection.East;
         public WindDirection SeatWind { get; set; } = WindDirection.East;
+        // 天赋加成 (由 LocalPlayerClient.OnTalentInfo 设置)
+        public ScoringOptions ScoringOptions { get; set; }
 
         public List<TileData> GetHandData()
         {
@@ -439,7 +441,7 @@ namespace MahjongGame.Core
             _isInteractable = canInteract;
             if (canInteract)
             {
-                _cachedWaitHints = MahjongLogic.GetWaitHints(GetHandData(), Melds, RoundWind, SeatWind);
+                _cachedWaitHints = MahjongLogic.GetWaitHints(GetHandData(), Melds, RoundWind, SeatWind, ScoringOptions);
             }
             else
             {

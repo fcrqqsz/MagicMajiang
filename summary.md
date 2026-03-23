@@ -1,5 +1,7 @@
 麻将 Roguelike 项目进度快照 (Project Snapshot)
-日期: 2026-03-07 版本: Alpha - Multi-Scene & Lobby UI 引擎: Unity (2022.3.61t9)
+日期: 2026-03-24 版本: Alpha - Talent UI & FloatingPanel 引擎: Unity (2022.3.61t9)
+
+> **文档约定**: 已完成的任务统一记录在 `milestone.md`，`plan.md` 仅保留待办与未来规划。
 
 1. 项目核心目标
 开发一款基于 Unity 3D 的单机麻将游戏。
@@ -7,6 +9,11 @@
 *   **特色玩法**: Roguelike 天赋系统、自定义 34 张牌库及异化值机制。
 
 2. 最近进展 (Recent Progress)
+*   **通用悬浮牌面板 & 天赋选择弹窗美化 (2026-03-24)**:
+    *   新增 `FloatingTilePanel`（UXML/USS/Controller 三件套），支持展示模式（自动关闭+手动关闭）和选择模式（点击选牌回调）。屏幕上方居中定位，CSS opacity 淡入动画，`picking-mode: Ignore` 不阻挡底层交互。
+    *   提取 `TileImageHelper` 共享静态类，统一 `Suit+Value` 到 `Resources` 图片路径的映射，`WaitHintController` 和 `FloatingTilePanelController` 共用。
+    *   窥探天赋 (`PeekTalent`) 从 `Debug.Log` 改为调用 `FloatingTilePanelController.Instance.ShowTiles()`，发牌后显示牌山顶部 4 张牌（原 3 张），8 秒自动关闭。
+    *   天赋选择弹窗从内联样式重构为 CSS class 驱动（`DeckEditorStyles.uss`），新增结构化布局（天赋名/描述/品阶/异化值分行显示），品阶颜色区分（大=金/中=紫/小=蓝），hover 高亮和清空按钮独立样式，与编辑器整体深色+青色主题一致。
 *   **牌河指针/高亮功能 (2026-03-19)**: 为 `TileVisual` 增加了基于 DOTween 和材质 `_EmissionColor` 的呼吸灯高亮效果（强青色 `Color(0.3f, 1.0f, 1.0f)`）。`RiverController` 实现了状态机制，确保全场永远只有**最新打出的那张牌**保持高亮，且在牌被吃碰杠拿走时安全销毁动画，提升了玩家的视觉跟踪体验。
 *   **Home 页卡组选择器 (2026-03-12)**: 在 Home 页面新增左右箭头循环切换卡组功能（`DeckSelector` 容器 + `BtnDeckPrev`/`BtnDeckNext`），切换即时持久化 `SelectedDeckIndex`，单卡组时箭头禁用。修复了 `RefreshHomeDeckInfo` 中索引越界修正未写回 `profile.SelectedDeckIndex` 的潜在问题。
 *   **多场景架构与大厅 UI (2026-03-07)**: 重构了项目的入口流程，引入了 `00_Persistent` 持久化层及 `ProfileManager`, `NetworkManager`, `LoadingScreenController`, `CameraManager`。实现了基于 UI Toolkit 的 `01_Login` 登录界面和 `02_MainLobby` 大厅枢纽，支持模拟登录、模拟匹配房间以及多场景加载与无缝过渡机制。

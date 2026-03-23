@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 
 namespace MahjongGame.Core
@@ -19,7 +20,7 @@ namespace MahjongGame.Core
         /// <summary>
         /// 完整胡牌判定 (含8番起胡校验)
         /// </summary>
-        public static bool CheckWinWithFan(List<TileData> hand, List<Meld> melds, TileData winTile, bool isSelfDraw, out int totalFan, out List<string> fanDetails, WindDirection roundWind = WindDirection.East, WindDirection seatWind = WindDirection.East)
+        public static bool CheckWinWithFan(List<TileData> hand, List<Meld> melds, TileData winTile, bool isSelfDraw, out int totalFan, out List<string> fanDetails, WindDirection roundWind = WindDirection.East, WindDirection seatWind = WindDirection.East, ScoringOptions options = null)
         {
             totalFan = 0;
             fanDetails = null;
@@ -28,6 +29,7 @@ namespace MahjongGame.Core
             var decompositions = GetAllDecompositions(hand, melds, winTile, isSelfDraw);
             if (decompositions.Count == 0) return false;
 
+            int bonusFan = options?.BonusFan ?? 0;
             int maxFan = -1;
             List<string> bestDetails = null;
 
@@ -38,6 +40,18 @@ namespace MahjongGame.Core
                 ctx.Wait = decomp.Wait;
 
                 int currentFan = _calculator.CalculateTotalFan(ctx, out List<string> currentDetails);
+
+                // 宽松清龙检查：如果标准清龙未命中，尝试宽松版
+                if (options?.RelaxedPureStraight == true && !HasStandardPureStraight(decomp))
+                {
+                    int relaxedFan = CheckRelaxedPureStraight(decomp);
+                    if (relaxedFan > 0)
+                    {
+                        currentFan += relaxedFan;
+                        currentDetails.Add($"清龙·如龙({relaxedFan})");
+                    }
+                }
+
                 if (currentFan > maxFan)
                 {
                     maxFan = currentFan;
@@ -45,12 +59,82 @@ namespace MahjongGame.Core
                 }
             }
 
-            // 3. 8番起胡校验
-            if (maxFan < 8) return false;
+            // 3. 8番起胡校验 (含天赋加番)
+            if (maxFan + bonusFan < 8) return false;
 
-            totalFan = maxFan;
+            totalFan = maxFan + bonusFan;
             fanDetails = bestDetails;
+            if (bonusFan > 0)
+                fanDetails.Add($"快人一步(+{bonusFan})");
             return true;
+        }
+
+        /// <summary>
+        /// 检查拆解方案中是否已包含标准清龙 (同花色 1-4-7 三副顺子)
+        /// </summary>
+        private static bool HasStandardPureStraight(InternalDecomposition decomp)
+        {
+            var sequences = decomp.AllMelds.Where(m => m.Type == MeldType.Chi).ToList();
+            var groupedBySuit = sequences.GroupBy(s => s.FirstTile.TileSuit);
+            foreach (var group in groupedBySuit)
+            {
+                var vals = group.Select(s => s.FirstTile.Value).ToList();
+                if (vals.Contains(1) && vals.Contains(4) && vals.Contains(7)) return true;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// 宽松清龙检查：允许三个同花色顺子中有一个的起始值与目标 {1,4,7} 差 1
+        /// </summary>
+        private static int CheckRelaxedPureStraight(InternalDecomposition decomp)
+        {
+            var sequences = decomp.AllMelds.Where(m => m.Type == MeldType.Chi).ToList();
+            var groupedBySuit = sequences.GroupBy(s => s.FirstTile.TileSuit);
+
+            int[] targets = { 1, 4, 7 };
+
+            foreach (var group in groupedBySuit)
+            {
+                var vals = group.Select(s => s.FirstTile.Value).ToList();
+                if (vals.Count < 3) continue;
+
+                // 尝试从该花色的所有顺子中选出 3 个，其中恰好 2 个命中 {1,4,7}，第 3 个与缺失目标差值为 1
+                for (int i = 0; i < vals.Count; i++)
+                {
+                    for (int j = i + 1; j < vals.Count; j++)
+                    {
+                        for (int k = j + 1; k < vals.Count; k++)
+                        {
+                            int[] triple = { vals[i], vals[j], vals[k] };
+                            // 检查是否恰好2个匹配 {1,4,7}，第3个与缺失目标差1
+                            var matched = new List<int>();
+                            var unmatched = new List<int>();
+                            foreach (var v in triple)
+                            {
+                                if (v == 1 || v == 4 || v == 7) matched.Add(v);
+                                else unmatched.Add(v);
+                            }
+
+                            if (matched.Count == 2 && unmatched.Count == 1)
+                            {
+                                // 找到缺失的目标
+                                int missing = -1;
+                                foreach (var t in targets)
+                                {
+                                    if (!matched.Contains(t)) { missing = t; break; }
+                                }
+
+                                if (missing != -1 && System.Math.Abs(unmatched[0] - missing) == 1)
+                                {
+                                    return 16; // 清龙 16 番
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            return 0;
         }
 
         // --- 核心逻辑：获取所有拆解方案 ---
@@ -500,7 +584,7 @@ namespace MahjongGame.Core
         /// 获取所有打出后能听牌的提示信息
         /// </summary>
         /// <returns>Key: 打出的牌的索引 (GetTileIndex), Value: 听的牌及最大番数列表</returns>
-        public static Dictionary<int, List<WaitDetail>> GetWaitHints(List<TileData> hand, List<Meld> melds, WindDirection roundWind = WindDirection.East, WindDirection seatWind = WindDirection.East)
+        public static Dictionary<int, List<WaitDetail>> GetWaitHints(List<TileData> hand, List<Meld> melds, WindDirection roundWind = WindDirection.East, WindDirection seatWind = WindDirection.East, ScoringOptions options = null)
         {
             var hints = new Dictionary<int, List<WaitDetail>>();
 
@@ -530,7 +614,7 @@ namespace MahjongGame.Core
                     var waitTile = CreateTileFromIndex(i);
                     if (IsWin(handAfterDiscard, melds, waitTile))
                     {
-                        if (CheckWinWithFan(handAfterDiscard, melds, waitTile, false, out int totalFan, out _, roundWind, seatWind))
+                        if (CheckWinWithFan(handAfterDiscard, melds, waitTile, false, out int totalFan, out _, roundWind, seatWind, options))
                         {
                             waitDetails.Add(new WaitDetail { WaitTile = waitTile, MaxFan = totalFan });
                         }

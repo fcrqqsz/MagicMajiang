@@ -181,6 +181,69 @@ Transform:
   - {fileID: 1155524380}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 90, z: 0}
+--- !u!1 &134677930
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 7
+  m_Component:
+  - component: {fileID: 134677931}
+  - component: {fileID: 134677933}
+  - component: {fileID: 134677932}
+  m_Layer: 0
+  m_HasEditorInfo: 1
+  m_Name: FloatingTilePanel
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &134677931
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 134677930}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 625678689}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &134677932
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 134677930}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 35f2e38c3ed536f49b5df8676f848978, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  _document: {fileID: 134677933}
+--- !u!114 &134677933
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 134677930}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 19102, guid: 0000000000000000e000000000000000, type: 0}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  m_PanelSettings: {fileID: 11400000, guid: c2d3c97d2dda9784893eee8e852159d0, type: 2}
+  m_ParentUI: {fileID: 0}
+  sourceAsset: {fileID: 9197481963319205126, guid: 8e0769d668290844688f92675ef9f84f, type: 3}
+  m_SortingOrder: 1
 --- !u!1 &178818889
 GameObject:
   m_ObjectHideFlags: 0
@@ -436,6 +499,39 @@ Transform:
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 776909411}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &625678688
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 7
+  m_Component:
+  - component: {fileID: 625678689}
+  m_Layer: 0
+  m_HasEditorInfo: 1
+  m_Name: UIDocument_FloatingTilePanel
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &625678689
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 625678688}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 524841.8, y: -172224.38, z: -7240.535}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children:
+  - {fileID: 134677931}
+  m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &640841725
 GameObject:
@@ -1154,7 +1250,6 @@ GameObject:
   m_Component:
   - component: {fileID: 1461636647}
   - component: {fileID: 1461636646}
-  - component: {fileID: 1461636648}
   - component: {fileID: 1461636649}
   m_Layer: 0
   m_HasEditorInfo: 1
@@ -1261,7 +1356,7 @@ MonoBehaviour:
     OriginalOwnerID: 0
     IsModified: 0
     SpecialEffectID: 
-  forceAIDiscard: 1
+  forceAIDiscard: 0
   aiCheatDiscards:
   - ID: 9999
     TileSuit: 0
@@ -1286,20 +1381,6 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &1461636648
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1461636644}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 3f21f81799d2edb4ca90402d9db59334, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  _activeTalents:
-  - {fileID: 11400000, guid: 396b86c5639c4b548b8bb921c555e22f, type: 2}
 --- !u!114 &1461636649
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1870,3 +1951,4 @@ SceneRoots:
   - {fileID: 1523404014}
   - {fileID: 93327063}
   - {fileID: 178818890}
+  - {fileID: 625678689}

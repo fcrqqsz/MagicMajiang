@@ -69,5 +69,15 @@ namespace MahjongGame.Core.Agents
         /// </summary>
         /// <param name="autoDiscardedTile">服务端自动出的牌，null表示响应超时（跳过）</param>
         void OnTimeout(TileData autoDiscardedTile);
+
+        /// <summary>
+        /// 通知客户端天赋带来的算番加成信息
+        /// </summary>
+        void OnTalentInfo(ScoringOptions scoringOptions);
+
+        /// <summary>
+        /// 窥探天赋：通知牌山顶部几张牌
+        /// </summary>
+        void OnPeekWallTiles(List<TileData> topTiles);
     }
 }

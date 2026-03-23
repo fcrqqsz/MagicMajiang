@@ -62,6 +62,12 @@ namespace MahjongGame.Talents
 
         public bool HasAnyTalents => _playerTalents.Values.Any(list => list.Count > 0);
 
+        public bool PlayerHasTalent(int playerId, string talentId)
+        {
+            if (!_playerTalents.TryGetValue(playerId, out var talents)) return false;
+            return talents.Any(t => t.Id == talentId);
+        }
+
         public void ExecuteWallBuilding(List<TileData> wallTiles, ServerGameState gameState, GameSession session, Dictionary<int, DeckConfig> deckConfigs)
         {
             var pipeline = _phasePipelines[TalentPhase.WallBuilding];

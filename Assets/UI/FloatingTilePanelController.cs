@@ -1,0 +1,163 @@
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+using UnityEngine.UIElements;
+using MahjongGame.Core;
+
+namespace MahjongGame.UI
+{
+    public class FloatingTilePanelController : MonoBehaviour
+    {
+        public static FloatingTilePanelController Instance;
+
+        [SerializeField] private UIDocument _document;
+
+        private VisualElement _root;
+        private VisualElement _body;
+        private Label _titleLabel;
+        private ScrollView _scrollView;
+        private Button _closeBtn;
+
+        private Coroutine _autoCloseCoroutine;
+
+        private void Awake()
+        {
+            Instance = this;
+        }
+
+        private void OnEnable()
+        {
+            if (_document == null)
+                _document = GetComponent<UIDocument>();
+
+            if (_document != null && _document.rootVisualElement != null)
+            {
+                _root = _document.rootVisualElement.Q<VisualElement>("FloatingTilePanelRoot");
+                _body = _document.rootVisualElement.Q<VisualElement>("FloatingPanelBody");
+                _titleLabel = _document.rootVisualElement.Q<Label>("FloatingPanelTitle");
+                _scrollView = _document.rootVisualElement.Q<ScrollView>("FloatingTileScroll");
+                _closeBtn = _document.rootVisualElement.Q<Button>("FloatingPanelCloseBtn");
+
+                _closeBtn.clicked += Hide;
+                HideImmediate();
+            }
+        }
+
+        /// <summary>
+        /// 展示模式：显示牌面信息，autoCloseSeconds=0 表示不自动关闭
+        /// </summary>
+        public void ShowTiles(string title, List<TileData> tiles, float autoCloseSeconds = 5f)
+        {
+            if (_root == null) return;
+
+            StopAutoClose();
+            PopulateTiles(title, tiles, false, null);
+            _closeBtn.style.display = DisplayStyle.Flex;
+            ShowPanel();
+
+            if (autoCloseSeconds > 0)
+            {
+                _autoCloseCoroutine = StartCoroutine(AutoCloseAfter(autoCloseSeconds));
+            }
+        }
+
+        /// <summary>
+        /// 选择模式：显示牌面让玩家选一张，选中后回调
+        /// </summary>
+        public void ShowSelection(string title, List<TileData> tiles, Action<int> onSelected)
+        {
+            if (_root == null) return;
+
+            StopAutoClose();
+            PopulateTiles(title, tiles, true, onSelected);
+            _closeBtn.style.display = DisplayStyle.None;
+            ShowPanel();
+        }
+
+        /// <summary>
+        /// 关闭面板
+        /// </summary>
+        public void Hide()
+        {
+            if (_root == null) return;
+
+            StopAutoClose();
+            _body.RemoveFromClassList("panel--visible");
+            _root.AddToClassList("panel--hidden");
+        }
+
+        private void HideImmediate()
+        {
+            _body.RemoveFromClassList("panel--visible");
+            _root.AddToClassList("panel--hidden");
+        }
+
+        private void ShowPanel()
+        {
+            _root.RemoveFromClassList("panel--hidden");
+            // 延迟一帧添加 visible class，让 opacity transition 生效
+            _root.schedule.Execute(() =>
+            {
+                _body.AddToClassList("panel--visible");
+            });
+        }
+
+        private void PopulateTiles(string title, List<TileData> tiles, bool selectable, Action<int> onSelected)
+        {
+            _titleLabel.text = title;
+            _scrollView.Clear();
+
+            for (int i = 0; i < tiles.Count; i++)
+            {
+                var tile = tiles[i];
+                int index = i;
+
+                var item = new VisualElement();
+                item.AddToClassList("floating-tile-item");
+
+                if (selectable)
+                {
+                    item.AddToClassList("selectable");
+                }
+
+                var image = new VisualElement();
+                image.AddToClassList("floating-tile-image");
+
+                string imagePath = TileImageHelper.GetTileImagePath(tile);
+                Sprite tileSprite = Resources.Load<Sprite>(imagePath);
+                if (tileSprite != null)
+                {
+                    image.style.backgroundImage = new StyleBackground(tileSprite);
+                }
+
+                item.Add(image);
+                _scrollView.Add(item);
+
+                if (selectable)
+                {
+                    item.RegisterCallback<ClickEvent>(evt =>
+                    {
+                        onSelected?.Invoke(index);
+                        Hide();
+                    });
+                }
+            }
+        }
+
+        private IEnumerator AutoCloseAfter(float seconds)
+        {
+            yield return new WaitForSeconds(seconds);
+            Hide();
+        }
+
+        private void StopAutoClose()
+        {
+            if (_autoCloseCoroutine != null)
+            {
+                StopCoroutine(_autoCloseCoroutine);
+                _autoCloseCoroutine = null;
+            }
+        }
+    }
+}

@@ -335,3 +335,160 @@
     background-color: #393E46;
     color: #666;
 }
+
+/* ======= 天赋区域 ======= */
+.talent-section {
+    background-color: #393E46;
+    border-radius: 12px;
+    padding: 16px;
+    margin-top: 16px;
+}
+
+.talent-section-header {
+    font-size: 20px;
+    -unity-font-style: bold;
+    color: #EEEEEE;
+    -unity-text-align: middle-center;
+    margin-bottom: 12px;
+}
+
+/* ======= 天赋选择弹窗 ======= */
+.talent-picker-overlay {
+    position: absolute;
+    left: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.6);
+    justify-content: center;
+    align-items: center;
+}
+
+.talent-picker-panel {
+    background-color: #222831;
+    padding: 24px;
+    border-radius: 16px;
+    border-width: 2px;
+    border-color: #00ADB5;
+    min-width: 420px;
+    max-width: 520px;
+    max-height: 500px;
+    flex-direction: column;
+}
+
+.talent-picker-title {
+    font-size: 22px;
+    color: #EEEEEE;
+    -unity-font-style: bold;
+    -unity-text-align: middle-center;
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom-width: 1px;
+    border-bottom-color: rgba(0, 173, 181, 0.3);
+}
+
+.talent-picker-scroll {
+    max-height: 360px;
+    flex-grow: 1;
+}
+
+.talent-picker-item {
+    background-color: #393E46;
+    border-radius: 10px;
+    border-width: 2px;
+    border-color: transparent;
+    padding: 12px 16px;
+    margin-bottom: 8px;
+    -unity-text-align: middle-left;
+    transition-duration: 0.15s;
+    flex-direction: column;
+}
+
+.talent-picker-item:hover {
+    border-color: #00ADB5;
+    background-color: #444b56;
+}
+
+.talent-picker-item:active {
+    background-color: #00ADB5;
+    color: #222831;
+}
+
+.talent-picker-item.current-equipped {
+    border-color: rgba(122, 90, 245, 0.6);
+    opacity: 0.7;
+}
+
+.talent-picker-item-name {
+    font-size: 17px;
+    color: #EEEEEE;
+    -unity-font-style: bold;
+    margin-bottom: 4px;
+}
+
+.talent-picker-item-desc {
+    font-size: 13px;
+    color: #aaaaaa;
+    white-space: normal;
+}
+
+.talent-picker-item-meta {
+    flex-direction: row;
+    justify-content: space-between;
+    margin-top: 6px;
+}
+
+.talent-picker-item-tier {
+    font-size: 12px;
+    -unity-font-style: bold;
+}
+
+.talent-picker-item-tier.tier-large {
+    color: #f5a623;
+}
+
+.talent-picker-item-tier.tier-medium {
+    color: #7a5af5;
+}
+
+.talent-picker-item-tier.tier-small {
+    color: #4a9af5;
+}
+
+.talent-picker-item-cost {
+    font-size: 12px;
+    color: #ff6b6b;
+}
+
+.talent-picker-clear {
+    background-color: rgba(255, 107, 107, 0.15);
+    border-radius: 10px;
+    border-width: 2px;
+    border-color: rgba(255, 107, 107, 0.3);
+    padding: 10px 16px;
+    margin-bottom: 12px;
+    -unity-text-align: middle-center;
+    transition-duration: 0.15s;
+    color: #ff6b6b;
+    font-size: 16px;
+}
+
+.talent-picker-clear:hover {
+    border-color: #ff6b6b;
+    background-color: rgba(255, 107, 107, 0.25);
+}
+
+.talent-picker-cancel {
+    height: 44px;
+    font-size: 18px;
+    background-color: #393E46;
+    color: #EEEEEE;
+    border-radius: 10px;
+    border-width: 0;
+    margin-top: 12px;
+    transition-duration: 0.15s;
+}
+
+.talent-picker-cancel:hover {
+    background-color: #555;
+}

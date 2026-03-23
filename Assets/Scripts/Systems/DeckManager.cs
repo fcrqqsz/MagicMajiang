@@ -96,6 +96,15 @@ namespace MahjongGame.Systems
             return drawnTile;
         }
 
+        /// <summary>
+        /// 窥探牌山顶部 n 张牌（不移除）
+        /// </summary>
+        public List<TileData> PeekTopTiles(int count)
+        {
+            int actual = Mathf.Min(count, _wallTiles.Count);
+            return _wallTiles.GetRange(0, actual);
+        }
+
         // 获取剩余张数
         public int RemainingCount => _wallTiles.Count;
     }

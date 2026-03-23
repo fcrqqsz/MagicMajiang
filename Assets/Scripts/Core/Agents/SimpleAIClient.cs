@@ -56,7 +56,7 @@ namespace MahjongGame.Core.Agents
 
                 await Task.Delay(500, ct);
 
-                var actions = ActionValidator.CheckSelfActions(_hand, _melds, drawnTile);
+                var actions = ActionValidator.CheckSelfActions(_hand, _melds, drawnTile, roundWind: _roundWind, seatWind: _seatWind);
                 if (actions.HasAction)
                 {
                     if (actions.CanHu)
@@ -96,7 +96,7 @@ namespace MahjongGame.Core.Agents
 
                 bool isNextPlayer = (discarderId + 1) % 4 == PlayerId;
 
-                var actions = ActionValidator.CheckActions(_hand, _melds, discardedTile, isNextPlayer);
+                var actions = ActionValidator.CheckActions(_hand, _melds, discardedTile, isNextPlayer, roundWind: _roundWind, seatWind: _seatWind);
 
                 if (actions.HasAction)
                 {
@@ -207,6 +207,16 @@ namespace MahjongGame.Core.Agents
                       && t.Value == autoDiscardedTile.Value);
                 if (match != null) _hand.Remove(match);
             }
+        }
+
+        public void OnTalentInfo(ScoringOptions scoringOptions)
+        {
+            // AI 暂不使用天赋加成
+        }
+
+        public void OnPeekWallTiles(List<TileData> topTiles)
+        {
+            // AI 暂不使用窥探
         }
 
         // --- 本地内部逻辑 ---

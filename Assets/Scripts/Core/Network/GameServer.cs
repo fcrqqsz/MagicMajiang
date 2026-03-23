@@ -7,6 +7,7 @@ using UnityEngine;
 using MahjongGame.Core.Agents;
 using MahjongGame.Systems;
 using MahjongGame.Talents;
+using MahjongGame.Talents.Impl;
 
 namespace MahjongGame.Core.Network
 {
@@ -109,8 +110,29 @@ namespace MahjongGame.Core.Network
                 }
             }
 
+            // 通知各玩家天赋加成信息
+            for (int i = 0; i < _clients.Count; i++)
+            {
+                var options = new ScoringOptions();
+                if (_talentManager.PlayerHasTalent(i, "head_start"))
+                    options.BonusFan = HeadStartTalent.BonusFanValue;
+                if (_talentManager.PlayerHasTalent(i, "dragon_ascent"))
+                    options.RelaxedPureStraight = true;
+                _clients[i].OnTalentInfo(options);
+            }
+
             // 发牌
             DealStartingHands();
+
+            // 窥探天赋：发牌后通知装备者牌山顶部牌
+            for (int i = 0; i < _clients.Count; i++)
+            {
+                if (_talentManager.PlayerHasTalent(i, "peek"))
+                {
+                    var topTiles = DeckManager.Instance.PeekTopTiles(PeekTalent.PeekCount);
+                    _clients[i].OnPeekWallTiles(topTiles);
+                }
+            }
 
             _isGameActive = true;
 
@@ -445,6 +467,9 @@ namespace MahjongGame.Core.Network
         {
             _isGameActive = false;
             OnTurnEnded?.Invoke();
+
+            // 注: 天赋加番(BonusFan)已在客户端 CheckWinWithFan 中计入 winAction.TotalFan，无需重复加
+
             WinnerId = winAction.PlayerId;
             WinFan = winAction.TotalFan;
             WinIsSelfDraw = isSelfDraw;
@@ -469,6 +494,19 @@ namespace MahjongGame.Core.Network
             _isGameActive = false;
             OnTurnEnded?.Invoke();
             IsDrawGame = true;
+
+            // 厚积天赋：流局时加分
+            if (_session != null)
+            {
+                for (int i = 0; i < _clients.Count; i++)
+                {
+                    if (_talentManager.PlayerHasTalent(i, "draw_reward"))
+                    {
+                        _session.Scores[i] += DrawRewardTalent.DrawBonus;
+                        Debug.Log($"<color=yellow>[天赋触发] 厚积: 玩家{i} 流局获得+{DrawRewardTalent.DrawBonus}分</color>");
+                    }
+                }
+            }
 
             foreach (var client in _clients)
             {
