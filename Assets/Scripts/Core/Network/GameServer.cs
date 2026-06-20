@@ -53,6 +53,10 @@ namespace MahjongGame.Core.Network
         private TalentManager _talentManager;
         private Dictionary<int, DeckConfig> _deckConfigs;
 
+        // 服务端验证用
+        private Dictionary<int, ScoringOptions> _scoringOptions = new Dictionary<int, ScoringOptions>();
+        private TileData _lastDiscardedTile; // 响应阶段：被打出的那张牌
+
         // 局结束事件，GameManager 监听此事件驱动多局循环
         public event System.Action OnRoundFinished;
 
@@ -110,7 +114,8 @@ namespace MahjongGame.Core.Network
                 }
             }
 
-            // 通知各玩家天赋加成信息
+            // 构建并缓存各玩家天赋加成信息（服务端验证 + 通知客户端）
+            _scoringOptions.Clear();
             for (int i = 0; i < _clients.Count; i++)
             {
                 var options = new ScoringOptions();
@@ -118,6 +123,7 @@ namespace MahjongGame.Core.Network
                     options.BonusFan = HeadStartTalent.BonusFanValue;
                 if (_talentManager.PlayerHasTalent(i, "dragon_ascent"))
                     options.RelaxedPureStraight = true;
+                _scoringOptions[i] = options;
                 _clients[i].OnTalentInfo(options);
             }
 
@@ -325,6 +331,7 @@ namespace MahjongGame.Core.Network
                     _gameState.RemoveTile(action.PlayerId, discardedTile);
 
                     // 3. 广播他人打牌，并收集响应
+                    _lastDiscardedTile = discardedTile; // 缓存，供响应阶段验证使用
                     _pendingResponses.Clear();
                     _responsesTcs = new TaskCompletionSource<bool>();
 
@@ -440,19 +447,206 @@ namespace MahjongGame.Core.Network
             // 如果当前在等待主玩家出牌
             if (_pendingActionTcs != null && action.PlayerId == _currentPlayerIndex)
             {
-                _pendingActionTcs.TrySetResult(action);
+                var validated = ValidateMainAction(action);
+                _pendingActionTcs.TrySetResult(validated);
             }
             // 如果在等待其他人响应
             else if (_responsesTcs != null && action.PlayerId != _currentPlayerIndex)
             {
-                _pendingResponses[action.PlayerId] = action;
-                
+                var validated = ValidateResponseAction(action);
+                _pendingResponses[action.PlayerId] = validated;
+
                 // 检查是否收集齐了 3 家的响应
                 if (_pendingResponses.Count == _clients.Count - 1)
                 {
                     _responsesTcs.TrySetResult(true);
                 }
             }
+        }
+
+        /// <summary>
+        /// 验证主回合动作（出牌/自摸胡/暗杠/加杠）
+        /// </summary>
+        private ClientAction ValidateMainAction(ClientAction action)
+        {
+            int pid = action.PlayerId;
+            var hand = _gameState.GetHand(pid);
+            var melds = _gameState.GetMelds(pid);
+            var options = _scoringOptions.ContainsKey(pid) ? _scoringOptions[pid] : null;
+            var roundWind = _session?.PrevalentWind ?? WindDirection.East;
+            var seatWind = _session?.GetSeatWind(pid) ?? WindDirection.East;
+
+            // 需要 TargetTile 的动作类型，null 直接判定失败
+            if (action.TargetTile == null && (action.ActionType == ClientActionType.Discard
+                || action.ActionType == ClientActionType.AnGan || action.ActionType == ClientActionType.JiaGang))
+            {
+                Debug.LogWarning($"[ServerValidation] 玩家{pid} {action.ActionType} 目标牌为空，自动出牌");
+                var fallback = _gameState.GetAutoDiscardTile(pid, _lastDrawnTile);
+                return ClientAction.Discard(pid, fallback);
+            }
+
+            switch (action.ActionType)
+            {
+                case ClientActionType.Discard:
+                    // 验证手牌中确实有这张牌
+                    if (!HandContainsTile(hand, action.TargetTile))
+                    {
+                        Debug.LogWarning($"[ServerValidation] 玩家{pid} 出牌验证失败: 手中没有 {action.TargetTile}，自动出牌");
+                        var fallback = _gameState.GetAutoDiscardTile(pid, _lastDrawnTile);
+                        return ClientAction.Discard(pid, fallback);
+                    }
+                    break;
+
+                case ClientActionType.Hu:
+                    // 验证自摸胡合法性
+                    if (_lastDrawnTile == null || !MahjongLogic.CheckWinWithFan(hand, melds, _lastDrawnTile, true, out _, out _, roundWind, seatWind, options))
+                    {
+                        Debug.LogWarning($"[ServerValidation] 玩家{pid} 自摸胡验证失败，自动出牌");
+                        var fallback = _gameState.GetAutoDiscardTile(pid, _lastDrawnTile);
+                        return ClientAction.Discard(pid, fallback);
+                    }
+                    // 番数由 HandlePlayerWin 服务端重算，此处放行
+                    break;
+
+                case ClientActionType.AnGan:
+                {
+                    int count = hand.Count(t => t.TileSuit == action.TargetTile.TileSuit && t.Value == action.TargetTile.Value);
+                    if (count < 4)
+                    {
+                        Debug.LogWarning($"[ServerValidation] 玩家{pid} 暗杠验证失败: {action.TargetTile} 仅有{count}张，自动出牌");
+                        var fallback = _gameState.GetAutoDiscardTile(pid, _lastDrawnTile);
+                        return ClientAction.Discard(pid, fallback);
+                    }
+                    break;
+                }
+
+                case ClientActionType.JiaGang:
+                {
+                    bool hasPon = melds.Any(m => m.Type == MeldType.Pon
+                        && m.FirstTile.TileSuit == action.TargetTile.TileSuit
+                        && m.FirstTile.Value == action.TargetTile.Value);
+                    bool hasInHand = hand.Any(t => t.TileSuit == action.TargetTile.TileSuit && t.Value == action.TargetTile.Value);
+                    if (!hasPon || !hasInHand)
+                    {
+                        Debug.LogWarning($"[ServerValidation] 玩家{pid} 加杠验证失败: {action.TargetTile}，自动出牌");
+                        var fallback = _gameState.GetAutoDiscardTile(pid, _lastDrawnTile);
+                        return ClientAction.Discard(pid, fallback);
+                    }
+                    break;
+                }
+            }
+
+            return action;
+        }
+
+        /// <summary>
+        /// 验证响应动作（胡/碰/明杠/吃/过）
+        /// </summary>
+        private ClientAction ValidateResponseAction(ClientAction action)
+        {
+            if (action.ActionType == ClientActionType.Skip) return action;
+
+            int pid = action.PlayerId;
+            var hand = _gameState.GetHand(pid);
+            var melds = _gameState.GetMelds(pid);
+            var options = _scoringOptions.ContainsKey(pid) ? _scoringOptions[pid] : null;
+            var roundWind = _session?.PrevalentWind ?? WindDirection.East;
+            var seatWind = _session?.GetSeatWind(pid) ?? WindDirection.East;
+            bool isNextPlayer = ((_currentPlayerIndex + 1) % _clients.Count) == pid;
+
+            // 响应阶段必须有被打出的牌
+            if (_lastDiscardedTile == null)
+            {
+                Debug.LogWarning($"[ServerValidation] 响应阶段无被打出的牌，玩家{pid} {action.ActionType} 自动Skip");
+                return ClientAction.Skip(pid);
+            }
+
+            switch (action.ActionType)
+            {
+                case ClientActionType.Hu:
+                    // 验证点炮胡
+                    if (!MahjongLogic.CheckWinWithFan(hand, melds, _lastDiscardedTile, false, out _, out _, roundWind, seatWind, options))
+                    {
+                        Debug.LogWarning($"[ServerValidation] 玩家{pid} 点炮胡验证失败，自动Skip");
+                        return ClientAction.Skip(pid);
+                    }
+                    break;
+
+                case ClientActionType.Pon:
+                {
+                    int count = hand.Count(t => t.TileSuit == _lastDiscardedTile.TileSuit && t.Value == _lastDiscardedTile.Value);
+                    if (count < 2)
+                    {
+                        Debug.LogWarning($"[ServerValidation] 玩家{pid} 碰验证失败: {_lastDiscardedTile} 仅有{count}张，自动Skip");
+                        return ClientAction.Skip(pid);
+                    }
+                    break;
+                }
+
+                case ClientActionType.MingGan:
+                {
+                    int count = hand.Count(t => t.TileSuit == _lastDiscardedTile.TileSuit && t.Value == _lastDiscardedTile.Value);
+                    if (count < 3)
+                    {
+                        Debug.LogWarning($"[ServerValidation] 玩家{pid} 明杠验证失败: {_lastDiscardedTile} 仅有{count}张，自动Skip");
+                        return ClientAction.Skip(pid);
+                    }
+                    break;
+                }
+
+                case ClientActionType.Chi:
+                    if (!isNextPlayer)
+                    {
+                        Debug.LogWarning($"[ServerValidation] 玩家{pid} 吃牌验证失败: 非上家，自动Skip");
+                        return ClientAction.Skip(pid);
+                    }
+                    if (action.ChiCombinations == null || action.ChiCombinations.Length != 2)
+                    {
+                        Debug.LogWarning($"[ServerValidation] 玩家{pid} 吃验证失败: 数据不完整，自动Skip");
+                        return ClientAction.Skip(pid);
+                    }
+                    // 验证花色非字牌
+                    if (_lastDiscardedTile.TileSuit == Suit.Wind || _lastDiscardedTile.TileSuit == Suit.Dragon)
+                    {
+                        Debug.LogWarning($"[ServerValidation] 玩家{pid} 吃验证失败: 字牌不能吃，自动Skip");
+                        return ClientAction.Skip(pid);
+                    }
+                    // 验证三张牌构成连续顺子
+                    {
+                        var vals = new List<int> { _lastDiscardedTile.Value, action.ChiCombinations[0], action.ChiCombinations[1] };
+                        vals.Sort();
+                        if (vals[1] - vals[0] != 1 || vals[2] - vals[1] != 1)
+                        {
+                            Debug.LogWarning($"[ServerValidation] 玩家{pid} 吃验证失败: {vals[0]},{vals[1]},{vals[2]} 不构成顺子，自动Skip");
+                            return ClientAction.Skip(pid);
+                        }
+                        // 验证手牌中确实有吃的那两张牌
+                        foreach (int val in action.ChiCombinations)
+                        {
+                            if (!hand.Any(t => t.TileSuit == _lastDiscardedTile.TileSuit && t.Value == val))
+                            {
+                                Debug.LogWarning($"[ServerValidation] 玩家{pid} 吃验证失败: 手中没有 {_lastDiscardedTile.TileSuit}{val}，自动Skip");
+                                return ClientAction.Skip(pid);
+                            }
+                        }
+                    }
+                    break;
+
+                default:
+                    // 响应阶段不应出现 Discard/AnGan/JiaGang 等主回合动作
+                    Debug.LogWarning($"[ServerValidation] 玩家{pid} 响应阶段提交了非法动作类型 {action.ActionType}，自动Skip");
+                    return ClientAction.Skip(pid);
+            }
+
+            return action;
+        }
+
+        /// <summary>
+        /// 检查手牌列表中是否包含指定花色和数值的牌
+        /// </summary>
+        private bool HandContainsTile(List<TileData> hand, TileData tile)
+        {
+            return hand.Any(t => t.TileSuit == tile.TileSuit && t.Value == tile.Value);
         }
 
         private void BroadcastAction(ClientAction action)
@@ -468,22 +662,54 @@ namespace MahjongGame.Core.Network
             _isGameActive = false;
             OnTurnEnded?.Invoke();
 
-            // 注: 天赋加番(BonusFan)已在客户端 CheckWinWithFan 中计入 winAction.TotalFan，无需重复加
+            int pid = winAction.PlayerId;
+            var hand = _gameState.GetHand(pid);
+            var melds = _gameState.GetMelds(pid);
+            var options = _scoringOptions.ContainsKey(pid) ? _scoringOptions[pid] : null;
+            var roundWind = _session?.PrevalentWind ?? WindDirection.East;
+            var seatWind = _session?.GetSeatWind(pid) ?? WindDirection.East;
 
-            WinnerId = winAction.PlayerId;
-            WinFan = winAction.TotalFan;
+            // 确定胡的那张牌
+            TileData winTile = isSelfDraw ? _lastDrawnTile : _lastDiscardedTile;
+
+            // 服务端权威重算番数
+            int serverFan = 0;
+            List<string> serverDetails = null;
+            if (winTile != null)
+            {
+                MahjongLogic.CheckWinWithFan(hand, melds, winTile, isSelfDraw, out serverFan, out serverDetails, roundWind, seatWind, options);
+            }
+
+            // 断言比对：记录客户端与服务端计算差异（Phase 0 验证用）
+            if (winAction.TotalFan != serverFan)
+            {
+                Debug.LogWarning($"[ServerValidation] 番数不一致! 玩家{pid} 客户端={winAction.TotalFan} 服务端={serverFan}");
+                Debug.LogWarning($"  客户端番种: {(winAction.FanDetails != null ? string.Join(", ", winAction.FanDetails) : "null")}");
+                Debug.LogWarning($"  服务端番种: {(serverDetails != null ? string.Join(", ", serverDetails) : "null")}");
+                Debug.LogWarning($"  手牌: [{string.Join(", ", hand.Select(t => t.ToString()))}]");
+                Debug.LogWarning($"  副露: [{string.Join(", ", melds.Select(m => $"{m.Type}:{m.FirstTile}"))}]");
+                Debug.LogWarning($"  胡牌: {winTile} 自摸={isSelfDraw} 圈风={roundWind} 门风={seatWind}");
+            }
+            else
+            {
+                Debug.Log($"[ServerValidation] 番数验证通过: 玩家{pid} 番数={serverFan}");
+            }
+
+            // 使用服务端权威计算结果
+            WinnerId = pid;
+            WinFan = serverFan;
             WinIsSelfDraw = isSelfDraw;
             LoserId = loserId;
 
             // 计分
             if (_session != null)
             {
-                _session.ApplyScore(winAction.PlayerId, winAction.TotalFan, isSelfDraw, loserId);
+                _session.ApplyScore(pid, serverFan, isSelfDraw, loserId);
             }
 
             foreach (var client in _clients)
             {
-                client.OnPlayerWin(winAction.PlayerId, winAction.TotalFan, winAction.FanDetails, isSelfDraw);
+                client.OnPlayerWin(pid, serverFan, serverDetails, isSelfDraw);
             }
 
             OnRoundFinished?.Invoke();
