@@ -21,6 +21,13 @@ namespace MahjongGame.Core.Network
     /// </summary>
     public class GameServer : IServer
     {
+        private readonly MahjongGame.Core.Interfaces.IWallService _wallService;
+
+        public GameServer(MahjongGame.Core.Interfaces.IWallService wallService)
+        {
+            _wallService = wallService ?? throw new ArgumentNullException(nameof(wallService));
+        }
+
         private List<IPlayerClient> _clients;
         private int _currentPlayerIndex = 0;
         private bool _isGameActive = false;
@@ -92,13 +99,13 @@ namespace MahjongGame.Core.Network
             _talentManager.Initialize(talentConfigs);
 
             // 构建牌山（不洗牌）
-            DeckManager.Instance.BuildWall(configs);
+            _wallService.BuildWall(configs);
 
             // 天赋: 牌山构建阶段
-            _talentManager.ExecuteWallBuilding(DeckManager.Instance.GetWallTiles(), _gameState, _session, _deckConfigs);
+            _talentManager.ExecuteWallBuilding(_wallService.GetWallTiles(), _gameState, _session, _deckConfigs);
 
             // 洗牌
-            DeckManager.Instance.ShuffleWall();
+            _wallService.ShuffleWall();
 
             // 广播圈风/门风信息
             if (_session != null)
@@ -135,7 +142,7 @@ namespace MahjongGame.Core.Network
             {
                 if (_talentManager.PlayerHasTalent(i, "peek"))
                 {
-                    var topTiles = DeckManager.Instance.PeekTopTiles(PeekTalent.PeekCount);
+                    var topTiles = _wallService.PeekTopTiles(PeekTalent.PeekCount);
                     _clients[i].OnPeekWallTiles(topTiles);
                 }
             }
@@ -199,14 +206,14 @@ namespace MahjongGame.Core.Network
                     int remaining = 13 - startingHand.Count;
                     for (int i = 0; i < remaining; i++)
                     {
-                        startingHand.Add(DeckManager.Instance.DrawTile());
+                        startingHand.Add(_wallService.DrawTile());
                     }
                 }
                 else
                 {
                     for (int i = 0; i < 13; i++)
                     {
-                        startingHand.Add(DeckManager.Instance.DrawTile());
+                        startingHand.Add(_wallService.DrawTile());
                     }
                 }
 
@@ -246,7 +253,7 @@ namespace MahjongGame.Core.Network
         {
             while (_isGameActive)
             {
-                if (DeckManager.Instance.RemainingCount == 0)
+                if (_wallService.RemainingCount == 0)
                 {
                     HandleDrawGame();
                     break;
@@ -257,7 +264,7 @@ namespace MahjongGame.Core.Network
                 // 1. 摸牌阶段
                 if (!_skipNextDraw)
                 {
-                    _lastDrawnTile = DeckManager.Instance.DrawTile();
+                    _lastDrawnTile = _wallService.DrawTile();
                     _lastDrawnTile = _talentManager.ExecuteOnDraw(_currentPlayerIndex, _lastDrawnTile, _gameState, _session, _deckConfigs);
                     _gameState.AddTile(_currentPlayerIndex, _lastDrawnTile);
 

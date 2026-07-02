@@ -39,6 +39,11 @@ namespace MahjongGame.Core.Agents
             _handController = handController;
         }
 
+        public void SetServer(IServer server)
+        {
+            _server = server;
+        }
+
         public void OnGameStart(List<TileData> startingHand)
         {
             _handController.ClearHand();
@@ -127,6 +132,10 @@ namespace MahjongGame.Core.Agents
 
                 // 2. 等待玩家打出牌
                 _handController.SetInteractable(true);
+                if (GameManager.Instance != null)
+                {
+                    GameHUDController.Instance?.StartTimer(GameManager.Instance.actionTimeout, PlayerId);
+                }
 
                 var tcs = new TaskCompletionSource<TileData>();
                 Action<TileData> onDiscard = (tile) => tcs.TrySetResult(tile);
@@ -138,11 +147,13 @@ namespace MahjongGame.Core.Agents
                         var discardedTile = await tcs.Task;
                         _handController.OnTileDiscardedEvent -= onDiscard;
                         _handController.SetInteractable(false);
+                        GameHUDController.Instance?.StopTimer();
                         _server.SubmitAction(ClientAction.Discard(PlayerId, discardedTile));
                     }
                     catch (TaskCanceledException)
                     {
                         _handController.OnTileDiscardedEvent -= onDiscard;
+                        GameHUDController.Instance?.StopTimer();
                         throw;
                     }
                 }
@@ -151,6 +162,7 @@ namespace MahjongGame.Core.Agents
             {
                 // 超时取消 — OnTimeout 已处理 UI 清理和手牌同步
                 _handController.SetInteractable(false);
+                GameHUDController.Instance?.StopTimer();
             }
         }
 
@@ -175,6 +187,10 @@ namespace MahjongGame.Core.Agents
                 {
                     _isWaitingForUI = true;
                     bool actionTaken = false;
+                    if (GameManager.Instance != null)
+                    {
+                        GameHUDController.Instance?.StartTimer(GameManager.Instance.responseTimeout, PlayerId);
+                    }
 
                     ActionPanelController.Instance.Show(actions, (choice) =>
                     {
@@ -218,6 +234,7 @@ namespace MahjongGame.Core.Agents
                                 {
                                     _server.SubmitAction(new ClientAction(PlayerId, ClientActionType.Chi, discardedTile, chiOptions[selectedIndex]));
                                     _isWaitingForUI = false;
+                                    GameHUDController.Instance?.StopTimer();
                                 });
                                 return;
                             }
@@ -225,6 +242,7 @@ namespace MahjongGame.Core.Agents
 
                         _isWaitingForUI = false;
                         ActionPanelController.Instance.Hide();
+                        GameHUDController.Instance?.StopTimer();
                     });
 
                     while (_isWaitingForUI)
@@ -241,6 +259,7 @@ namespace MahjongGame.Core.Agents
             catch (OperationCanceledException)
             {
                 // 响应超时 — 服务端自动填充 Skip
+                GameHUDController.Instance?.StopTimer();
             }
         }
 
@@ -308,6 +327,11 @@ namespace MahjongGame.Core.Agents
             var ct = TurnCancellationToken;
             try
             {
+                if (GameManager.Instance != null)
+                {
+                    GameHUDController.Instance?.StartTimer(GameManager.Instance.actionTimeout, PlayerId);
+                }
+
                 var tcs = new TaskCompletionSource<TileData>();
                 Action<TileData> onDiscard = (tile) => tcs.TrySetResult(tile);
                 using (ct.Register(() => tcs.TrySetCanceled()))
@@ -318,11 +342,13 @@ namespace MahjongGame.Core.Agents
                         var discardedTile = await tcs.Task;
                         _handController.OnTileDiscardedEvent -= onDiscard;
                         _handController.SetInteractable(false);
+                        GameHUDController.Instance?.StopTimer();
                         _server.SubmitAction(ClientAction.Discard(PlayerId, discardedTile));
                     }
                     catch (TaskCanceledException)
                     {
                         _handController.OnTileDiscardedEvent -= onDiscard;
+                        GameHUDController.Instance?.StopTimer();
                         throw;
                     }
                 }
@@ -330,6 +356,7 @@ namespace MahjongGame.Core.Agents
             catch (OperationCanceledException)
             {
                 _handController.SetInteractable(false);
+                GameHUDController.Instance?.StopTimer();
             }
         }
 

@@ -1,9 +1,11 @@
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 using MahjongGame.Systems;
 using MahjongGame.Core;
 using MahjongGame.Core.Network;
 using MahjongGame.Core.Network.Data;
+using MahjongGame.Core.Network.Messages;
 using MahjongGame.Core.Agents;
 using MahjongGame.Talents;
 using MahjongGame.UI;
@@ -42,11 +44,18 @@ namespace MahjongGame.Core
         // 存储当前局各玩家的牌库配置
         public Dictionary<int, DeckConfig> ActiveConfigs { get; private set; } = new Dictionary<int, DeckConfig>();
 
+        [Header("Network Mode")]
+        public bool isNetworkMode = false;
+        public bool isServer = false;
+        public string serverAddress = "ws://127.0.0.1:9876/game";
+
         // 多局对战状态
         public GameSession Session { get; private set; }
         private GameServer _currentServer;
         private List<IPlayerClient> _clients;
+        private MahjongGame.Core.Network.RemoteServerProxy _currentClientProxy;
         private DeckConfig _hostConfig;
+        private bool _isWaitingForReady = false;
 
         // 事件委托缓存，用于正确取消订阅
         private System.Action<int, float> _onTurnStartedHandler;
@@ -55,6 +64,8 @@ namespace MahjongGame.Core
         void Awake()
         {
             Instance = this;
+            // 强制在主线程初始化 MainThreadDispatcher，避免 WebSocket 子线程访问时触发 Unity 线程安全报错
+            var dispatcher = MahjongGame.Core.Network.Transport.MainThreadDispatcher.Instance;
         }
 
         void Start()
@@ -83,6 +94,21 @@ namespace MahjongGame.Core
             {
                 _currentServer.StopGame();
             }
+
+            if (_currentClientProxy != null)
+            {
+                _currentClientProxy.Cleanup();
+                _currentClientProxy = null;
+            }
+
+            var wsc = MahjongGame.Core.Network.Transport.WebSocketClient.Instance;
+            if (wsc != null)
+            {
+                wsc.OnConnected -= HandleClientConnectedToServer;
+            }
+
+            MahjongGame.Core.Network.Transport.GameEndpoint.OnMessageReceived -= HandleServerMessage;
+            MahjongGame.Core.Network.Transport.GameEndpoint.OnClientConnected -= HandleClientConnected;
         }
 
         public OpponentViewController GetOpponentView(int playerId)
@@ -197,42 +223,229 @@ namespace MahjongGame.Core
                 ActiveConfigs[i] = allConfigs[i];
             }
 
-            // 创建服务器和客户端
-            _currentServer = new GameServer();
-            _currentServer.ActionTimeoutMs = (int)(actionTimeout * 1000);
-            _currentServer.ResponseTimeoutMs = (int)(responseTimeout * 1000);
-            _clients = new List<IPlayerClient>();
-
-            _clients.Add(new LocalPlayerClient(0, _currentServer, playerHandController));
-            _clients.Add(new SimpleAIClient(1, _currentServer));
-            _clients.Add(new SimpleAIClient(2, _currentServer));
-            _clients.Add(new SimpleAIClient(3, _currentServer));
-
-            // 监听局结束事件
-            _currentServer.OnRoundFinished += OnRoundFinished;
-
-            // HUD: 更新局信息 + 监听回合事件
-            if (GameHUDController.Instance != null)
+            if (isNetworkMode)
             {
-                GameHUDController.Instance.UpdateRoundInfo(Session);
+                if (isServer)
+                {
+                    // 确保 WebSocketService 已经被动态创建并挂载到场景中
+                    var wss = MahjongGame.Core.Network.Transport.WebSocketService.Instance;
+                    if (wss == null)
+                    {
+                        var go = new GameObject("WebSocketService");
+                        wss = go.AddComponent<MahjongGame.Core.Network.Transport.WebSocketService>();
+                    }
+                    wss.StartServer();
 
-                _onTurnStartedHandler = (playerIdx, timeout) =>
+                    // 创建服务端
+                    _currentServer = new GameServer(DeckManager.Instance);
+                    _currentServer.ActionTimeoutMs = (int)(actionTimeout * 1000);
+                    _currentServer.ResponseTimeoutMs = (int)(responseTimeout * 1000);
+
+                    // 监听局结束事件
+                    _currentServer.OnRoundFinished += OnRoundFinished;
+
+                    // 注册消息派发
+                    MahjongGame.Core.Network.Transport.GameEndpoint.OnMessageReceived -= HandleServerMessage;
+                    MahjongGame.Core.Network.Transport.GameEndpoint.OnMessageReceived += HandleServerMessage;
+
+                    _isWaitingForReady = true;
+
+                    // 如果长连接上已经有客户端连接，复用该连接并等待 Ready 准备消息
+                    if (_clients != null && _clients.Count > 0 && _clients.Any(c => c is RemotePlayerClient))
+                    {
+                        Debug.Log("[GameServer] 检测到已在线的远程客户端连接，清除旧 AI，等待客户端 Ready 以启动对局...");
+                        
+                        // 剔除旧局绑定的 AI，等收到 Ready 消息后再重新装配
+                        _clients.RemoveAll(c => c is SimpleAIClient);
+                    }
+                    else
+                    {
+                        _clients = new List<IPlayerClient>();
+                        
+                        MahjongGame.Core.Network.Transport.GameEndpoint.OnClientConnected -= HandleClientConnected;
+                        MahjongGame.Core.Network.Transport.GameEndpoint.OnClientConnected += HandleClientConnected;
+
+                        Debug.Log("[GameServer] 等待远程客户端连接以开始第一局游戏...");
+                    }
+                }
+                else
                 {
-                    GameHUDController.Instance?.StartTimer(timeout, playerIdx);
-                };
-                _onTurnEndedHandler = () =>
-                {
-                    GameHUDController.Instance?.StopTimer();
-                };
-                _currentServer.OnTurnStarted += _onTurnStartedHandler;
-                _currentServer.OnTurnEnded += _onTurnEndedHandler;
+                    // 确保 WebSocketClient 已经动态创建并挂载到场景中
+                    var wsc = MahjongGame.Core.Network.Transport.WebSocketClient.Instance;
+                    if (wsc == null)
+                    {
+                        var go = new GameObject("WebSocketClient");
+                        wsc = go.AddComponent<MahjongGame.Core.Network.Transport.WebSocketClient>();
+                    }
+
+                    // HUD: 更新局信息
+                    if (GameHUDController.Instance != null)
+                    {
+                        GameHUDController.Instance.UpdateRoundInfo(Session);
+                    }
+
+                    // 【长连接复用逻辑】如果长连接保持 Open，直接复用并发送 Ready 准备消息
+                    if (wsc.ReadyState == WebSocketSharp.WebSocketState.Open)
+                    {
+                        Debug.Log("[GameClient] 复用已是 Open 状态的 WebSocket 长连接，准备新小局...");
+
+                        var localPlayer = new LocalPlayerClient(0, null, playerHandController);
+                        _clients = new List<IPlayerClient> { localPlayer };
+
+                        if (_currentClientProxy != null)
+                        {
+                            _currentClientProxy.SetLocalClient(localPlayer);
+                        }
+                        else
+                        {
+                            var proxy = new MahjongGame.Core.Network.RemoteServerProxy(localPlayer);
+                            _currentClientProxy = proxy;
+                        }
+                        localPlayer.SetServer(_currentClientProxy);
+
+                        // 发送 Ready 开启对局
+                        string readyJson = MessageSerializer.Serialize("Ready", 0, new DrawGameMessage());
+                        wsc.SendNetworkMessage(readyJson);
+                        Debug.Log("[GameClient] 长连接复用，发送 Ready 准备消息。");
+                    }
+                    else
+                    {
+                        // 首次建立连接或连接已断开失效，清理并重新连接
+                        if (_currentClientProxy != null)
+                        {
+                            _currentClientProxy.Cleanup();
+                            _currentClientProxy = null;
+                        }
+
+                        _clients = new List<IPlayerClient>();
+                        var localPlayer = new LocalPlayerClient(0, null, playerHandController);
+                        _clients.Add(localPlayer);
+
+                        var proxy = new MahjongGame.Core.Network.RemoteServerProxy(localPlayer);
+                        _currentClientProxy = proxy;
+                        localPlayer.SetServer(proxy);
+
+                        // 订阅连接成功事件：一旦长连接握手成功，自动发送 Ready 开始第一局
+                        wsc.OnConnected -= HandleClientConnectedToServer;
+                        wsc.OnConnected += HandleClientConnectedToServer;
+
+                        wsc.Connect(serverAddress);
+                        Debug.Log($"[GameClient] 正在连接到服务端 {serverAddress}...");
+                    }
+                }
             }
+            else
+            {
+                // 单机模式
+                _currentServer = new GameServer(DeckManager.Instance);
+                _currentServer.ActionTimeoutMs = (int)(actionTimeout * 1000);
+                _currentServer.ResponseTimeoutMs = (int)(responseTimeout * 1000);
+                _clients = new List<IPlayerClient>();
 
-            // 构建天赋配置
-            var talentConfigs = BuildTalentConfigs();
+                _clients.Add(new LocalPlayerClient(0, _currentServer, playerHandController));
+                _clients.Add(new SimpleAIClient(1, _currentServer));
+                _clients.Add(new SimpleAIClient(2, _currentServer));
+                _clients.Add(new SimpleAIClient(3, _currentServer));
 
-            // 启动
-            _currentServer.StartGame(_clients, allConfigs, Session, talentConfigs);
+                // 监听局结束事件
+                _currentServer.OnRoundFinished += OnRoundFinished;
+
+                // HUD: 更新局信息 + 监听回合事件
+                if (GameHUDController.Instance != null)
+                {
+                    GameHUDController.Instance.UpdateRoundInfo(Session);
+
+                    _onTurnStartedHandler = (playerIdx, timeout) =>
+                    {
+                        GameHUDController.Instance?.StartTimer(timeout, playerIdx);
+                    };
+                    _onTurnEndedHandler = () =>
+                    {
+                        GameHUDController.Instance?.StopTimer();
+                    };
+                    _currentServer.OnTurnStarted += _onTurnStartedHandler;
+                    _currentServer.OnTurnEnded += _onTurnEndedHandler;
+                }
+
+                // 构建天赋配置
+                var talentConfigs = BuildTalentConfigs();
+
+                // 启动
+                _currentServer.StartGame(_clients, allConfigs, Session, talentConfigs);
+            }
+        }
+
+        private void HandleClientConnected(string connId, MahjongGame.Core.Network.Transport.GameEndpoint endpoint)
+        {
+            if (_clients == null || _clients.Count == 0)
+            {
+                Debug.Log($"[GameServer] 客户端 {connId} 连接成功，等待客户端 Ready 以启动对局...");
+
+                _clients = new List<IPlayerClient>();
+                var remotePlayer = new RemotePlayerClient(0, endpoint);
+                _clients.Add(remotePlayer);
+            }
+        }
+
+        private void HandleServerMessage(string connId, string json, MahjongGame.Core.Network.Transport.GameEndpoint endpoint)
+        {
+            var envelope = MessageSerializer.DeserializeEnvelope(json);
+            if (envelope != null)
+            {
+                if (envelope.type == "Ready")
+                {
+                    if (!_isWaitingForReady)
+                    {
+                        Debug.LogWarning($"[GameServer] 收到客户端 {connId} 的 Ready 准备就绪包，但当前服务器未处于等待准备状态，忽略。");
+                        return;
+                    }
+                    _isWaitingForReady = false;
+
+                    Debug.Log($"[GameServer] 收到客户端 {connId} 的 Ready 准备就绪包，开启发牌游戏流程！");
+                    
+                    // 重新为当前小局装配 AI
+                    _clients.RemoveAll(c => c is SimpleAIClient);
+                    _clients.Add(new SimpleAIClient(1, _currentServer));
+                    _clients.Add(new SimpleAIClient(2, _currentServer));
+                    _clients.Add(new SimpleAIClient(3, _currentServer));
+
+                    List<DeckConfig> allConfigs = new List<DeckConfig>();
+                    allConfigs.Add(_hostConfig);
+                    allConfigs.Add(DeckConfig.CreateStandard());
+                    allConfigs.Add(DeckConfig.CreateStandard());
+                    allConfigs.Add(DeckConfig.CreateStandard());
+
+                    var talentConfigs = BuildTalentConfigs();
+
+                    // 启动游戏循环，发牌并开启对局
+                    _currentServer.StartGame(_clients, allConfigs, Session, talentConfigs);
+                }
+                else if (envelope.type == "Action")
+                {
+                    var msg = MessageSerializer.DeserializePayload<ClientActionMessage>(envelope.data);
+                    if (_clients != null && _currentServer != null)
+                    {
+                        var remoteClient = _clients.OfType<RemotePlayerClient>().FirstOrDefault(c => c.Endpoint == endpoint);
+                        if (remoteClient != null)
+                        {
+                            var action = new ClientAction(remoteClient.PlayerId, (ClientActionType)msg.actionType, msg.targetTile?.ToTileData(), msg.chiCombinations);
+                            action.SetHuDetails(msg.totalFan, msg.fanDetails != null ? new List<string>(msg.fanDetails) : null);
+                            _currentServer.SubmitAction(action);
+                        }
+                    }
+                }
+            }
+        }
+
+        private void HandleClientConnectedToServer()
+        {
+            if (MahjongGame.Core.Network.Transport.WebSocketClient.Instance != null)
+            {
+                MahjongGame.Core.Network.Transport.WebSocketClient.Instance.OnConnected -= HandleClientConnectedToServer;
+                string readyJson = MessageSerializer.Serialize("Ready", 0, new DrawGameMessage());
+                MahjongGame.Core.Network.Transport.WebSocketClient.Instance.SendNetworkMessage(readyJson);
+                Debug.Log("[GameClient] 长连接握手成功，发送 Ready 准备消息。");
+            }
         }
 
         private void OnRoundFinished()
@@ -258,6 +471,20 @@ namespace MahjongGame.Core
             if (ResultPanelController.Instance != null)
             {
                 ResultPanelController.Instance.SetSessionInfo(Session);
+            }
+
+            // 如果是网络服务端的模式，在当前小局结束后，服务器自动准备下一局并等待客户端 Ready
+            if (isNetworkMode && isServer)
+            {
+                if (Session != null && !Session.IsSessionOver())
+                {
+                    Debug.Log("[GameServer] 当前小局结束，服务器自动进入下一局准备状态，等待客户端 Ready...");
+                    StartNextRound();
+                }
+                else
+                {
+                    Debug.Log("[GameServer] 对战 Session 已由服务器判定结束，不再开启下一局。");
+                }
             }
         }
 
