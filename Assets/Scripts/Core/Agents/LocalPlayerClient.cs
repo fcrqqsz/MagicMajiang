@@ -362,11 +362,14 @@ namespace MahjongGame.Core.Agents
 
         public void OnDrawGame()
         {
+            ResultPanelController.Instance?.SetSessionInfo(GameManager.Instance?.Session);
             ResultPanelController.Instance.ShowDraw(new List<string> { "流局" });
         }
 
         public void OnPlayerWin(int winnerId, int totalFan, List<string> fanDetails, bool isSelfDraw)
         {
+            ResultPanelController.Instance?.SetSessionInfo(GameManager.Instance?.Session);
+
             if (winnerId == PlayerId)
             {
                 ResultPanelController.Instance.ShowWin(totalFan, fanDetails, isSelfDraw);

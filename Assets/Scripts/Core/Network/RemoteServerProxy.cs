@@ -3,6 +3,7 @@ using System.Linq;
 using UnityEngine;
 using MahjongGame.Core.Network.Messages;
 using MahjongGame.Core.Network.Transport;
+using MahjongGame.UI;
 
 namespace MahjongGame.Core.Network
 {
@@ -95,9 +96,14 @@ namespace MahjongGame.Core.Network
                     break;
                 case "PlayerWin":
                     var winMsg = MessageSerializer.DeserializePayload<PlayerWinMessage>(envelope.data);
+                    if (winMsg == null) break;
+                    SyncSessionAfterRound(winMsg.scores, winMsg.completedRounds);
                     _localClient.OnPlayerWin(winMsg.winnerId, winMsg.totalFan, winMsg.fanDetails?.ToList(), winMsg.isSelfDraw);
                     break;
                 case "DrawGame":
+                    var drawMsg = MessageSerializer.DeserializePayload<DrawGameMessage>(envelope.data);
+                    if (drawMsg == null) break;
+                    SyncSessionAfterRound(drawMsg.scores, drawMsg.completedRounds);
                     _localClient.OnDrawGame();
                     break;
                 case "SessionEnd":
@@ -108,6 +114,30 @@ namespace MahjongGame.Core.Network
                     Debug.LogWarning($"[RemoteServerProxy] Unhandled message type: {envelope.type}");
                     break;
             }
+        }
+
+        private void SyncSessionAfterRound(int[] scores, int completedRounds)
+        {
+            var session = GameManager.Instance?.Session;
+            if (session == null) return;
+
+            if (scores != null)
+            {
+                int count = Mathf.Min(scores.Length, session.Scores.Length);
+                for (int i = 0; i < count; i++)
+                {
+                    session.Scores[i] = scores[i];
+                }
+            }
+
+            int targetCompletedRounds = Mathf.Clamp(completedRounds, 0, session.GetTotalRounds());
+            while (session.TotalRoundsPlayed < targetCompletedRounds)
+            {
+                session.AdvanceRound();
+            }
+
+            ResultPanelController.Instance?.SetSessionInfo(session);
+            GameHUDController.Instance?.UpdateScores(session.Scores);
         }
     }
 }

@@ -15,7 +15,8 @@ namespace MahjongGame.Core.Network.Messages
     [Serializable]
     public class DrawGameMessage
     {
-        // Empty payload
+        public int[] scores;
+        public int completedRounds;
     }
 
     [Serializable]
@@ -120,6 +121,8 @@ namespace MahjongGame.Core.Network.Messages
         public int totalFan;
         public string[] fanDetails;
         public bool isSelfDraw;
+        public int[] scores;
+        public int completedRounds;
     }
 
     [Serializable]

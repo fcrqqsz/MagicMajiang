@@ -10,17 +10,24 @@ namespace MahjongGame.Core.Network
     {
         private readonly int _playerId;
         private readonly GameEndpoint _endpoint;
+        private GameSession _session;
         
-        public RemotePlayerClient(int playerId, GameEndpoint endpoint)
+        public RemotePlayerClient(int playerId, GameEndpoint endpoint, GameSession session = null)
         {
             _playerId = playerId;
             _endpoint = endpoint;
+            _session = session;
         }
 
         public int PlayerId => _playerId;
         public GameEndpoint Endpoint => _endpoint;
 
         public CancellationToken TurnCancellationToken { get; set; }
+
+        public void SetSession(GameSession session)
+        {
+            _session = session;
+        }
 
         public void OnRoundStart(int roundNumber, WindDirection prevalentWind, WindDirection seatWind, int dealerIndex)
         {
@@ -115,16 +122,21 @@ namespace MahjongGame.Core.Network
                 winnerId = winnerId,
                 totalFan = totalFan,
                 fanDetails = fanDetails?.ToArray(),
-                isSelfDraw = isSelfDraw
+                isSelfDraw = isSelfDraw,
+                scores = GetScoreSnapshot(),
+                completedRounds = GetCompletedRoundsAfterCurrentRound()
             };
             Send("PlayerWin", msg);
         }
 
         public void OnDrawGame()
         {
-            // JsonUtility cannot serialize raw strings for payload if it expects an object. 
-            // We use an empty anonymous object or simple class.
-            Send("DrawGame", new DrawGameMessage());
+            var msg = new DrawGameMessage
+            {
+                scores = GetScoreSnapshot(),
+                completedRounds = GetCompletedRoundsAfterCurrentRound()
+            };
+            Send("DrawGame", msg);
         }
 
         public void OnSessionEnd(int[] finalScores)
@@ -142,6 +154,16 @@ namespace MahjongGame.Core.Network
             _seq++;
             string json = MessageSerializer.Serialize(type, _seq, payload);
             _endpoint.SendMessage(json);
+        }
+
+        private int[] GetScoreSnapshot()
+        {
+            return _session?.Scores?.ToArray();
+        }
+
+        private int GetCompletedRoundsAfterCurrentRound()
+        {
+            return _session != null ? _session.TotalRoundsPlayed + 1 : 0;
         }
     }
 }

@@ -257,6 +257,10 @@ namespace MahjongGame.Core
                         
                         // 剔除旧局绑定的 AI，等收到 Ready 消息后再重新装配
                         _clients.RemoveAll(c => c is SimpleAIClient);
+                        foreach (var remoteClient in _clients.OfType<RemotePlayerClient>())
+                        {
+                            remoteClient.SetSession(Session);
+                        }
                     }
                     else
                     {
@@ -382,7 +386,7 @@ namespace MahjongGame.Core
                 Debug.Log($"[GameServer] 客户端 {connId} 连接成功，等待客户端 Ready 以启动对局...");
 
                 _clients = new List<IPlayerClient>();
-                var remotePlayer = new RemotePlayerClient(0, endpoint);
+                var remotePlayer = new RemotePlayerClient(0, endpoint, Session);
                 _clients.Add(remotePlayer);
             }
         }
