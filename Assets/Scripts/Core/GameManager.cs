@@ -6,6 +6,7 @@ using MahjongGame.Core;
 using MahjongGame.Core.Network;
 using MahjongGame.Core.Network.Data;
 using MahjongGame.Core.Network.Messages;
+using MahjongGame.Core.Services;
 using MahjongGame.Core.Agents;
 using MahjongGame.Talents;
 using MahjongGame.UI;
@@ -237,9 +238,12 @@ namespace MahjongGame.Core
                     wss.StartServer();
 
                     // 创建服务端
-                    _currentServer = new GameServer(DeckManager.Instance);
-                    _currentServer.ActionTimeoutMs = (int)(actionTimeout * 1000);
-                    _currentServer.ResponseTimeoutMs = (int)(responseTimeout * 1000);
+                    _currentServer = new GameServer(new WallService(), new GameServerOptions
+                    {
+                        ActionTimeoutMs = (int)(actionTimeout * 1000),
+                        ResponseTimeoutMs = (int)(responseTimeout * 1000),
+                        UseDebugHand = false
+                    });
 
                     // 监听局结束事件
                     _currentServer.OnRoundFinished += OnRoundFinished;
@@ -341,9 +345,13 @@ namespace MahjongGame.Core
             else
             {
                 // 单机模式
-                _currentServer = new GameServer(DeckManager.Instance);
-                _currentServer.ActionTimeoutMs = (int)(actionTimeout * 1000);
-                _currentServer.ResponseTimeoutMs = (int)(responseTimeout * 1000);
+                _currentServer = new GameServer(DeckManager.Instance, new GameServerOptions
+                {
+                    ActionTimeoutMs = (int)(actionTimeout * 1000),
+                    ResponseTimeoutMs = (int)(responseTimeout * 1000),
+                    UseDebugHand = useDebugHand,
+                    DebugHand = debugHand != null ? new List<TileData>(debugHand) : new List<TileData>()
+                });
                 _clients = new List<IPlayerClient>();
 
                 _clients.Add(new LocalPlayerClient(0, _currentServer, playerHandController));

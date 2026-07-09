@@ -5,12 +5,19 @@ using System.Threading;
 using System.Threading.Tasks;
 using UnityEngine;
 using MahjongGame.Core.Agents;
-using MahjongGame.Systems;
+using MahjongGame.Core.Interfaces;
 using MahjongGame.Talents;
 using MahjongGame.Talents.Impl;
 
 namespace MahjongGame.Core.Network
 {
+    public class GameServerOptions
+    {
+        public int ActionTimeoutMs = 30000;
+        public int ResponseTimeoutMs = 10000;
+        public bool UseDebugHand = false;
+        public List<TileData> DebugHand = new List<TileData>();
+    }
     public interface IServer
     {
         void SubmitAction(ClientAction action);
@@ -21,11 +28,27 @@ namespace MahjongGame.Core.Network
     /// </summary>
     public class GameServer : IServer
     {
-        private readonly MahjongGame.Core.Interfaces.IWallService _wallService;
+        private readonly IWallService _wallService;
+        private GameServerOptions _options;
 
-        public GameServer(MahjongGame.Core.Interfaces.IWallService wallService)
+        public GameServer(IWallService wallService) : this(wallService, null)
+        {
+        }
+
+        public GameServer(IWallService wallService, GameServerOptions options)
         {
             _wallService = wallService ?? throw new ArgumentNullException(nameof(wallService));
+            Configure(options);
+        }
+
+        public void Configure(GameServerOptions options)
+        {
+            _options = options ?? new GameServerOptions();
+            if (_options.DebugHand == null)
+                _options.DebugHand = new List<TileData>();
+
+            ActionTimeoutMs = _options.ActionTimeoutMs;
+            ResponseTimeoutMs = _options.ResponseTimeoutMs;
         }
 
         private List<IPlayerClient> _clients;
@@ -192,11 +215,11 @@ namespace MahjongGame.Core.Network
                 var client = _clients[ci];
                 List<TileData> startingHand = new List<TileData>();
 
-                bool useDebug = GameManager.Instance != null && GameManager.Instance.useDebugHand && client is LocalPlayerClient;
+                bool useDebug = _options.UseDebugHand && client is LocalPlayerClient;
 
                 if (useDebug)
                 {
-                    var debugHand = GameManager.Instance.debugHand;
+                    var debugHand = _options.DebugHand;
                     for (int i = 0; i < Mathf.Min(debugHand.Count, 13); i++)
                     {
                         var t = debugHand[i];

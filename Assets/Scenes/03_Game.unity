@@ -1367,7 +1367,7 @@ MonoBehaviour:
   actionTimeout: 30
   responseTimeout: 10
   isNetworkMode: 1
-  isServer: 0
+  isServer: 1
   serverAddress: ws://127.0.0.1:9876/game
 --- !u!4 &1461636647
 Transform:
