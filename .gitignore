@@ -101,3 +101,6 @@ InitTestScene*.unity*
 
 # vscode
 .vscode
+
+#cache
+%SystemDrive%/
