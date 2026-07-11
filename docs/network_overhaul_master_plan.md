@@ -18,13 +18,18 @@
 - WebSocket 通道：`WebSocketService` / `WebSocketClient`。
 - 远程代理：`RemotePlayerClient` / `RemoteServerProxy`。
 - 服务端动作校验：客户端不能伪造可信 `PlayerId`。
-- Ready 同步：长连接复用时，服务端等待客户端显式 `Ready` 后再启动小局。
+- 客户端 Ready 同步：长连接复用时客户端显式发送 `Ready`；正式服务端的 Ready 分发将在 Phase C 迁入房间系统。
 - 局间结果同步：`PlayerWin` / `DrawGame` 已携带 `scores` 与 `completedRounds`，客户端可同步本地 `GameSession` 镜像。
+- Phase A 基线清理已完成：
+  - 编译通过。
+  - Unity 单机验证通过。
+  - 本地联机环回验证通过。
+  - `GameServer` 不再读取 `GameManager.Instance.useDebugHand/debugHand`。
+  - 临时网络服务端不再使用 `DeckManager.Instance` 创建 `GameServer`。
+  - 未提前实现 Phase B/C/D/E。
 
 当前已知限制：
 
-- 临时服务端路径仍位于 `GameManager` 的 `isNetworkMode && isServer` 分支。
-- 网络服务端仍有历史上对游戏场景对象的耦合风险。
 - 尚未实现正式 `RoomManager` / `ConnectionRegistry`。
 - 尚未实现真实多人房间和每席牌库/天赋上传。
 - `seq` 尚未用于去重、补包或断线重连。
@@ -48,7 +53,7 @@
 
 ## Phase A: Baseline Cleanup
 
-状态：待执行。
+状态：已完成。
 
 目标：稳住当前联机基线，去掉最明显的服务端上线阻碍，但不引入房间系统。
 
@@ -70,23 +75,30 @@
 验收：
 
 - `dotnet build Assembly-CSharp.csproj --no-restore` 通过。
+- Unity 单机验证通过。
+- 本地联机环回验证通过。
 - 单机模式创建 `GameServer(DeckManager.Instance)` 的路径仍可用。
 - 临时网络服务端路径不再使用 `DeckManager.Instance` 创建 `GameServer`。
 - `GameServer` 中无 `GameManager.Instance.useDebugHand/debugHand` 读取。
+- 未提前实现 Phase B/C/D/E。
 
 ## Phase B: Headless Server Decoupling
 
-状态：待执行。
+状态：已完成。
 
 目标：建立正式 Headless 服务端入口，使上线服务端不再依赖游戏场景。
 
 范围：
 
-- 新增专用服务端场景 `00_ServerBootstrap.unity`。
+- 新增专用服务端场景 `00_ServerBootstrap.scene`。
 - 新增 `ServerBootstrap`，启动 `WebSocketService` 并准备服务端运行环境。
 - 解析命令行参数：`--port 9876`、`--maxRooms`、`--aiFill true`。
-- 正式服务端构建首场景使用 `00_ServerBootstrap`。
+- `ServerBootstrap` 启动时设置 `Application.targetFrameRate = 30`，限制 Dedicated Server 空闲帧率。
+- `ServerBootstrap` 仅负责监听与启动参数；房间、席位、Ready 分发和 `GameServer` 生命周期留待 Phase C。
+- 新增 `Tools/Build/Dedicated Server (Windows)` Editor 菜单，以显式场景数组和 Dedicated Server 子目标构建服务端，不修改客户端默认 Build Settings。
 - 服务端启动路径不得加载 `02_MainLobby` 或 `03_Game`。
+- 删除 `GameManager` 中 `isNetworkMode && isServer` 的临时服务端启动、连接映射和对局创建路径；`03_Game` 仅作为单机/客户端游戏场景。
+- `00_ServerBootstrap.scene` 已由人工创建；Phase B 只需向该场景挂载启动组件并完成 Build Settings 配置，不得手写或重建场景 YAML。
 
 不得做：
 
@@ -97,7 +109,31 @@
 
 - Headless/Dedicated Server 构建启动后日志出现服务端启动信息。
 - 正式服务端启动路径不访问 `GameManager.Instance`、`DeckManager.Instance`、`GameHUDController`、`ResultPanelController`、`HandController`。
-- 当前 Editor 进入 `03_Game` 当服务端的临时调试路径可保留，但不作为正式部署路径。
+- 进入 `03_Game` 不会启动 WebSocket 服务端、创建服务端 `GameServer` 或承担服务端调试职责。
+- `00_ServerBootstrap.scene` 中存在唯一的 `ServerBootstrap` 启动对象；默认 `Main Camera` 与 `Directional Light` 已移除，场景不包含 UI、3D 手牌或游戏控制器。
+- `dotnet build Assembly-CSharp.csproj --no-restore` 通过。
+
+### Phase B Unity 编辑器操作（人工执行）
+
+已于 2026-07-11 完成：
+
+1. 打开 `Assets/Scenes/00_ServerBootstrap.scene`，删除默认的 `Main Camera` 和 `Directional Light`。
+2. 创建空对象，命名为 `ServerBootstrap`，挂载 `MahjongGame.Core.Network.ServerBootstrap` 组件；除 `Transform` 和该组件外不添加其他组件。
+3. 恢复默认 Build Settings，使 `00_Persistent` 保持客户端构建的首场景。
+4. 使用 `Tools/Build/Dedicated Server (Windows)` 构建服务端；该菜单显式传入 `00_ServerBootstrap.scene`，不会改写客户端场景列表。
+5. 用 `--port 9876 --maxRooms 1 --aiFill true` 启动，并确认日志包含 `ServerBootstrap started` 与 WebSocket 监听地址。
+
+### Phase B 验收记录
+
+- `dotnet build Assembly-CSharp.csproj --no-restore` 通过，0 警告、0 错误。
+- `00_ServerBootstrap.scene` 仅含根对象 `ServerBootstrap`，且该对象只挂载 `Transform` 和 `MahjongGame.Core.Network.ServerBootstrap`。
+- Dedicated Server 构建输出至 `testServer`，以 `--port 9876 --maxRooms 1 --aiFill true` 启动成功。
+- 日志确认 `WebSocketService` 监听 `ws://0.0.0.0:9876/game`，并输出 `ServerBootstrap started. Port=9876, MaxRooms=1, AiFill=True`。
+- `netstat` 确认进程在 `0.0.0.0:9876` 监听；停止后端口已释放。
+- 默认 Build Settings 已恢复为以 `00_Persistent` 为首的客户端场景列表；Dedicated Server 由 Editor 构建菜单独立生成。
+- `ServerBootstrap` 已设置 `Application.targetFrameRate = 30`。
+- `Tools/Build/Dedicated Server (Windows)` 已完成菜单构建与启动验收，生成物可正常监听 `9876`，客户端默认场景列表未被改写。
+- 未提前实现 Room、ConnectionRegistry、多人匹配或断线重连；这些工作保留给后续 Phase。
 
 ## Phase C: Room V1
 

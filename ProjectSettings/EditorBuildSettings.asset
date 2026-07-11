@@ -16,7 +16,7 @@ EditorBuildSettings:
     guid: 55ff1673642ad07499c3730d58702a97
   - enabled: 1
     path: Assets/Scenes/03_Game.unity
-    guid: 237949e64e24965488548bff42b79885
+    guid: 9fc0d4010bbf28b4594072e72b8655ab
   m_BuildProfiles: []
   m_configObjects: {}
   m_SlimFeaturesWeixinMiniGame:
