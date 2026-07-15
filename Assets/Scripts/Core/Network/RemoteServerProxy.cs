@@ -82,6 +82,13 @@ namespace MahjongGame.Core.Network
                     var pDrewMsg = MessageSerializer.DeserializePayload<PlayerDrewMessage>(envelope.data);
                     _localClient.OnPlayerDrawn(pDrewMsg.playerId);
                     break;
+                case "TurnWithoutDraw":
+                    _localClient.OnTurnWithoutDraw();
+                    break;
+                case "WallCount":
+                    var wallCountMsg = MessageSerializer.DeserializePayload<WallCountMessage>(envelope.data);
+                    if (wallCountMsg != null) _localClient.OnWallCountChanged(wallCountMsg.remainingCount);
+                    break;
                 case "Discarded":
                     var discMsg = MessageSerializer.DeserializePayload<DiscardedMessage>(envelope.data);
                     _localClient.OnOtherPlayerDiscarded(discMsg.playerId, discMsg.tile?.ToTileData());
@@ -109,6 +116,14 @@ namespace MahjongGame.Core.Network
                 case "SessionEnd":
                     var endMsg = MessageSerializer.DeserializePayload<SessionEndMessage>(envelope.data);
                     _localClient.OnSessionEnd(endMsg.scores);
+                    break;
+                // Room-control messages are consumed by ClientRoomService on the same WebSocket.
+                case "RoomJoined":
+                case "PlayerJoined":
+                case "PlayerLeft":
+                case "RoomReady":
+                case "RoomClosed":
+                case "RoomError":
                     break;
                 default:
                     Debug.LogWarning($"[RemoteServerProxy] Unhandled message type: {envelope.type}");

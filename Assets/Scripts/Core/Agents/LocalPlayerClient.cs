@@ -54,8 +54,9 @@ namespace MahjongGame.Core.Agents
             _handController.SortHand();
 
             // 初始化其他玩家的 13 张盖着的牌
-            for (int i = 1; i < 4; i++)
+            for (int i = 0; i < 4; i++)
             {
+                if (i == PlayerId) continue;
                 var view = GameManager.Instance.GetOpponentView(i);
                 if (view != null) view.InitHand(13);
             }
@@ -201,6 +202,7 @@ namespace MahjongGame.Core.Agents
                             int totalFan;
                             List<string> fanDetails;
                             MahjongLogic.CheckWinWithFan(handData, melds, discardedTile, false, out totalFan, out fanDetails, _roundWind, _seatWind, _scoringOptions);
+                            Debug.Log($"[LocalPlayer] 请求点炮胡: 玩家{PlayerId}, 目标={discardedTile}, 手牌=[{string.Join(", ", handData)}], 副露数={melds.Count}, 番数={totalFan}");
 
                             var action = new ClientAction(PlayerId, ClientActionType.Hu, discardedTile);
                             action.SetHuDetails(totalFan, fanDetails);
@@ -286,14 +288,6 @@ namespace MahjongGame.Core.Agents
                 else if (actionType == ClientActionType.AnGan) _handController.ExecuteAnGan(targetTile);
                 else if (actionType == ClientActionType.JiaGang) _handController.ExecuteJiaGang(targetTile);
                 
-                // 本地玩家吃碰后需要立即打出一张牌，我们可以在这里直接调用 OnTileDrawn 的打牌逻辑
-                // 或者在 GameServer 中由下一个状态驱动。为了简化，在胖客户端自行控制
-                if (actionType == ClientActionType.Pon || actionType == ClientActionType.Chi)
-                {
-                    _handController.SetInteractable(true);
-                    // 实际需要注册事件等待出牌，代码类似 OnTileDrawn
-                    WaitForDiscardAfterAction();
-                }
             }
             else
             {
@@ -320,6 +314,12 @@ namespace MahjongGame.Core.Agents
                 }
                 Debug.Log($"[LocalPlayer] 观察到玩家 {actionPlayerId} 执行了 {actionType}");
             }
+        }
+
+        public void OnTurnWithoutDraw()
+        {
+            _handController.SetInteractable(true);
+            WaitForDiscardAfterAction();
         }
 
         private async void WaitForDiscardAfterAction()
@@ -362,12 +362,20 @@ namespace MahjongGame.Core.Agents
 
         public void OnDrawGame()
         {
+            _isWaitingForUI = false;
+            ActionPanelController.Instance?.Hide();
+            _handController.SetInteractable(false);
+            GameHUDController.Instance?.StopTimer();
             ResultPanelController.Instance?.SetSessionInfo(GameManager.Instance?.Session);
             ResultPanelController.Instance.ShowDraw(new List<string> { "流局" });
         }
 
         public void OnPlayerWin(int winnerId, int totalFan, List<string> fanDetails, bool isSelfDraw)
         {
+            _isWaitingForUI = false;
+            ActionPanelController.Instance?.Hide();
+            _handController.SetInteractable(false);
+            GameHUDController.Instance?.StopTimer();
             ResultPanelController.Instance?.SetSessionInfo(GameManager.Instance?.Session);
 
             if (winnerId == PlayerId)
@@ -393,6 +401,11 @@ namespace MahjongGame.Core.Agents
         public void OnSessionEnd(int[] finalScores)
         {
             Debug.Log($"[LocalPlayer] 对战结束 - 分数: {string.Join(",", finalScores)}");
+        }
+
+        public void OnWallCountChanged(int remainingCount)
+        {
+            GameHUDController.Instance?.UpdateRemainingCount(remainingCount);
         }
 
         public void OnTimeout(TileData autoDiscardedTile)

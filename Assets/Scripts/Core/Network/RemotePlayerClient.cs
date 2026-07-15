@@ -84,6 +84,16 @@ namespace MahjongGame.Core.Network
             Send("PlayerDrew", msg);
         }
 
+        public void OnTurnWithoutDraw()
+        {
+            Send("TurnWithoutDraw", new TurnWithoutDrawMessage());
+        }
+
+        public void OnWallCountChanged(int remainingCount)
+        {
+            Send("WallCount", new WallCountMessage { remainingCount = remainingCount });
+        }
+
         public void OnOtherPlayerDiscarded(int playerId, TileData tile)
         {
             var msg = new DiscardedMessage

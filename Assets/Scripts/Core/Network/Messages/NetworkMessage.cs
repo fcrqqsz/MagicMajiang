@@ -12,6 +12,77 @@ namespace MahjongGame.Core.Network.Messages
         public string data; // JSON string of the actual payload
     }
 
+    public enum ReadyPhase
+    {
+        MatchStart,
+        GameSceneLoaded,
+        NextRound
+    }
+
+    [Serializable]
+    public class HelloMessage { public int protocolVersion = 1; public string nickname; }
+
+    [Serializable]
+    public class CreateRoomMessage { public int gameMode; }
+
+    [Serializable]
+    public class JoinRoomMessage { public string roomId; }
+
+    [Serializable]
+    public class LeaveRoomMessage { }
+
+    [Serializable]
+    public class HeartbeatMessage { }
+
+    [Serializable]
+    public class ReadyMessage { public int phase; }
+
+    [Serializable]
+    public class RoomSeatMessage
+    {
+        public int seatIndex;
+        public bool isOccupied;
+        public bool isAi;
+        public bool isReady;
+        public string displayName;
+    }
+
+    [Serializable]
+    public class RoomJoinedMessage
+    {
+        public string roomId;
+        public int seatIndex;
+        public int gameMode;
+        public int roomState;
+        public bool isHost;
+        public RoomSeatMessage[] seats;
+    }
+
+    [Serializable]
+    public class PlayerJoinedMessage { public string roomId; public int seatIndex; public string displayName; }
+    [Serializable]
+    public class PlayerLeftMessage
+    {
+        public string roomId;
+        public int seatIndex;
+        public string reason;
+        public bool replacedByAi;
+        public string replacementDisplayName;
+    }
+    [Serializable]
+    public class RoomReadyMessage { public string roomId; }
+    [Serializable]
+    public class RoomErrorMessage { public string code; public string message; }
+
+    [Serializable]
+    public class RoomClosedMessage { public string roomId; public string reason; }
+
+    [Serializable]
+    public class TurnWithoutDrawMessage { }
+
+    [Serializable]
+    public class WallCountMessage { public int remainingCount; }
+
     [Serializable]
     public class DrawGameMessage
     {

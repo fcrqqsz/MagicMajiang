@@ -12,6 +12,7 @@
 /[Uu]ser[Ss]ettings/
 *.log
 *Build/
+#Tests/
 
 # By default unity supports Blender asset imports, *.blend1 blender files do not need to be commited to version control.
 *.blend1
@@ -42,6 +43,9 @@
 ExportedObj/
 .consulo/
 *.csproj
+!Tests/NetworkRegression/NetworkRegression.csproj
+/Tests/NetworkRegression/[Bb]in/
+/Tests/NetworkRegression/[Oo]bj/
 *.unityproj
 *.sln
 *.suo

@@ -31,6 +31,12 @@ namespace MahjongGame.Core.Agents
         /// </summary>
         void OnPlayerDrawn(int playerId);
 
+        /// <summary>吃、碰后由服务端确认的直接出牌回合。</summary>
+        void OnTurnWithoutDraw();
+
+        /// <summary>服务端权威牌山余量同步。</summary>
+        void OnWallCountChanged(int remainingCount);
+
         /// <summary>
         /// 广播：其他玩家打出了一张牌
         /// </summary>

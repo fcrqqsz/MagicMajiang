@@ -83,7 +83,9 @@ namespace MahjongGame.UI
             if (session == null) return;
 
             string modeName = GetModeName(session.Mode);
-            int remaining = DeckManager.Instance != null ? DeckManager.Instance.RemainingCount : 0;
+            int remaining = IsNetworkRoom
+                ? Mathf.Max(_lastRemainingCount, 0)
+                : DeckManager.Instance != null ? DeckManager.Instance.RemainingCount : 0;
 
             if (session.Mode == GameMode.Single)
                 _infoPrefix = $"{modeName}-";
@@ -101,6 +103,14 @@ namespace MahjongGame.UI
                 _windLabels[slot].text = WindChars[(int)seatWind];
                 _scoreLabels[slot].text = session.Scores[playerIdx].ToString();
             }
+        }
+
+        /// <summary>Applies the dedicated server's authoritative wall count for an online round.</summary>
+        public void UpdateRemainingCount(int remainingCount)
+        {
+            _lastRemainingCount = Mathf.Max(remainingCount, 0);
+            if (_infoLabel != null && _infoPrefix != null)
+                _infoLabel.text = $"{_infoPrefix}余{_lastRemainingCount}张";
         }
 
         /// <summary>
@@ -129,7 +139,7 @@ namespace MahjongGame.UI
         void Update()
         {
             // 实时更新牌山余量（仅在数量变化时更新，避免每帧 GC）
-            if (DeckManager.Instance != null && _infoLabel != null && _infoPrefix != null)
+            if (!IsNetworkRoom && DeckManager.Instance != null && _infoLabel != null && _infoPrefix != null)
             {
                 int remaining = DeckManager.Instance.RemainingCount;
                 if (remaining != _lastRemainingCount)
@@ -242,6 +252,8 @@ namespace MahjongGame.UI
             // 玩家0(本地)=底部(0), 1=右(1), 2=上(2), 3=左(3)
             return playerIndex;
         }
+
+        private bool IsNetworkRoom => NetworkManager.Instance?.RoomService?.HasRoom == true;
 
         private string GetModeName(GameMode mode)
         {

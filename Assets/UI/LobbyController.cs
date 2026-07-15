@@ -4,6 +4,8 @@ using MahjongGame.Core;
 using MahjongGame.Core.Network.Data;
 using MahjongGame.Systems;
 using MahjongGame.Talents;
+using MahjongGame.Core.Network;
+using MahjongGame.Core.Network.Messages;
 
 namespace MahjongGame.UI
 {
@@ -34,6 +36,10 @@ namespace MahjongGame.UI
         private Button matchmakingButton;
         private Button btnDeckPrev;
         private Button btnDeckNext;
+        private TextField roomIdInput;
+        private Button joinRoomButton;
+        private Button readyRoomButton;
+        private Label roomStatusLabel;
 
         // GameMode Selector
         private Label modeNameLabel;
@@ -82,6 +88,10 @@ namespace MahjongGame.UI
             matchmakingButton = root.Q<Button>("MatchmakingButton");
             btnDeckPrev = root.Q<Button>("BtnDeckPrev");
             btnDeckNext = root.Q<Button>("BtnDeckNext");
+            roomIdInput = root.Q<TextField>("RoomIdInput");
+            joinRoomButton = root.Q<Button>("JoinRoomButton");
+            readyRoomButton = root.Q<Button>("ReadyRoomButton");
+            roomStatusLabel = root.Q<Label>("RoomStatusLabel");
 
             modeNameLabel = root.Q<Label>("ModeNameLabel");
             btnModePrev = root.Q<Button>("BtnModePrev");
@@ -98,6 +108,9 @@ namespace MahjongGame.UI
             if (tabSettings != null) tabSettings.clicked += OnTabSettingsClicked;
 
             if (matchmakingButton != null) matchmakingButton.clicked += OnMatchmakingClicked;
+            if (joinRoomButton != null) joinRoomButton.clicked += OnJoinRoomClicked;
+            if (readyRoomButton != null) readyRoomButton.clicked += OnReadyRoomClicked;
+            if (readyRoomButton != null) readyRoomButton.SetEnabled(NetworkManager.Instance?.RoomService?.HasRoom == true);
             if (btnDeckPrev != null) btnDeckPrev.clicked += OnDeckPrevClicked;
             if (btnDeckNext != null) btnDeckNext.clicked += OnDeckNextClicked;
             if (btnModePrev != null) btnModePrev.clicked += OnModePrevClicked;
@@ -120,6 +133,9 @@ namespace MahjongGame.UI
             }
 
             ShowTab("Home");
+            SubscribeRoomService();
+            if (!string.IsNullOrWhiteSpace(NetworkManager.Instance?.RoomService?.LastRoomClosureReason))
+                SetRoomStatus(NetworkManager.Instance.RoomService.LastRoomClosureReason);
         }
 
         private void OnDisable()
@@ -129,6 +145,9 @@ namespace MahjongGame.UI
             if (tabCollection != null) tabCollection.clicked -= OnTabCollectionClicked;
             if (tabSettings != null) tabSettings.clicked -= OnTabSettingsClicked;
             if (matchmakingButton != null) matchmakingButton.clicked -= OnMatchmakingClicked;
+            if (joinRoomButton != null) joinRoomButton.clicked -= OnJoinRoomClicked;
+            if (readyRoomButton != null) readyRoomButton.clicked -= OnReadyRoomClicked;
+            UnsubscribeRoomService();
             if (btnDeckPrev != null) btnDeckPrev.clicked -= OnDeckPrevClicked;
             if (btnDeckNext != null) btnDeckNext.clicked -= OnDeckNextClicked;
             if (btnModePrev != null) btnModePrev.clicked -= OnModePrevClicked;
@@ -315,7 +334,7 @@ namespace MahjongGame.UI
             }
         }
 
-        private async void OnMatchmakingClicked()
+        private void OnMatchmakingClicked()
         {
             if (NetworkManager.Instance == null)
             {
@@ -323,20 +342,66 @@ namespace MahjongGame.UI
                 return;
             }
 
-            if (matchmakingButton != null) matchmakingButton.SetEnabled(false);
-
-            string roomId = await NetworkManager.Instance.MatchmakingService.FindRoomAsync();
-
-            if (!string.IsNullOrEmpty(roomId))
-            {
-                Debug.Log($"Joining Room: {roomId}");
-                await NetworkManager.Instance.LoadSceneAndUnloadCurrentAsync(SceneNames.Game, SceneNames.MainLobby);
-            }
-            else
-            {
-                Debug.LogError("Matchmaking failed.");
-                if (matchmakingButton != null) matchmakingButton.SetEnabled(true);
-            }
+            NetworkManager.Instance.RoomService.CreateRoom(GetSelectedGameMode(), GetNickname());
+            SetRoomStatus("正在创建新房间；房间号由服务器分配。");
         }
+
+        private void OnJoinRoomClicked()
+        {
+            if (NetworkManager.Instance == null || string.IsNullOrWhiteSpace(roomIdInput?.value)) { SetRoomStatus("请输入要加入的房间号。"); return; }
+            NetworkManager.Instance.RoomService.JoinRoom(roomIdInput.value, GetNickname());
+            SetRoomStatus("正在加入房间...");
+        }
+
+        private void OnReadyRoomClicked()
+        {
+            if (NetworkManager.Instance?.RoomService?.HasRoom != true) { SetRoomStatus("请先创建或加入房间。"); return; }
+            NetworkManager.Instance.RoomService.SendReady(ReadyPhase.MatchStart);
+            SetRoomStatus("已准备，等待当前房间内所有真人玩家准备。");
+        }
+
+        private GameMode GetSelectedGameMode()
+        {
+            int mode = ProfileManager.Instance?.CurrentProfile?.Settings.SelectedGameMode ?? 0;
+            return mode >= 0 && mode <= 3 ? (GameMode)mode : GameMode.Single;
+        }
+
+        private string GetNickname() => ProfileManager.Instance?.CurrentProfile?.Nickname ?? "Player";
+
+        private void SubscribeRoomService()
+        {
+            var service = NetworkManager.Instance?.RoomService;
+            if (service == null) return;
+            service.RoomJoined += HandleRoomJoined;
+            service.SeatSnapshotChanged += HandleSeatSnapshotChanged;
+            service.RoomError += HandleRoomError;
+        }
+
+        private void UnsubscribeRoomService()
+        {
+            var service = NetworkManager.Instance?.RoomService;
+            if (service == null) return;
+            service.RoomJoined -= HandleRoomJoined;
+            service.SeatSnapshotChanged -= HandleSeatSnapshotChanged;
+            service.RoomError -= HandleRoomError;
+        }
+
+        private void HandleRoomJoined(RoomJoinedMessage message)
+        {
+            if (readyRoomButton != null) readyRoomButton.SetEnabled(true);
+            if (matchmakingButton != null) matchmakingButton.SetEnabled(false);
+            if (joinRoomButton != null) joinRoomButton.SetEnabled(false);
+            if (roomIdInput != null) roomIdInput.value = message.roomId;
+            SetRoomStatus($"当前房间：{message.roomId} ｜ 我的席位：{message.seatIndex + 1} ｜ 请点击“确认准备”。");
+        }
+        private void HandleSeatSnapshotChanged(RoomSeatMessage[] seats)
+        {
+            var room = NetworkManager.Instance?.RoomService;
+            if (room == null) return;
+            int humanCount = System.Array.FindAll(seats, seat => seat != null && seat.isOccupied && !seat.isAi).Length;
+            SetRoomStatus($"当前房间：{room.RoomId} ｜ 我的席位：{room.SeatIndex + 1} ｜ 真人玩家：{humanCount}/4");
+        }
+        private void HandleRoomError(string message) => SetRoomStatus(message);
+        private void SetRoomStatus(string message) { if (roomStatusLabel != null) roomStatusLabel.text = message; }
     }
 }

@@ -159,6 +159,7 @@ namespace MahjongGame.Core.Network
 
             // 发牌
             DealStartingHands();
+            BroadcastWallCount();
 
             // 窥探天赋：发牌后通知装备者牌山顶部牌
             for (int i = 0; i < _clients.Count; i++)
@@ -215,7 +216,7 @@ namespace MahjongGame.Core.Network
                 var client = _clients[ci];
                 List<TileData> startingHand = new List<TileData>();
 
-                bool useDebug = _options.UseDebugHand && client is LocalPlayerClient;
+                bool useDebug = _options.UseDebugHand && client.PlayerId == 0;
 
                 if (useDebug)
                 {
@@ -288,6 +289,7 @@ namespace MahjongGame.Core.Network
                 if (!_skipNextDraw)
                 {
                     _lastDrawnTile = _wallService.DrawTile();
+                    BroadcastWallCount();
                     _lastDrawnTile = _talentManager.ExecuteOnDraw(_currentPlayerIndex, _lastDrawnTile, _gameState, _session, _deckConfigs);
                     _gameState.AddTile(_currentPlayerIndex, _lastDrawnTile);
 
@@ -320,6 +322,7 @@ namespace MahjongGame.Core.Network
                     currentPlayer.TurnCancellationToken = _turnCts.Token;
 
                     OnTurnStarted?.Invoke(_currentPlayerIndex, ActionTimeoutMs / 1000f);
+                    currentPlayer.OnTurnWithoutDraw();
                 }
                 _skipNextDraw = false;
 
@@ -477,12 +480,22 @@ namespace MahjongGame.Core.Network
             // 如果当前在等待主玩家出牌
             if (_pendingActionTcs != null && action.PlayerId == _currentPlayerIndex)
             {
+                if (!TurnActionPolicy.IsMainTurnAction(action.ActionType))
+                {
+                    Debug.LogWarning($"[GameServer] Ignoring late or invalid main-turn action from player {action.PlayerId}: {action.ActionType}");
+                    return;
+                }
                 var validated = ValidateMainAction(action);
                 _pendingActionTcs.TrySetResult(validated);
             }
             // 如果在等待其他人响应
             else if (_responsesTcs != null && action.PlayerId != _currentPlayerIndex)
             {
+                if (!TurnActionPolicy.IsResponseAction(action.ActionType))
+                {
+                    Debug.LogWarning($"[GameServer] Ignoring late or invalid response action from player {action.PlayerId}: {action.ActionType}");
+                    return;
+                }
                 var validated = ValidateResponseAction(action);
                 _pendingResponses[action.PlayerId] = validated;
 
@@ -598,6 +611,7 @@ namespace MahjongGame.Core.Network
                     if (!MahjongLogic.CheckWinWithFan(hand, melds, _lastDiscardedTile, false, out _, out _, roundWind, seatWind, options))
                     {
                         Debug.LogWarning($"[ServerValidation] 玩家{pid} 点炮胡验证失败，自动Skip");
+                        Debug.LogWarning($"[ServerValidation] 点炮胡快照: 目标={_lastDiscardedTile}, 手牌=[{string.Join(", ", hand)}], 副露数={melds.Count}, 圈风={roundWind}, 门风={seatWind}");
                         return ClientAction.Skip(pid);
                     }
                     break;
@@ -677,6 +691,14 @@ namespace MahjongGame.Core.Network
         private bool HandContainsTile(List<TileData> hand, TileData tile)
         {
             return hand.Any(t => t.TileSuit == tile.TileSuit && t.Value == tile.Value);
+        }
+
+        private void BroadcastWallCount()
+        {
+            foreach (var client in _clients)
+            {
+                client.OnWallCountChanged(_wallService.RemainingCount);
+            }
         }
 
         private void BroadcastAction(ClientAction action)

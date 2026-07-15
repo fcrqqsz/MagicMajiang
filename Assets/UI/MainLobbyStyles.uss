@@ -2,6 +2,7 @@
     flex-grow: 1;
     flex-direction: row;
     background-color: rgb(30, 30, 30);
+    -unity-font-definition: url('project://database/Assets/Font/MSYH.TTC');
 }
 
 .sidebar {
@@ -106,4 +107,83 @@
     flex-grow: 1;
     -unity-text-align: middle-center;
     margin-bottom: 0;
+}
+
+.room-controls {
+    flex-direction: row;
+    align-items: flex-end;
+    margin-top: 20px;
+    margin-bottom: 14px;
+}
+
+.room-id-input {
+    width: 360px;
+    flex-grow: 0;
+    flex-shrink: 0;
+    margin-right: 16px;
+}
+
+.room-id-input .unity-base-field__label {
+    color: rgb(225, 225, 225);
+    font-size: 16px;
+    min-width: 155px;
+    margin-right: 10px;
+}
+
+.room-id-input .unity-base-text-field__input {
+    min-height: 36px;
+    padding-left: 10px;
+    padding-right: 10px;
+    color: white;
+    background-color: rgb(18, 18, 18);
+    border-top-width: 1px;
+    border-right-width: 1px;
+    border-bottom-width: 1px;
+    border-left-width: 1px;
+    border-top-color: rgb(125, 145, 170);
+    border-right-color: rgb(125, 145, 170);
+    border-bottom-color: rgb(125, 145, 170);
+    border-left-color: rgb(125, 145, 170);
+    border-top-left-radius: 4px;
+    border-top-right-radius: 4px;
+    border-bottom-right-radius: 4px;
+    border-bottom-left-radius: 4px;
+}
+
+.room-id-input .unity-base-text-field__input:focus {
+    border-top-color: rgb(90, 170, 240);
+    border-right-color: rgb(90, 170, 240);
+    border-bottom-color: rgb(90, 170, 240);
+    border-left-color: rgb(90, 170, 240);
+}
+
+.room-secondary-button {
+    min-width: 140px;
+    min-height: 38px;
+    flex-grow: 0;
+    flex-shrink: 0;
+    padding: 8px 16px;
+    background-color: rgb(55, 95, 145);
+    color: white;
+    border-width: 0;
+    border-radius: 5px;
+    font-size: 16px;
+}
+
+.room-ready-button {
+    min-width: 300px;
+    min-height: 48px;
+    padding: 10px 22px;
+    margin-bottom: 14px;
+    background-color: rgb(55, 145, 90);
+    color: white;
+    border-width: 0;
+    border-radius: 6px;
+    font-size: 20px;
+    -unity-font-style: bold;
+    align-self: flex-start;
+}
+
+.room-ready-button:disabled {
+    opacity: 0.45;
 }

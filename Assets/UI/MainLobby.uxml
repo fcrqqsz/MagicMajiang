@@ -33,7 +33,13 @@
                     <ui:Label name="ModeNameLabel" text="对战模式: 单局" class="view-subtitle deck-name-display" />
                     <ui:Button name="BtnModeNext" text="&gt;" class="deck-arrow-btn" />
                 </ui:VisualElement>
-                <ui:Button name="MatchmakingButton" text="Start Matchmaking" class="action-button" />
+                <ui:Button name="MatchmakingButton" text="创建新房间" class="action-button" />
+                <ui:VisualElement class="room-controls">
+                    <ui:TextField name="RoomIdInput" label="房间号（例如 R0001）" class="room-id-input" tooltip="输入其他玩家创建的房间号" />
+                    <ui:Button name="JoinRoomButton" text="加入该房间" class="room-secondary-button" />
+                </ui:VisualElement>
+                <ui:Button name="ReadyRoomButton" text="确认准备（等待所有真人）" class="room-ready-button" />
+                <ui:Label name="RoomStatusLabel" text="当前未加入房间" class="view-subtitle" />
             </ui:VisualElement>
 
             <!-- Workshop View -->

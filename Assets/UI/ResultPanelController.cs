@@ -100,7 +100,7 @@ namespace MahjongGame.UI
 
         public void ShowLose(int aiId, int totalFan, List<string> fanDetails)
         {
-            _titleLabel.text = $"玩家 {aiId} 胡牌";
+            _titleLabel.text = $"{GetPlayerDisplayName(aiId)} 胡牌";
             _titleLabel.style.color = new StyleColor(new Color(0.5f, 0.5f, 0.8f));
 
             _listContainer.Clear();
@@ -152,11 +152,11 @@ namespace MahjongGame.UI
             string[] windNames = { "东", "南", "西", "北" };
             for (int i = 0; i < 4; i++)
             {
-                string playerName = i == 0 ? "你" : $"AI {i}";
+                string playerName = GetPlayerDisplayName(i);
                 string scoreText = $"{playerName}: {_session.Scores[i]:+#;-#;0} 分";
                 Label scoreLabel = new Label(scoreText);
                 scoreLabel.AddToClassList("fan-item");
-                if (i == 0)
+                if (IsLocalSeat(i))
                     scoreLabel.style.color = new StyleColor(new Color(1f, 0.85f, 0.4f));
                 _listContainer.Add(scoreLabel);
             }
@@ -181,10 +181,10 @@ namespace MahjongGame.UI
             int rank = 1;
             foreach (var (id, score) in rankings)
             {
-                string playerName = id == 0 ? "你" : $"AI {id}";
+                string playerName = GetPlayerDisplayName(id);
                 Label item = new Label($"第{rank}名  {playerName}    {score:+#;-#;0} 分");
                 item.AddToClassList("fan-item");
-                if (id == 0)
+                if (IsLocalSeat(id))
                     item.style.color = new StyleColor(new Color(1f, 0.85f, 0.4f));
                 _listContainer.Add(item);
                 rank++;
@@ -196,6 +196,28 @@ namespace MahjongGame.UI
 
             _overlay.style.display = DisplayStyle.Flex;
             Invoke(nameof(FadeIn), 0.05f);
+        }
+
+        private static bool IsLocalSeat(int seatIndex)
+        {
+            var room = NetworkManager.Instance?.RoomService;
+            return room != null && room.HasResultSeatSnapshot ? seatIndex == room.ResultSeatIndex : seatIndex == 0;
+        }
+
+        private static string GetPlayerDisplayName(int seatIndex)
+        {
+            if (IsLocalSeat(seatIndex)) return "你";
+
+            var room = NetworkManager.Instance?.RoomService;
+            var seats = room?.ResultSeats;
+            if (seats != null && seatIndex >= 0 && seatIndex < seats.Length)
+            {
+                var seat = seats[seatIndex];
+                if (seat != null && seat.isOccupied && !seat.isAi && !string.IsNullOrWhiteSpace(seat.displayName))
+                    return seat.displayName;
+            }
+
+            return $"AI {seatIndex + 1}";
         }
 
         private struct FanItemData
@@ -290,6 +312,7 @@ namespace MahjongGame.UI
         {
             if (NetworkManager.Instance != null)
             {
+                NetworkManager.Instance.RoomService?.LeaveRoom();
                 await NetworkManager.Instance.LoadSceneAndUnloadCurrentAsync(SceneNames.MainLobby, SceneNames.Game);
             }
             else

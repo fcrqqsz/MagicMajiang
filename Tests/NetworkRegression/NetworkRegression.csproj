@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+    <Compile Include="UnityEngineStubs.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\Network\TurnActionPolicy.cs" Link="TurnActionPolicy.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\Network\ConnectionLivenessPolicy.cs" Link="ConnectionLivenessPolicy.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\Network\ClientRoomState.cs" Link="ClientRoomState.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\Network\RoomState.cs" Link="RoomState.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\Network\RoomDeparturePolicy.cs" Link="RoomDeparturePolicy.cs" />
+    <Compile Include="..\..\Assets\Scripts\Systems\SceneTransitionPolicy.cs" Link="SceneTransitionPolicy.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\Network\Protocol.cs" Link="Protocol.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\Network\Messages\NetworkMessage.cs" Link="NetworkMessage.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\TileData.cs" Link="TileData.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\MahjongEnums.cs" Link="MahjongEnums.cs" />
+  </ItemGroup>
+</Project>

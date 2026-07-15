@@ -137,7 +137,7 @@
 
 ## Phase C: Room V1
 
-状态：待执行。
+状态：已完成（2026-07-15）。
 
 目标：实现最小可用房间/席位系统，把服务端连接映射和 Ready 分发迁出 `GameManager`。
 
@@ -158,19 +158,36 @@
   - `Ready`
   - `RoomError`
 - `GameManager` 不再处理服务端连接映射、Ready 分发或房间启动。
+- 已加入最小心跳存活检测：客户端定期发送 `Heartbeat`，服务端在连接超时后关闭当前房间，防止静默断网产生死房。该能力仅用于关房清理，不包含重连、AI 托管、endpoint 重绑、消息缓存或补包。
 
 首版默认：
 
 - 支持 1 到 4 真人。
 - 不足 4 人时用 `SimpleAIClient` 补位。
 - 不做账号鉴权，身份由连接和席位绑定。
+- 离开策略按房间阶段处理：
+  - `WaitingForPlayers` / `WaitingForMatchReady`：`aiFill=true` 可由 AI 接管离开席位；`aiFill=false` 释放为空席并允许新真人加入。
+  - `LoadingGameScene` / `WaitingForNextRound`：`aiFill=true` 由 AI 接管并继续；`aiFill=false` 关闭整房，剩余真人返回大厅。
+  - `InRound`：无论 `aiFill` 配置均关闭整房；运行中的客户端热替换、AI 托管与真人重新加入留给 Phase E。
 
 验收：
 
 - 1 真人 + 3 AI 可开局。
 - 2 真人 + 2 AI 可开局。
+- 3 真人 + 1 AI 可开局。
 - 4 真人可开局。
 - 客户端动作仍由服务端根据连接映射写入真实 playerId。
+- 离开策略覆盖 `aiFill=true/false` 与开局前、加载中、局间等待、对局中状态，不得产生无法推进且无法加入的房间。
+
+### Phase C 当前验收记录
+
+- 1 真人 + 3 AI：已完成开局、完整对局与结算验证。
+- 2 真人 + 2 AI：已完成加入、准备、完整对局、结算、昵称显示与一端强退关房验证。
+- 3 真人 + 1 AI：已于 2026-07-15 手测，无明显问题。
+- 4 真人：已于 2026-07-15 手测，无明显问题，未创建 AI 席位。
+- 连接身份由服务端 `ConnectionRegistry` 映射为真实 seatIndex，客户端动作消息不携带可信 playerId。
+- 等待阶段离开策略与客户端自然结算完成态已加入回归测试；`RemoteServerProxy` 不再报告房间控制消息噪声。
+- EastOnly 连续 4 小局：已于 2026-07-15 完成验证；每局结算后的 `Ready(NextRound)`、服务端 `GameSession` 推进及新手牌下发均正常。
 
 ## Phase D: Player Config + Talent Online
 
@@ -209,7 +226,7 @@
   - `ReconnectState { snapshot, missedMessages }`
 - 断线席位进入 AI 托管。
 - 重连后重新绑定 endpoint。
-- 接入心跳与断线判定。
+- 在 Phase C 的基础心跳关房能力上，完善断线判定与重连窗口，使短暂断网不再直接关闭房间。
 - 服务端清理过期连接和空房间。
 
 验收：
@@ -224,7 +241,7 @@
 - 编译检查：`dotnet restore Assembly-CSharp.csproj` 后 `dotnet build Assembly-CSharp.csproj --no-restore`。
 - 本地环回：服务端 `ws://127.0.0.1:9876/game`，客户端连接并完成一局。
 - 多局测试：EastOnly 完成 4 小局。
-- 房间测试：1 真人、2 真人、4 真人组合。
+- 房间测试：1 真人、2 真人、3 真人、4 真人组合。
 - 配置测试：不同牌库和不同天赋。
 - 断线测试：主回合、响应阶段、结算阶段、局间阶段。
 

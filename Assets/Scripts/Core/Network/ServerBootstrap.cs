@@ -17,6 +17,8 @@ namespace MahjongGame.Core.Network
         public int Port { get; private set; }
         public int MaxRooms { get; private set; }
         public bool AiFill { get; private set; }
+        private ConnectionRegistry _connectionRegistry;
+        private RoomManager _roomManager;
 
         private void Awake()
         {
@@ -35,7 +37,21 @@ namespace MahjongGame.Core.Network
 
             service.Port = Port;
             service.StartServer();
+            _connectionRegistry = new ConnectionRegistry();
+            _roomManager = new RoomManager(MaxRooms, AiFill, _connectionRegistry);
             Debug.Log($"[ServerBootstrap] ServerBootstrap started. Port={Port}, MaxRooms={MaxRooms}, AiFill={AiFill}");
+        }
+
+        private void OnDestroy()
+        {
+            _roomManager?.Dispose();
+            _roomManager = null;
+            _connectionRegistry = null;
+        }
+
+        private void Update()
+        {
+            _roomManager?.Tick(DateTime.UtcNow);
         }
 
         private void ParseCommandLineArguments(string[] args)
