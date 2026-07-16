@@ -26,6 +26,7 @@ namespace MahjongGame.Core.Agents
         // 风位信息
         private WindDirection _roundWind = WindDirection.East;
         private WindDirection _seatWind = WindDirection.East;
+        private ScoringOptions _scoringOptions = new ScoringOptions();
 
         public SimpleAIClient(int playerId, IServer server)
         {
@@ -71,14 +72,14 @@ namespace MahjongGame.Core.Agents
 
                 await Task.Delay(500, ct);
 
-                var actions = ActionValidator.CheckSelfActions(_hand, _melds, drawnTile, roundWind: _roundWind, seatWind: _seatWind);
+                var actions = ActionValidator.CheckSelfActions(_hand, _melds, drawnTile, _scoringOptions, _roundWind, _seatWind);
                 if (actions.HasAction)
                 {
                     if (actions.CanHu)
                     {
                         int totalFan;
                         List<string> fanDetails;
-                        bool canWin = MahjongLogic.CheckWinWithFan(_hand, _melds, drawnTile, true, out totalFan, out fanDetails, _roundWind, _seatWind);
+                        bool canWin = MahjongLogic.CheckWinWithFan(_hand, _melds, drawnTile, true, out totalFan, out fanDetails, _roundWind, _seatWind, _scoringOptions);
 
                         if (canWin)
                         {
@@ -104,6 +105,8 @@ namespace MahjongGame.Core.Agents
 
         public async void OnOtherPlayerDiscarded(int discarderId, TileData discardedTile)
         {
+            if (!Network.ResponseActionPolicy.CanRespondToDiscard(PlayerId, discarderId)) return;
+
             var ct = TurnCancellationToken;
             try
             {
@@ -111,7 +114,7 @@ namespace MahjongGame.Core.Agents
 
                 bool isNextPlayer = (discarderId + 1) % 4 == PlayerId;
 
-                var actions = ActionValidator.CheckActions(_hand, _melds, discardedTile, isNextPlayer, roundWind: _roundWind, seatWind: _seatWind);
+                var actions = ActionValidator.CheckActions(_hand, _melds, discardedTile, isNextPlayer, _scoringOptions, _roundWind, _seatWind);
 
                 if (actions.HasAction)
                 {
@@ -119,7 +122,7 @@ namespace MahjongGame.Core.Agents
                     {
                         int totalFan;
                         List<string> fanDetails;
-                        bool canWin = MahjongLogic.CheckWinWithFan(_hand, _melds, discardedTile, false, out totalFan, out fanDetails, _roundWind, _seatWind);
+                        bool canWin = MahjongLogic.CheckWinWithFan(_hand, _melds, discardedTile, false, out totalFan, out fanDetails, _roundWind, _seatWind, _scoringOptions);
                         if (canWin)
                         {
                             var action = new ClientAction(PlayerId, ClientActionType.Hu, discardedTile);
@@ -226,7 +229,13 @@ namespace MahjongGame.Core.Agents
 
         public void OnTalentInfo(ScoringOptions scoringOptions)
         {
-            // AI 暂不使用天赋加成
+            _scoringOptions = scoringOptions == null
+                ? new ScoringOptions()
+                : new ScoringOptions
+                {
+                    BonusFan = scoringOptions.BonusFan,
+                    RelaxedPureStraight = scoringOptions.RelaxedPureStraight
+                };
         }
 
         public void OnPeekWallTiles(List<TileData> topTiles)

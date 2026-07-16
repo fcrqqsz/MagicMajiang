@@ -11,5 +11,11 @@ namespace MahjongGame.Core.Network
                 || roomState == RoomState.WaitingForMatchReady
                 || (aiFill && (roomState == RoomState.LoadingGameScene || roomState == RoomState.WaitingForNextRound));
         }
+
+        /// <summary>AI only takes over a seat after the pre-match waiting stages have ended.</summary>
+        public static bool ShouldReplaceWithAi(RoomState roomState, bool aiFill)
+        {
+            return aiFill && (roomState == RoomState.LoadingGameScene || roomState == RoomState.WaitingForNextRound);
+        }
     }
 }

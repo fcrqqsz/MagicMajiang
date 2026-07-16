@@ -1,6 +1,9 @@
 using System;
 using MahjongGame.Core.Network.Messages;
 using MahjongGame.Core.Network.Transport;
+using MahjongGame.Core.Network.Data;
+using MahjongGame.Systems;
+using MahjongGame.Talents;
 using UnityEngine;
 using WebSocketSharp;
 
@@ -20,12 +23,14 @@ namespace MahjongGame.Core.Network
         public int SeatIndex => _roomState.SeatIndex;
         public GameMode GameMode => _roomState.GameMode;
         public RoomState RoomState => (RoomState)_roomState.RoomStateValue;
+        public bool AiFillEnabled => _roomState.AiFillEnabled;
         public RoomSeatMessage[] Seats => _roomState.Seats;
         public bool HasRoom => _roomState.HasRoom;
         public bool IsSessionCompleted => _roomState.IsSessionCompleted;
         public bool HasResultSeatSnapshot => HasRoom || IsSessionCompleted;
         public int ResultSeatIndex => HasRoom ? SeatIndex : _roomState.ResultSeatIndex;
         public RoomSeatMessage[] ResultSeats => HasRoom ? Seats : _roomState.ResultSeats;
+        public int AcceptedTotalAlienation => _roomState.AcceptedTotalAlienation;
         public string LastRoomClosureReason { get; private set; }
 
         public event Action<RoomJoinedMessage> RoomJoined;
@@ -43,24 +48,28 @@ namespace MahjongGame.Core.Network
             client.OnDisconnected += HandleDisconnected;
         }
 
-        public void CreateRoom(GameMode gameMode, string nickname, string address = null)
+        public bool CreateRoom(GameMode gameMode, string nickname, string address = null)
         {
+            if (!TryBuildSelectedLoadout(out var loadout)) return false;
             ClearCompletedStateForNewRoom();
             SendWhenConnected(() =>
             {
                 Send("Hello", new HelloMessage { nickname = nickname });
-                Send("CreateRoom", new CreateRoomMessage { gameMode = (int)gameMode });
+                Send("CreateRoom", new CreateRoomMessage { gameMode = (int)gameMode, loadout = loadout });
             }, address);
+            return true;
         }
 
-        public void JoinRoom(string roomId, string nickname, string address = null)
+        public bool JoinRoom(string roomId, string nickname, string address = null)
         {
+            if (!TryBuildSelectedLoadout(out var loadout)) return false;
             ClearCompletedStateForNewRoom();
             SendWhenConnected(() =>
             {
                 Send("Hello", new HelloMessage { nickname = nickname });
-                Send("JoinRoom", new JoinRoomMessage { roomId = roomId });
+                Send("JoinRoom", new JoinRoomMessage { roomId = roomId, loadout = loadout });
             }, address);
+            return true;
         }
 
         public void SendReady(ReadyPhase phase)
@@ -122,6 +131,11 @@ namespace MahjongGame.Core.Network
                 case "PlayerLeft":
                     ApplyPlayerLeft(MessageSerializer.DeserializePayload<PlayerLeftMessage>(envelope.data));
                     break;
+                case "RoomSeatUpdated":
+                    var seatUpdated = MessageSerializer.DeserializePayload<RoomSeatUpdatedMessage>(envelope.data);
+                    if (seatUpdated != null && seatUpdated.roomId == RoomId && _roomState.ApplySeatUpdate(seatUpdated.seat))
+                        SeatSnapshotChanged?.Invoke(Seats);
+                    break;
                 case "RoomReady": _roomState.SetRoomState((int)RoomState.LoadingGameScene); RoomReady?.Invoke(); break;
                 case "SessionEnd": CompleteSessionRoomState(); break;
                 case "RoomClosed":
@@ -140,29 +154,50 @@ namespace MahjongGame.Core.Network
 
         private void ApplyPlayerJoined(PlayerJoinedMessage message)
         {
-            if (message == null || message.roomId != RoomId || message.seatIndex < 0 || message.seatIndex > 3) return;
+            if (message == null || message.roomId != RoomId || message.seat == null || message.seat.seatIndex < 0 || message.seat.seatIndex > 3) return;
             var snapshot = (RoomSeatMessage[])Seats.Clone();
             if (snapshot.Length != 4) snapshot = new RoomSeatMessage[4];
-            snapshot[message.seatIndex] = new RoomSeatMessage { seatIndex = message.seatIndex, isOccupied = true, displayName = message.displayName };
+            snapshot[message.seat.seatIndex] = message.seat;
             _roomState.SetSeats(snapshot); SeatSnapshotChanged?.Invoke(Seats);
         }
 
         private void ApplyPlayerLeft(PlayerLeftMessage message)
         {
-            if (message == null || message.roomId != RoomId || message.seatIndex < 0 || message.seatIndex > 3) return;
+            if (message == null || message.roomId != RoomId || message.seat == null || message.seatIndex < 0 || message.seatIndex > 3) return;
             var snapshot = (RoomSeatMessage[])Seats.Clone();
             if (snapshot.Length != 4) snapshot = new RoomSeatMessage[4];
-            snapshot[message.seatIndex] = message.replacedByAi
-                ? new RoomSeatMessage
-                {
-                    seatIndex = message.seatIndex,
-                    isOccupied = true,
-                    isAi = true,
-                    isReady = true,
-                    displayName = message.replacementDisplayName
-                }
-                : new RoomSeatMessage { seatIndex = message.seatIndex };
+            snapshot[message.seatIndex] = message.seat;
             _roomState.SetSeats(snapshot); SeatSnapshotChanged?.Invoke(Seats);
+        }
+
+        private bool TryBuildSelectedLoadout(out PlayerLoadoutMessage loadout)
+        {
+            loadout = null;
+            DeckConfig deckConfig;
+            TalentSlotConfig talentConfig;
+            var profile = ProfileManager.Instance?.CurrentProfile;
+            if (profile == null || profile.SavedDecks == null || profile.SavedDecks.Count == 0)
+            {
+                deckConfig = DeckConfig.CreateStandard();
+                talentConfig = new TalentSlotConfig();
+            }
+            else
+            {
+                int index = profile.SelectedDeckIndex;
+                if (index < 0 || index >= profile.SavedDecks.Count)
+                {
+                    RoomError?.Invoke("The selected local deck index is invalid. Choose a deck before entering a room.");
+                    return false;
+                }
+
+                SavedDeck savedDeck = profile.SavedDecks[index];
+                deckConfig = savedDeck?.Config;
+                talentConfig = savedDeck?.Talents ?? new TalentSlotConfig();
+            }
+
+            if (PlayerLoadoutCodec.TryCreateMessage(deckConfig, talentConfig, out loadout, out string errorCode)) return true;
+            RoomError?.Invoke($"The selected local loadout is invalid ({errorCode}). Fix it before entering a room.");
+            return false;
         }
 
         private void HandleDisconnected(string reason)

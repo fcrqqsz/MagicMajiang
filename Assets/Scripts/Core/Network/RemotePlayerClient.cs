@@ -36,7 +36,8 @@ namespace MahjongGame.Core.Network
                 roundNumber = roundNumber,
                 prevalentWind = (int)prevalentWind,
                 seatWind = (int)seatWind,
-                dealerIndex = dealerIndex
+                dealerIndex = dealerIndex,
+                scores = GetScoreSnapshot()
             };
             Send("RoundStart", msg);
         }

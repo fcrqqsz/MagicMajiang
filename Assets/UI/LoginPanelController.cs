@@ -57,6 +57,13 @@ namespace MahjongGame.UI
 
             if (success)
             {
+                var profile = ProfileManager.Instance.CurrentProfile;
+                if (profile != null)
+                {
+                    // Temporary identity bridge until the account service owns the player profile.
+                    profile.Nickname = LoginUsernamePolicy.Normalize(user);
+                    ProfileManager.Instance.SaveProfile();
+                }
                 await NetworkManager.Instance.LoadSceneAndUnloadCurrentAsync(SceneNames.MainLobby, SceneNames.Login);
             }
             else

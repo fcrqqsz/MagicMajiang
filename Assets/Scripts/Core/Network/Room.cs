@@ -19,6 +19,8 @@ namespace MahjongGame.Core.Network
         public bool IsAi;
         public bool MatchReady;
         public bool SceneReady;
+        public bool IsLoadoutLocked;
+        public TrustedPlayerLoadout Loadout;
     }
 
     /// <summary>Dedicated-server room and the sole owner of its GameSession/GameServer lifecycle.</summary>
@@ -29,6 +31,7 @@ namespace MahjongGame.Core.Network
         private readonly RoomSeat[] _seats = new RoomSeat[4];
         private readonly List<DeckConfig> _deckConfigs = new List<DeckConfig>();
         private readonly Dictionary<int, TalentSlotConfig> _talentConfigs = new Dictionary<int, TalentSlotConfig>();
+        private bool _startingCapitalApplied;
 
         public string RoomId { get; }
         public GameMode GameMode { get; }
@@ -36,6 +39,7 @@ namespace MahjongGame.Core.Network
         public GameServer GameServer { get; private set; }
         public RoomState State { get; private set; } = RoomState.WaitingForPlayers;
         public string HostConnectionId { get; }
+        public bool AiFillEnabled => _aiFill;
         public IReadOnlyList<RoomSeat> Seats => _seats;
         public bool HasHumanPlayers => _seats.Any(s => s != null && !s.IsAi);
         public event Action<Room> OnClosed;
@@ -50,14 +54,24 @@ namespace MahjongGame.Core.Network
             Session = new GameSession(gameMode);
         }
 
-        public bool TryAddHuman(string connectionId, GameEndpoint endpoint, string displayName, out int seatIndex)
+        public bool TryAddHuman(string connectionId, GameEndpoint endpoint, string displayName, TrustedPlayerLoadout loadout, out int seatIndex)
         {
             seatIndex = -1;
-            if (State != RoomState.WaitingForPlayers && State != RoomState.WaitingForMatchReady) return false;
+            if (loadout == null || (State != RoomState.WaitingForPlayers && State != RoomState.WaitingForMatchReady)) return false;
             for (int i = 0; i < _seats.Length; i++)
             {
                 if (_seats[i] != null) continue;
-                _seats[i] = new RoomSeat { SeatIndex = i, ConnectionId = connectionId, Endpoint = endpoint, DisplayName = displayName, IsAi = false };
+                var trustedLoadout = PlayerLoadoutCodec.CloneTrustedLoadout(loadout);
+                if (trustedLoadout == null) return false;
+                _seats[i] = new RoomSeat
+                {
+                    SeatIndex = i,
+                    ConnectionId = connectionId,
+                    Endpoint = endpoint,
+                    DisplayName = displayName,
+                    IsAi = false,
+                    Loadout = trustedLoadout
+                };
                 seatIndex = i;
                 State = RoomState.WaitingForMatchReady;
                 return true;
@@ -79,7 +93,7 @@ namespace MahjongGame.Core.Network
             return false;
         }
 
-        /// <summary>Replaces a departing human during a non-playing stage, preserving the room for remaining humans.</summary>
+        /// <summary>Preserves a non-playing room after a human leaves, keeping pre-match seats open for rejoining players.</summary>
         public bool HandleWaitingHumanDeparture(string connectionId, out int seatIndex, out bool replacedByAi, out string replacementDisplayName)
         {
             seatIndex = -1;
@@ -93,18 +107,16 @@ namespace MahjongGame.Core.Network
                 bool hasRemainingHumans = _seats.Any(seat => seat != null && !seat.IsAi && seat.ConnectionId != connectionId);
                 if (!RoomDeparturePolicy.ShouldKeepRoomAfterDeparture(State, hasRemainingHumans, _aiFill)) return false;
 
+                var departingSeat = _seats[i];
                 seatIndex = i;
-                if (_aiFill)
+                if (RoomDeparturePolicy.ShouldReplaceWithAi(State, _aiFill))
                 {
-                    replacementDisplayName = $"AI {i + 1}";
-                    _seats[i] = new RoomSeat
-                    {
-                        SeatIndex = i,
-                        IsAi = true,
-                        DisplayName = replacementDisplayName,
-                        MatchReady = true,
-                        SceneReady = true
-                    };
+                    bool preserveLockedLoadout = departingSeat.IsLoadoutLocked
+                        && (State == RoomState.LoadingGameScene || State == RoomState.WaitingForNextRound);
+                    _seats[i] = preserveLockedLoadout
+                        ? CreateAiSeat(i, departingSeat.Loadout, true)
+                        : CreateAiSeat(i, PlayerLoadoutCodec.CreateStandardLoadout(), false);
+                    replacementDisplayName = _seats[i].DisplayName;
                     replacedByAi = true;
                 }
                 else
@@ -124,8 +136,7 @@ namespace MahjongGame.Core.Network
 
             if (State == RoomState.WaitingForMatchReady && AllHumans(seat => seat.MatchReady))
             {
-                State = RoomState.LoadingGameScene;
-                Broadcast("RoomReady", new RoomReadyMessage { roomId = RoomId });
+                TryBeginLoadingGameScene();
             }
             else if (State == RoomState.LoadingGameScene && AllHumans(seat => seat.SceneReady))
             {
@@ -145,12 +156,20 @@ namespace MahjongGame.Core.Network
 
             if (phase == ReadyPhase.MatchStart && State == RoomState.WaitingForMatchReady)
             {
+                if (!RoomReadyPolicy.CanMarkMatchReady(_aiFill, HumanCount))
+                {
+                    error = "This server requires four human players when AI fill is disabled.";
+                    return false;
+                }
+
                 seat.MatchReady = true;
                 if (AllHumans(s => s.MatchReady))
                 {
-                    if (!_aiFill && HumanCount != 4) { error = "This server requires four human players when AI fill is disabled."; return false; }
-                    State = RoomState.LoadingGameScene;
-                    Broadcast("RoomReady", new RoomReadyMessage { roomId = RoomId });
+                    if (!TryBeginLoadingGameScene())
+                    {
+                        error = "Could not lock all room seat loadouts.";
+                        return false;
+                    }
                 }
                 return true;
             }
@@ -185,11 +204,21 @@ namespace MahjongGame.Core.Network
 
         public RoomSeatMessage[] GetSeatSnapshot()
         {
-            return Enumerable.Range(0, 4).Select(i =>
+            return Enumerable.Range(0, 4).Select(GetSeatMessage).ToArray();
+        }
+
+        public RoomSeatMessage GetSeatMessage(int seatIndex)
+        {
+            var seat = seatIndex >= 0 && seatIndex < _seats.Length ? _seats[seatIndex] : null;
+            return new RoomSeatMessage
             {
-                var seat = _seats[i];
-                return new RoomSeatMessage { seatIndex = i, isOccupied = seat != null, isAi = seat?.IsAi ?? false, isReady = seat != null && (seat.MatchReady || seat.SceneReady), displayName = seat?.DisplayName };
-            }).ToArray();
+                seatIndex = seatIndex,
+                isOccupied = seat != null,
+                isAi = seat?.IsAi ?? false,
+                isReady = seat != null && (seat.MatchReady || seat.SceneReady),
+                displayName = seat?.DisplayName,
+                totalAlienation = seat?.Loadout?.TotalAlienation ?? 0
+            };
         }
 
         public void Broadcast(string type, object payload)
@@ -217,6 +246,50 @@ namespace MahjongGame.Core.Network
         private int HumanCount => _seats.Count(s => s != null && !s.IsAi);
         private bool AllHumans(Func<RoomSeat, bool> predicate) => _seats.Where(s => s != null && !s.IsAi).All(predicate);
 
+        private static RoomSeat CreateAiSeat(int seatIndex, TrustedPlayerLoadout loadout, bool loadoutLocked)
+        {
+            return new RoomSeat
+            {
+                SeatIndex = seatIndex,
+                IsAi = true,
+                DisplayName = $"AI {seatIndex + 1}",
+                MatchReady = true,
+                SceneReady = true,
+                IsLoadoutLocked = loadoutLocked,
+                Loadout = PlayerLoadoutCodec.CloneTrustedLoadout(loadout) ?? PlayerLoadoutCodec.CreateStandardLoadout()
+            };
+        }
+
+        private bool TryBeginLoadingGameScene()
+        {
+            if (!TryLockSeatLoadouts()) return false;
+            State = RoomState.LoadingGameScene;
+            Broadcast("RoomReady", new RoomReadyMessage { roomId = RoomId });
+            return true;
+        }
+
+        private bool TryLockSeatLoadouts()
+        {
+            for (int i = 0; i < _seats.Length; i++)
+            {
+                if (_seats[i] == null)
+                {
+                    if (!_aiFill) return false;
+                    _seats[i] = CreateAiSeat(i, PlayerLoadoutCodec.CreateStandardLoadout(), false);
+                }
+
+                if (_seats[i].Loadout == null)
+                {
+                    if (!_seats[i].IsAi) return false;
+                    _seats[i].Loadout = PlayerLoadoutCodec.CreateStandardLoadout();
+                }
+
+                _seats[i].IsLoadoutLocked = true;
+            }
+
+            return true;
+        }
+
         private void StartRound()
         {
             if (GameServer != null)
@@ -225,21 +298,19 @@ namespace MahjongGame.Core.Network
                 GameServer.StopGame();
             }
 
-            for (int i = 0; i < 4; i++)
-            {
-                if (_seats[i] == null && _aiFill) _seats[i] = new RoomSeat { SeatIndex = i, IsAi = true, DisplayName = $"AI {i + 1}" };
-            }
-            if (_seats.Any(s => s == null)) { State = RoomState.WaitingForMatchReady; return; }
+            if (_seats.Any(s => s == null || !s.IsLoadoutLocked || s.Loadout == null)) { State = RoomState.WaitingForMatchReady; return; }
 
             _deckConfigs.Clear();
             _talentConfigs.Clear();
             var clients = new List<IPlayerClient>(4);
             for (int i = 0; i < 4; i++)
             {
-                _deckConfigs.Add(DeckConfig.CreateStandard());
-                _talentConfigs[i] = new TalentSlotConfig();
+                _deckConfigs.Add(_seats[i].Loadout.DeckConfig);
+                _talentConfigs[i] = _seats[i].Loadout.TalentConfig;
                 clients.Add(_seats[i].IsAi ? (IPlayerClient)new SimpleAIClient(i, null) : new RemotePlayerClient(i, _seats[i].Endpoint, Session));
             }
+
+            SessionTalentPolicy.ApplyStartingCapitalOnce(Session, _talentConfigs, ref _startingCapitalApplied);
 
             GameServer = new GameServer(new WallService(), new GameServerOptions());
             foreach (var client in clients.OfType<SimpleAIClient>()) client.SetServer(GameServer);

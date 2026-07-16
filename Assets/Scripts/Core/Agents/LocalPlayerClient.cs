@@ -169,6 +169,8 @@ namespace MahjongGame.Core.Agents
 
         public async void OnOtherPlayerDiscarded(int discarderId, TileData discardedTile)
         {
+            if (!Network.ResponseActionPolicy.CanRespondToDiscard(PlayerId, discarderId)) return;
+
             var ct = TurnCancellationToken;
             try
             {

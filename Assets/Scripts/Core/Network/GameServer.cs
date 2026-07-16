@@ -454,20 +454,10 @@ namespace MahjongGame.Core.Network
 
         private ClientAction ResolveResponses()
         {
-            var validResponses = _pendingResponses.Values.Where(r => r.ActionType != ClientActionType.Skip).ToList();
-            if (validResponses.Count == 0) return null;
-
-            // 检查一炮多响或截胡 (简化处理：优先级为位置顺位，或者优先级固定)
-            var huResponse = validResponses.FirstOrDefault(r => r.ActionType == ClientActionType.Hu);
-            if (huResponse != null) return huResponse;
-
-            var ponGanResponse = validResponses.FirstOrDefault(r => r.ActionType == ClientActionType.Pon || r.ActionType == ClientActionType.MingGan);
-            if (ponGanResponse != null) return ponGanResponse;
-
-            var chiResponse = validResponses.FirstOrDefault(r => r.ActionType == ClientActionType.Chi);
-            if (chiResponse != null) return chiResponse;
-
-            return null;
+            return ResponseActionPolicy.SelectHighestPriorityResponse(
+                _pendingResponses.Values,
+                _currentPlayerIndex,
+                _clients.Count);
         }
 
         /// <summary>
@@ -489,8 +479,10 @@ namespace MahjongGame.Core.Network
                 _pendingActionTcs.TrySetResult(validated);
             }
             // 如果在等待其他人响应
-            else if (_responsesTcs != null && action.PlayerId != _currentPlayerIndex)
+            else if (_responsesTcs != null && ResponseActionPolicy.CanRespondToDiscard(action.PlayerId, _currentPlayerIndex))
             {
+                if (_pendingResponses.ContainsKey(action.PlayerId)) return;
+
                 if (!TurnActionPolicy.IsResponseAction(action.ActionType))
                 {
                     Debug.LogWarning($"[GameServer] Ignoring late or invalid response action from player {action.PlayerId}: {action.ActionType}");
@@ -499,12 +491,52 @@ namespace MahjongGame.Core.Network
                 var validated = ValidateResponseAction(action);
                 _pendingResponses[action.PlayerId] = validated;
 
+                if (validated.ActionType == ClientActionType.Hu)
+                {
+                    CompleteHuResponseCollection();
+                }
                 // 检查是否收集齐了 3 家的响应
-                if (_pendingResponses.Count == _clients.Count - 1)
+                else if (_pendingResponses.Count == _clients.Count - 1)
                 {
                     _responsesTcs.TrySetResult(true);
                 }
             }
+        }
+
+        private void CompleteHuResponseCollection()
+        {
+            var potentialHuPlayerIds = GetPotentialHuPlayerIds();
+            for (int playerId = 0; playerId < _clients.Count; playerId++)
+            {
+                if (playerId == _currentPlayerIndex || potentialHuPlayerIds.Contains(playerId) || _pendingResponses.ContainsKey(playerId)) continue;
+
+                _pendingResponses[playerId] = ClientAction.Skip(playerId);
+                _clients[playerId].OnTimeout(null);
+            }
+
+            if (ResponseActionPolicy.AllPotentialHuRespondersAnswered(potentialHuPlayerIds, _pendingResponses.Keys))
+                _responsesTcs.TrySetResult(true);
+        }
+
+        private List<int> GetPotentialHuPlayerIds()
+        {
+            var potentialHuPlayerIds = new List<int>();
+            if (_lastDiscardedTile == null) return potentialHuPlayerIds;
+
+            var roundWind = _session?.PrevalentWind ?? WindDirection.East;
+            for (int playerId = 0; playerId < _clients.Count; playerId++)
+            {
+                if (playerId == _currentPlayerIndex) continue;
+
+                var hand = _gameState.GetHand(playerId);
+                var melds = _gameState.GetMelds(playerId);
+                var options = _scoringOptions.ContainsKey(playerId) ? _scoringOptions[playerId] : null;
+                var seatWind = _session?.GetSeatWind(playerId) ?? WindDirection.East;
+                if (MahjongLogic.CheckWinWithFan(hand, melds, _lastDiscardedTile, false, out _, out _, roundWind, seatWind, options))
+                    potentialHuPlayerIds.Add(playerId);
+            }
+
+            return potentialHuPlayerIds;
         }
 
         /// <summary>

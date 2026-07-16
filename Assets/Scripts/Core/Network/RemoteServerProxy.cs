@@ -59,6 +59,8 @@ namespace MahjongGame.Core.Network
             {
                 case "RoundStart":
                     var roundMsg = MessageSerializer.DeserializePayload<RoundStartMessage>(envelope.data);
+                    if (roundMsg == null) break;
+                    SyncSessionScores(roundMsg.scores);
                     _localClient.OnRoundStart(roundMsg.roundNumber, (WindDirection)roundMsg.prevalentWind, (WindDirection)roundMsg.seatWind, roundMsg.dealerIndex);
                     break;
                 case "TalentInfo":
@@ -121,6 +123,7 @@ namespace MahjongGame.Core.Network
                 case "RoomJoined":
                 case "PlayerJoined":
                 case "PlayerLeft":
+                case "RoomSeatUpdated":
                 case "RoomReady":
                 case "RoomClosed":
                 case "RoomError":
@@ -136,14 +139,7 @@ namespace MahjongGame.Core.Network
             var session = GameManager.Instance?.Session;
             if (session == null) return;
 
-            if (scores != null)
-            {
-                int count = Mathf.Min(scores.Length, session.Scores.Length);
-                for (int i = 0; i < count; i++)
-                {
-                    session.Scores[i] = scores[i];
-                }
-            }
+            SyncSessionScores(scores);
 
             int targetCompletedRounds = Mathf.Clamp(completedRounds, 0, session.GetTotalRounds());
             while (session.TotalRoundsPlayed < targetCompletedRounds)
@@ -152,6 +148,13 @@ namespace MahjongGame.Core.Network
             }
 
             ResultPanelController.Instance?.SetSessionInfo(session);
+        }
+
+        private void SyncSessionScores(int[] scores)
+        {
+            var session = GameManager.Instance?.Session;
+            if (session == null || !SessionScorePolicy.ApplyAuthoritativeScores(session, scores)) return;
+
             GameHUDController.Instance?.UpdateScores(session.Scores);
         }
     }

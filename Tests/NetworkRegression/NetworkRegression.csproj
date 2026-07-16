@@ -14,10 +14,25 @@
     <Compile Include="..\..\Assets\Scripts\Core\Network\ClientRoomState.cs" Link="ClientRoomState.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\RoomState.cs" Link="RoomState.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\RoomDeparturePolicy.cs" Link="RoomDeparturePolicy.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\Network\RoomReadyPolicy.cs" Link="RoomReadyPolicy.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\Network\ResponseActionPolicy.cs" Link="ResponseActionPolicy.cs" />
     <Compile Include="..\..\Assets\Scripts\Systems\SceneTransitionPolicy.cs" Link="SceneTransitionPolicy.cs" />
+    <Compile Include="..\..\Assets\Scripts\Systems\LoginUsernamePolicy.cs" Link="LoginUsernamePolicy.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\Protocol.cs" Link="Protocol.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\Messages\NetworkMessage.cs" Link="NetworkMessage.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\Network\PlayerLoadoutCodec.cs" Link="PlayerLoadoutCodec.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\Network\SessionTalentPolicy.cs" Link="SessionTalentPolicy.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\Network\SessionScorePolicy.cs" Link="SessionScorePolicy.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\Network\GameSession.cs" Link="GameSession.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\Interfaces\IWallService.cs" Link="IWallService.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\Services\WallService.cs" Link="WallService.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\TileData.cs" Link="TileData.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\MahjongEnums.cs" Link="MahjongEnums.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\DeckConfig.cs" Link="DeckConfig.cs" />
+    <Compile Include="..\..\Assets\Scripts\Talent\TalentSlotConfig.cs" Link="TalentSlotConfig.cs" />
+    <Compile Include="..\..\Assets\Scripts\Talent\TalentRule.cs" Link="TalentRule.cs" />
+    <Compile Include="..\..\Assets\Scripts\Talent\TalentRuleAttribute.cs" Link="TalentRuleAttribute.cs" />
+    <Compile Include="..\..\Assets\Scripts\Talent\TalentRegistry.cs" Link="TalentRegistry.cs" />
+    <Compile Include="..\..\Assets\Scripts\Talent\Impl\StartingCapitalTalent.cs" Link="StartingCapitalTalent.cs" />
   </ItemGroup>
 </Project>

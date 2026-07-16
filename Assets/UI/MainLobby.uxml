@@ -38,8 +38,39 @@
                     <ui:TextField name="RoomIdInput" label="房间号（例如 R0001）" class="room-id-input" tooltip="输入其他玩家创建的房间号" />
                     <ui:Button name="JoinRoomButton" text="加入该房间" class="room-secondary-button" />
                 </ui:VisualElement>
-                <ui:Button name="ReadyRoomButton" text="确认准备（等待所有真人）" class="room-ready-button" />
                 <ui:Label name="RoomStatusLabel" text="当前未加入房间" class="view-subtitle" />
+            </ui:VisualElement>
+
+            <!-- Dedicated room view. It stays inside MainLobby so no scene or extra UIDocument is required. -->
+            <ui:VisualElement name="ViewRoom" class="room-view" style="display: none;">
+                <ui:VisualElement class="room-header">
+                    <ui:Label name="RoomIdLabel" text="房间" class="room-title" />
+                    <ui:Label name="RoomStateLabel" text="等待准备" class="room-state-label" />
+                </ui:VisualElement>
+                <ui:VisualElement class="room-main-content">
+                    <ui:VisualElement class="room-seat-section">
+                        <ui:Label text="席位" class="room-section-title" />
+                        <ui:VisualElement name="RoomSeatRows" class="room-seat-list" />
+                    </ui:VisualElement>
+                    <ui:VisualElement class="room-summary-section">
+                        <ui:Label text="房间信息" class="room-section-title" />
+                        <ui:Label name="RoomModeLabel" class="room-detail-label" />
+                        <ui:Label name="RoomAiFillLabel" class="room-detail-label" />
+                        <ui:Label name="RoomHumanCountLabel" class="room-detail-label" />
+                        <ui:VisualElement class="room-summary-divider" />
+                        <ui:Label text="我的构筑" class="room-section-title room-local-build-title" />
+                        <ui:Label name="RoomLocalDeckLabel" class="room-detail-label" />
+                        <ui:Label name="RoomLocalAlienationLabel" class="room-detail-label room-alienation-label" />
+                        <ui:Label name="RoomLoadoutLockLabel" text="构筑已锁定" class="room-lock-label" />
+                    </ui:VisualElement>
+                </ui:VisualElement>
+                <ui:VisualElement class="room-footer">
+                    <ui:Label name="RoomWaitingLabel" text="等待其他玩家准备" class="room-waiting-label" />
+                    <ui:VisualElement class="room-actions">
+                        <ui:Button name="LeaveRoomButton" text="离开房间" class="room-leave-button" />
+                        <ui:Button name="RoomReadyButton" text="确认准备" class="room-confirm-ready-button" />
+                    </ui:VisualElement>
+                </ui:VisualElement>
             </ui:VisualElement>
 
             <!-- Workshop View -->

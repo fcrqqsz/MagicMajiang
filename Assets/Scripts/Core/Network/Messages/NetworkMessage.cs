@@ -23,10 +23,34 @@ namespace MahjongGame.Core.Network.Messages
     public class HelloMessage { public int protocolVersion = 1; public string nickname; }
 
     [Serializable]
-    public class CreateRoomMessage { public int gameMode; }
+    public class DeckTileCountMessage
+    {
+        public int suit;
+        public int value;
+        public int count;
+    }
 
     [Serializable]
-    public class JoinRoomMessage { public string roomId; }
+    public class PlayerLoadoutMessage
+    {
+        public int schemaVersion;
+        public DeckTileCountMessage[] deckEntries;
+        public string[] talentSlotIds;
+    }
+
+    [Serializable]
+    public class CreateRoomMessage
+    {
+        public int gameMode;
+        public PlayerLoadoutMessage loadout;
+    }
+
+    [Serializable]
+    public class JoinRoomMessage
+    {
+        public string roomId;
+        public PlayerLoadoutMessage loadout;
+    }
 
     [Serializable]
     public class LeaveRoomMessage { }
@@ -45,6 +69,7 @@ namespace MahjongGame.Core.Network.Messages
         public bool isAi;
         public bool isReady;
         public string displayName;
+        public int totalAlienation;
     }
 
     [Serializable]
@@ -55,20 +80,35 @@ namespace MahjongGame.Core.Network.Messages
         public int gameMode;
         public int roomState;
         public bool isHost;
+        public bool aiFillEnabled;
+        public int acceptedSchemaVersion;
+        public int acceptedTotalAlienation;
         public RoomSeatMessage[] seats;
     }
 
     [Serializable]
-    public class PlayerJoinedMessage { public string roomId; public int seatIndex; public string displayName; }
+    public class PlayerJoinedMessage
+    {
+        public string roomId;
+        public RoomSeatMessage seat;
+    }
+
     [Serializable]
     public class PlayerLeftMessage
     {
         public string roomId;
         public int seatIndex;
         public string reason;
-        public bool replacedByAi;
-        public string replacementDisplayName;
+        public RoomSeatMessage seat;
     }
+
+    [Serializable]
+    public class RoomSeatUpdatedMessage
+    {
+        public string roomId;
+        public RoomSeatMessage seat;
+    }
+
     [Serializable]
     public class RoomReadyMessage { public string roomId; }
     [Serializable]
@@ -97,6 +137,7 @@ namespace MahjongGame.Core.Network.Messages
         public int prevalentWind; // WindDirection int value
         public int seatWind;     // WindDirection int value
         public int dealerIndex;
+        public int[] scores;
     }
 
     [Serializable]

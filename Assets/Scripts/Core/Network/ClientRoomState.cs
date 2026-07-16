@@ -11,6 +11,9 @@ namespace MahjongGame.Core.Network
         public int SeatIndex { get; private set; } = -1;
         public GameMode GameMode { get; private set; } = GameMode.Single;
         public int RoomStateValue { get; private set; }
+        public bool AiFillEnabled { get; private set; }
+        public int AcceptedSchemaVersion { get; private set; }
+        public int AcceptedTotalAlienation { get; private set; }
         public RoomSeatMessage[] Seats { get; private set; } = Array.Empty<RoomSeatMessage>();
         public bool HasRoom => !string.IsNullOrEmpty(RoomId) && SeatIndex >= 0;
 
@@ -28,12 +31,26 @@ namespace MahjongGame.Core.Network
             SeatIndex = joined.seatIndex;
             GameMode = (GameMode)joined.gameMode;
             RoomStateValue = joined.roomState;
+            AiFillEnabled = joined.aiFillEnabled;
+            AcceptedSchemaVersion = joined.acceptedSchemaVersion;
+            AcceptedTotalAlienation = joined.acceptedTotalAlienation;
             Seats = CloneSeats(joined.seats);
         }
 
         public void SetRoomState(int roomState) => RoomStateValue = roomState;
 
         public void SetSeats(RoomSeatMessage[] seats) => Seats = CloneSeats(seats);
+
+        public bool ApplySeatUpdate(RoomSeatMessage seat)
+        {
+            if (seat == null || seat.seatIndex < 0 || seat.seatIndex > 3) return false;
+
+            var snapshot = (RoomSeatMessage[])Seats.Clone();
+            if (snapshot.Length != 4) snapshot = new RoomSeatMessage[4];
+            snapshot[seat.seatIndex] = seat;
+            SetSeats(snapshot);
+            return true;
+        }
 
         public void CompleteSession()
         {
@@ -58,6 +75,9 @@ namespace MahjongGame.Core.Network
             SeatIndex = -1;
             GameMode = GameMode.Single;
             RoomStateValue = 0;
+            AiFillEnabled = false;
+            AcceptedSchemaVersion = 0;
+            AcceptedTotalAlienation = 0;
             Seats = Array.Empty<RoomSeatMessage>();
         }
 
@@ -84,7 +104,8 @@ namespace MahjongGame.Core.Network
                     isOccupied = seat.isOccupied,
                     isAi = seat.isAi,
                     isReady = seat.isReady,
-                    displayName = seat.displayName
+                    displayName = seat.displayName,
+                    totalAlienation = seat.totalAlienation
                 };
             }
             return clone;

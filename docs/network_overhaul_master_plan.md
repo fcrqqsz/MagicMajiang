@@ -18,7 +18,7 @@
 - WebSocket 通道：`WebSocketService` / `WebSocketClient`。
 - 远程代理：`RemotePlayerClient` / `RemoteServerProxy`。
 - 服务端动作校验：客户端不能伪造可信 `PlayerId`。
-- 客户端 Ready 同步：长连接复用时客户端显式发送 `Ready`；正式服务端的 Ready 分发将在 Phase C 迁入房间系统。
+- 客户端 Ready 同步：长连接复用时客户端显式发送 `Ready`，正式服务端由 `RoomManager` 分发并同步席位准备状态。
 - 局间结果同步：`PlayerWin` / `DrawGame` 已携带 `scores` 与 `completedRounds`，客户端可同步本地 `GameSession` 镜像。
 - Phase A 基线清理已完成：
   - 编译通过。
@@ -30,8 +30,8 @@
 
 当前已知限制：
 
-- 尚未实现正式 `RoomManager` / `ConnectionRegistry`。
-- 尚未实现真实多人房间和每席牌库/天赋上传。
+- 尚未实现账号鉴权、唯一用户 ID 与服务端持久化 Profile。
+- 对局中断线仍会关闭整房，尚未实现 AI 托管后的真人重连。
 - `seq` 尚未用于去重、补包或断线重连。
 
 ## 工作方式
@@ -163,10 +163,10 @@
 首版默认：
 
 - 支持 1 到 4 真人。
-- 不足 4 人时用 `SimpleAIClient` 补位。
+- `aiFill=true` 时不足 4 人用 `SimpleAIClient` 补位；`aiFill=false` 时等待四名真人。
 - 不做账号鉴权，身份由连接和席位绑定。
 - 离开策略按房间阶段处理：
-  - `WaitingForPlayers` / `WaitingForMatchReady`：`aiFill=true` 可由 AI 接管离开席位；`aiFill=false` 释放为空席并允许新真人加入。
+  - `WaitingForPlayers` / `WaitingForMatchReady`：离开席位释放为空席并允许新真人加入；`aiFill=true` 在构筑锁定、进入加载阶段前补齐剩余 AI，避免开局前立即占用可加入席位。
   - `LoadingGameScene` / `WaitingForNextRound`：`aiFill=true` 由 AI 接管并继续；`aiFill=false` 关闭整房，剩余真人返回大厅。
   - `InRound`：无论 `aiFill` 配置均关闭整房；运行中的客户端热替换、AI 托管与真人重新加入留给 Phase E。
 
@@ -191,7 +191,7 @@
 
 ## Phase D: Player Config + Talent Online
 
-状态：待执行。
+状态：已完成（2026-07-17）。
 
 目标：让每位玩家的自定义牌库和天赋配置进入联机房间，并由服务端执行。
 
@@ -209,6 +209,25 @@
 - 不同客户端上传不同牌库时，服务端建墙 ownerId 和牌张构成正确。
 - 异化分显示正确。
 - 已有天赋在联机下由服务端触发，客户端只表现结果。
+
+### Phase D 自动验证记录
+
+- `dotnet run --project Tests/NetworkRegression/NetworkRegression.csproj --no-restore` 通过：覆盖显式牌库 DTO 往返、自定义牌型保真、33/35 张、负数、重复及非法牌种拒绝、34 张同种牌合法性、空/未知/重复/品阶不符天赋、缺少配置与错误版本、会话初始资金一次性结算、四席建墙的 ownerId 与自定义牌型构成，以及 `aiFill=false` 时真人不足四人不得进入 MatchReady 的纯策略回归。
+- `dotnet build Assembly-CSharp.csproj --no-restore` 通过，0 警告、0 错误。
+- 服务器在 `CreateRoom` / `JoinRoom` 的席位分配前验证 loadout；`BindRoomSeat` 失败时移除刚占用席位，避免遗留席位或连接绑定。
+- 完整 deck/talent 仅随创建/加入请求上传。对外席位快照只含服务端权威 `totalAlienation`；`RoomJoined` 只向本人返回接受的 schema 与异化摘要。
+- `Room` 在全员 MatchStart Ready 后、进入 `LoadingGameScene` 前锁定四席构筑；后续 EastOnly/HalfGame/FullGame 小局复用该快照。锁定前 AI 补位使用标准空构筑，Loading/局间等待阶段的 AI 接管保留锁定构筑。
+
+### Phase D Unity 人工验收记录
+
+- 已于 2026-07-17 按 `docs/network_loopback_verification.md` 完成人工验收。
+- `ViewRoom` 切换、席位准备状态、离开后空席与重新加入均正常。
+- 1/2/4 真人不同构筑、服务端建墙归属、权威异化值、代表性天赋与 `PeekWall` 私有发送均通过。
+- `starting_capital` 首局分数同步与 EastOnly 多小局只执行一次通过；加载阶段和局间 AI 接管保留锁定构筑。
+- 非法本地/网络构筑错误可见且不遗留房间或席位；房间广播未泄露其他玩家完整牌库与天赋。
+- 自己响应自己弃牌、胡牌优先于吃碰杠及多胡截胡顺位的关联回归通过。
+
+Phase D 未实现 Reconnect、`lastSeq`、消息缓存/补包、endpoint 重绑、账号解锁校验、异化上限、房间内换装或其他 Phase E 能力。
 
 ## Phase E: Reconnect + Robustness
 
