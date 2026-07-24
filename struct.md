@@ -7,10 +7,12 @@
     *   `00_Persistent`: 作为游戏持久入口，承载所有“不死”的单例管理器（Profile、Network 等）。
     *   `01_Login` & `02_MainLobby`: UI 专用子场景，通过 Additive 模式叠加加载。
     *   `03_Game`: 麻将核心 3D 对局场景。
+    *   `00_ServerBootstrap`: Dedicated Server 唯一启动场景，不加载大厅、游戏表现、Camera 或 UI。
 *   **MVC 架构**: 严格分离数据层 (Core)、表现层 (Controllers) 与 UI 层 (UI Toolkit)。
 *   **胖客户端，瘦服务端 (Fat Client, Thin Server)**: 
-    *   `GameServer` 仅负责洗牌、发牌、状态流转和仲裁并发请求。
+    *   `GameServer` 负责洗牌、发牌、权威状态流转、动作校验和并发仲裁。
     *   `LocalPlayerClient` 和 `SimpleAIClient` 在本地计算吃碰权限和算番，并将意图发往服务端。
+    *   网络客户端通过 `RemoteServerProxy` 接收服务端已排序状态，服务端通过 `RemotePlayerClient` 接收玩家意图。
 *   **Strategy & Reflection (算番系统)**: 
     *   番种规则通过 `[FanRuleAttribute]` 标记并由 `FanRuleRegistry` 自动注册。
     *   支持多重触发 (`GetMatchCount`) 机制，兼容自定义牌库下的番数累加。
@@ -32,13 +34,44 @@
 *   **网络与代理 (`Core/Network/` & `Core/Agents/`)**:
     *   `Data/`: 玩家本地存档数据模型 (`PlayerProfile`, `SavedDeck`)。
     *   `Interfaces/ & Mock/`: 抽象网络接口层 (`IAuthService`, `IMatchmakingService`) 与对应 Mock 实现。
-    *   `Protocol.cs`: 客户端与服务端通信的数据结构 (`ClientAction`)。
-    *   `GameServer.cs`: 异步核心循环，管理单局状态与并发仲裁。集成 `CancellationTokenSource` 管理回合取消。
-    *   `ServerGameState.cs`: 服务端手牌/副露快照。每次摸牌、出牌、副露时同步更新，超时时提供真实手牌自动出牌，未来可用于重连恢复。
+    *   `ServerBootstrap.cs` / `ServerBootstrapOptions.cs`: Headless 服务入口，解析端口、房间数、AI 补位、心跳、缓存和恢复窗口参数。
+    *   `WebSocketService.cs`: `ws://0.0.0.0:{port}/game` 长连接传输层，限制单条客户端消息为 64 KiB。
+    *   `ConnectionRegistry.cs`: 管理 connection ID、连接代次、endpoint、playerId、roomId 和 seatIndex；旧连接代次不得操作新绑定。
+    *   `RoomManager.cs`: 处理 Hello 后的创建、加入、Ready、离开、断线、重连和过期房间清理。
+    *   `Room.cs`: 单房间聚合根，持有席位、锁定构筑、`GameSession`、`GameServer`、`StableSeatController` 和每席消息流。
+    *   `SeatMessageStream.cs`: 为每个逻辑真人席位提供连续 `seq`、最近 256 条序列化消息缓存及 endpoint 重绑。
+    *   `GameServer.cs`: 权威异步对局循环，管理决策截止时间、`decisionId` 和并发仲裁。
+    *   `ServerGameState.cs`: 权威记录四席手牌、副露和牌河；超时兜底与恢复快照均从该状态读取。
+    *   `RoomGameSnapshot.cs`: 构建按席隐私快照；本家可见完整手牌，他家只包含暗牌数量和公开牌面。
+    *   `ClientRoomService.cs`: 客户端协议入口，负责 Hello、房间命令、序号门、心跳、票据、自动重试和 Reconnect/Resync。
+    *   `ClientGameState.cs`: 纯 C# 客户端投影，幂等应用有序消息并以完整快照原子替换旧状态。
+    *   `RemoteServerProxy.cs`: 将 `ClientRoomService` 的有序游戏状态桥接到 Unity 对局表现，不直接订阅 WebSocket。
     *   `GameSession.cs`: 多局对战状态管理（圈风轮转、门风分配、国标计分、局数追踪）。
     *   `IPlayerClient.cs`: 客户端代理通用接口。含 `CancellationToken TurnCancellationToken` 属性供服务端设置取消令牌。
     *   `SimpleAIClient.cs`: 规则化 AI 客户端。async 方法支持 CancellationToken 取消。
     *   `LocalPlayerClient.cs`: 本地真实玩家客户端，负责桥接 UI 与输入。async 方法支持 CancellationToken 取消。
+
+#### 联机数据流
+
+```text
+Dedicated Server
+ServerBootstrap
+  -> WebSocketService
+  -> ConnectionRegistry
+  -> RoomManager
+  -> Room
+  -> GameServer + ServerGameState
+  -> SeatMessageStream (per logical human seat)
+
+Client
+WebSocketClient
+  -> ClientRoomService (Hello / seq / heartbeat / reconnect)
+  -> ClientGameState (authoritative projection)
+  -> RemoteServerProxy
+  -> Hand / River / HUD / Result presentation
+```
+
+协议版本为 v2。username 目前仅作为开发期身份桥接，经 `IAccountAuthenticator` 规范化为稳定 `playerId`；它不是正式鉴权。断线时物理 endpoint 与逻辑席位分离，席位可进入 `OfflineReserved` / `AiControlled`，并只在安全决策边界切换控制者。重连使用 `{roomId, streamId}` 和已认证身份定位席位，当前始终请求完整权威快照；Dedicated Server 重启不恢复房间。
 *   **表现层控制器 (MonoBehaviour)**:
     *   `HandController.cs`: 管理 3D 手牌生成、布局、DoTween 动画及交互。含 `ForceRemoveTile()` 超时出牌专用方法。
     *   `RiverController.cs`: 管理牌河的 3D 排布。

@@ -8,6 +8,10 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="Program.cs" />
+    <Compile Include="RegressionRunner.cs" />
+    <Compile Include="IdentityConnectionTests.cs" />
+    <Compile Include="RoomSessionTests.cs" />
+    <Compile Include="SnapshotReconnectTests.cs" />
     <Compile Include="UnityEngineStubs.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\TurnActionPolicy.cs" Link="TurnActionPolicy.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\ConnectionLivenessPolicy.cs" Link="ConnectionLivenessPolicy.cs" />

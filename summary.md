@@ -1,14 +1,21 @@
 麻将 Roguelike 项目进度快照 (Project Snapshot)
-日期: 2026-03-24 版本: Alpha - Talent UI & FloatingPanel 引擎: Unity (2022.3.61t9)
+日期: 2026-07-25 版本: Alpha - Online Framework & Reconnect 引擎: Unity (2022.3.61t9)
 
 > **文档约定**: 已完成的任务统一记录在 `milestone.md`，`plan.md` 仅保留待办与未来规划。
 
 1. 项目核心目标
-开发一款基于 Unity 3D 的单机麻将游戏。
+开发一款基于 Unity 3D、支持单机与 WebSocket 联机的 Roguelike 国标麻将游戏。
 *   **核心规则**: 以国标麻将 (MCR) 为基础，支持81番种计算。
 *   **特色玩法**: Roguelike 天赋系统、自定义 34 张牌库及异化值机制。
 
 2. 最近进展 (Recent Progress)
+*   **联机网络化框架 Phase A-E 最终验收 (2026-07-25)**:
+    *   Dedicated Server 使用独立 `00_ServerBootstrap` 场景启动，正式服务端不依赖 `03_Game`、`GameManager.Instance`、`DeckManager.Instance` 或 UI。
+    *   完成协议 v2、开发期 username 身份桥接、连接代次、房间/席位管理、四席构筑锁定、服务端天赋执行和多人 Ready 流程。
+    *   `ServerGameState` 权威记录手牌、副露和牌河；`RoomGameSnapshot` 按席保护隐私，`ClientGameState` 幂等应用有序消息和完整快照。
+    *   完成断线席位保留、决策边界 AI 托管、endpoint 重绑、心跳检测、自动重试、场景路由和客户端桌面原子恢复。
+    *   已通过 1/2/3/4 真人组合、EastOnly 多小局、强退重连、心跳超时、加载/主回合/响应/局间/结算恢复和 Dedicated Server 验收。
+    *   长期构建与测试流程见 `docs/network_verification.md`。
 *   **通用悬浮牌面板 & 天赋选择弹窗美化 (2026-03-24)**:
     *   新增 `FloatingTilePanel`（UXML/USS/Controller 三件套），支持展示模式（自动关闭+手动关闭）和选择模式（点击选牌回调）。屏幕上方居中定位，CSS opacity 淡入动画，`picking-mode: Ignore` 不阻挡底层交互。
     *   提取 `TileImageHelper` 共享静态类，统一 `Suit+Value` 到 `Resources` 图片路径的映射，`WaitHintController` 和 `FloatingTilePanelController` 共用。

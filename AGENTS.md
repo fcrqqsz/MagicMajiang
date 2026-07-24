@@ -1,7 +1,7 @@
 # AGENTS.md - SuperMajiang Project Context
 
 ## Project Overview
-**SuperMajiang** 是一款基于 Unity 的单机 Roguelike 麻将游戏。
+**SuperMajiang** 是一款基于 Unity 的 Roguelike 国标麻将游戏，支持单机与 WebSocket 联机。
 - **核心规则**: 国标麻将 (MCR/Guobiao)，支持 81 番种计算
 - **特色系统**: Roguelike 天赋系统、34 张自定义牌库、异化值机制
 - **当前阶段**: Alpha - 核心循环与规则已实现
@@ -15,10 +15,22 @@
 
 ## Architecture
 **胖客户端，瘦服务端 (Fat Client, Thin Server)**:
-- `GameServer`: 仅负责洗牌、发牌、状态流转、并发仲裁；维护 `ServerGameState` 手牌/副露快照
+- `GameServer`: 负责洗牌、发牌、状态流转、服务端动作校验与并发仲裁；维护 `ServerGameState` 手牌、副露和牌河权威状态
 - `LocalPlayerClient` / `SimpleAIClient`: 本地计算吃碰杠胡权限和算番，将意图发往服务端
 - 通过 `IPlayerClient` 接口统一本地玩家与 AI
 - **超时取消机制**: 服务端通过 `CancellationToken` 取消客户端 async 操作，`ServerGameState` 提供真实手牌兜底出牌
+
+**联机服务端与房间系统**:
+- 正式服务端使用 Dedicated Server / Headless 构建，唯一启动场景为 `00_ServerBootstrap`；客户端默认首场景仍为 `00_Persistent`
+- 服务端链路：`ServerBootstrap -> WebSocketService -> ConnectionRegistry -> RoomManager -> Room -> GameServer`
+- `ConnectionRegistry` 分离物理 WebSocket、连接代次、开发期身份和逻辑席位；旧 endpoint 的迟到回调必须被代次校验丢弃
+- `RoomManager` 管理房间生命周期，`Room` 持有四席构筑、`GameSession`、`GameServer`、席位消息流及断线托管状态
+- 协议版本为 v2；连接必须先完成 `Hello`，开发期以规范化 username 生成稳定 `playerId`
+- 每个真人席位使用独立、连续递增的 `SeatMessageStream`；公共消息也按席序列化，私有手牌、牌库、天赋和窥探结果不得串席
+- `RoomGameSnapshot` 只向本家暴露完整暗手牌；客户端使用纯 C# `ClientGameState` 原子应用快照和有序消息
+- 所有网络动作携带 `decisionId`；服务端拒绝过期、重复、错误阶段、错误席位和 AI 控制期间的人类动作
+- 断线后保留逻辑席位并在安全决策边界由 AI 临时托管；重连通过 username + roomId + streamId 重绑新 endpoint
+- 当前重连采用完整权威快照恢复；Dedicated Server 重启不恢复房间，客户端收到终止错误后清理本地票据
 
 **多局对战系统**:
 - `GameSession`: 管理多局状态（圈风轮转、门风分配、累计分数）
@@ -57,10 +69,16 @@ Assets/Scripts/
 │   ├── RiverController.cs   # 牌河 3D 排布
 │   ├── TileVisual.cs        # 单张牌视觉容器
 │   ├── Network/
-│   │   ├── Protocol.cs      # 通信数据结构 (ClientAction)
-│   │   ├── GameServer.cs    # 异步核心循环 (含 CTS 管理)
-│   │   ├── ServerGameState.cs # 服务端手牌/副露快照 (超时兜底/重连)
-│   │   └── GameSession.cs   # 多局对战状态管理 (圈风/门风/计分)
+│   │   ├── ServerBootstrap.cs # Dedicated Server 启动入口与参数装配
+│   │   ├── ConnectionRegistry.cs # 物理连接、身份、房间和席位映射
+│   │   ├── RoomManager.cs   # 房间创建、加入、Ready、断线和清理
+│   │   ├── Room.cs          # 单房间会话、席位消息流和 GameServer 生命周期
+│   │   ├── GameServer.cs    # 服务端权威异步对局循环
+│   │   ├── ServerGameState.cs # 服务端手牌/副露/牌河权威状态
+│   │   ├── RoomGameSnapshot.cs # 按席隐私恢复快照
+│   │   ├── ClientRoomService.cs # Hello、房间命令、排序、心跳和重连
+│   │   ├── ClientGameState.cs # 客户端纯 C# 权威状态投影
+│   │   └── GameSession.cs   # 多局对战管理 (圈风/门风/计分)
 │   ├── Agents/
 │   │   ├── IPlayerClient.cs # 客户端代理接口
 │   │   ├── SimpleAIClient.cs
@@ -128,14 +146,24 @@ Assets/UI/                   # UI Toolkit 面板
 - **超时取消**: 客户端 async 方法通过 `CancellationToken` 实现可取消（`ct.Register(() => tcs.TrySetCanceled())`），外层统一 `catch (OperationCanceledException)`
 - **服务端快照**: `ServerGameState` 镜像每个玩家手牌/副露，超时时从快照取真实牌自动出牌，避免虚构兜底牌
 - `HandController.ForceRemoveTile()`: 超时自动出牌专用，移除牌到牌河但不触发 `OnTileDiscardedEvent` 避免竞态
+- **网络消息顺序**: 房间内服务端消息必须经过席位 `SeatMessageStream`；客户端只消费 `ClientRoomService` 完成排序、去重后的状态
+- **快照隐私**: 新增快照字段时必须检查本家/他家可见性，禁止包含其他真人的完整手牌、牌库、天赋或私有窥探结果
+- **决策边界**: AI 托管和真人交还只在新决策边界切换，不得中途抢占已经打开的决策
+- **连接代次**: WebSocket 回调、房间命令和 endpoint 重绑必须校验当前连接代次，旧 socket 的迟到消息不得改变新连接状态
 
 ### Debugging
 - `GameManager` 中 `useDebugHand` 可在 Inspector 配置测试牌型
 - `GameManager` 中 `gameMode` 可在 Inspector 切换对局模式 (Single/EastOnly/HalfGame/FullGame)
 - 算番开发: 在 `FanRules_Common.cs` 新增规则需实现 `GetMatchCount`，考虑优先级与排斥
+- Dedicated Server 使用 `Tools > Build > Dedicated Server (Windows)` 构建，不得修改客户端 Build Settings 首场景
+- 联机自动回归：`dotnet run --project Tests\NetworkRegression\NetworkRegression.csproj --no-restore`
+- 完整联机验证步骤见 `docs/network_verification.md`
 
 ### Design Principles
 - 客户端不应直接访问 `GameManager.Session` 等全局状态，信息通过接口回调下发
+- 客户端不得自行推导联机权威分数、轮次、牌河或决策状态；统一从 `ClientGameState` 投影读取
+- `RemoteServerProxy` 不直接订阅原始 WebSocket，只消费 `ClientRoomService` 的有序消息和恢复快照
+- 服务端逻辑不得依赖 `GameManager.Instance`、`DeckManager.Instance`、HUD、手牌表现层或游戏场景对象
 - 牌河清理等公共操作放在 `MahjongHandViewBase` 基类，避免各客户端重复实现
 - `ClearHand()` 基类会自动清理关联的牌河 (`myRiver.Clear()`)
 
@@ -158,3 +186,4 @@ Assets/UI/                   # UI Toolkit 面板
 - `plan.md`: 当前待办任务与长期优化路线图（仅未完成项）
 - `milestone.md`: 已完成里程碑归档（完成的任务记录在此）
 - `struct.md`: 详细架构索引
+- `docs/network_verification.md`: Dedicated Server、多人联机、多局与重连验证指南
