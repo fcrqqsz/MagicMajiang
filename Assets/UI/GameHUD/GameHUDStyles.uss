@@ -23,7 +23,7 @@
     font-size: 22px;
     color: #E0D8C0;
     -unity-font-style: bold;
-    -unity-font-definition: url('project://database/Assets/Font/MSYH.TTC');
+    -unity-font-definition: url('project://database/Assets/Font/MSYH_UITK.asset');
 }
 
 /* ======= 中央菱形容器 ======= */
@@ -82,7 +82,7 @@
 .wind-label {
     font-size: 24px;
     -unity-font-style: bold;
-    -unity-font-definition: url('project://database/Assets/Font/MSYH.TTC');
+    -unity-font-definition: url('project://database/Assets/Font/MSYH_UITK.asset');
     color: rgba(120, 120, 120, 0.4);
     -unity-text-align: middle-center;
 }
@@ -100,7 +100,7 @@
     font-size: 25px;
     color: #C0C0C0;
     -unity-text-align: middle-center;
-    -unity-font-definition: url('project://database/Assets/Font/MSYH.TTC');
+    -unity-font-definition: url('project://database/Assets/Font/MSYH_UITK.asset');
 }
 
 .score-label--active {
@@ -201,5 +201,5 @@
     color: #FFFFFF;
     -unity-font-style: bold;
     -unity-text-align: middle-center;
-    -unity-font-definition: url('project://database/Assets/Font/MSYH.TTC');
+    -unity-font-definition: url('project://database/Assets/Font/MSYH_UITK.asset');
 }

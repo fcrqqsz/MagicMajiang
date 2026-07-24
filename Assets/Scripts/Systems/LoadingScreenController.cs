@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.UIElements;
+using MahjongGame.Core.Network;
 
 namespace MahjongGame.Systems
 {
@@ -12,6 +13,11 @@ namespace MahjongGame.Systems
 
         private VisualElement root;
         private VisualElement loadingContainer;
+        private VisualElement reconnectContainer;
+        private Label reconnectStatusLabel;
+        private Button reconnectLeaveButton;
+
+        public event System.Action ReconnectLeaveRequested;
 
         private void Awake()
         {
@@ -38,7 +44,13 @@ namespace MahjongGame.Systems
                 {
                     root = document.rootVisualElement;
                     loadingContainer = root.Q<VisualElement>("LoadingContainer");
+                    reconnectContainer = root.Q<VisualElement>("ReconnectContainer");
+                    reconnectStatusLabel = root.Q<Label>("ReconnectStatusLabel");
+                    reconnectLeaveButton = root.Q<Button>("ReconnectLeaveButton");
+                    if (reconnectLeaveButton != null)
+                        reconnectLeaveButton.clicked += HandleReconnectLeaveClicked;
                     Hide();
+                    HideReconnect();
                 }
             }
         }
@@ -57,6 +69,40 @@ namespace MahjongGame.Systems
             {
                 loadingContainer.style.display = DisplayStyle.None;
             }
+        }
+
+        public void ShowReconnect(ClientRecoveryProgress progress)
+        {
+            if (progress == null || progress.Stage == ClientRecoveryStage.None || progress.Stage == ClientRecoveryStage.Restored)
+            {
+                HideReconnect();
+                return;
+            }
+
+            if (reconnectContainer != null)
+                reconnectContainer.style.display = DisplayStyle.Flex;
+            if (reconnectStatusLabel != null)
+                reconnectStatusLabel.text = progress.Message;
+            if (reconnectLeaveButton != null)
+                reconnectLeaveButton.text = progress.Stage == ClientRecoveryStage.TerminalFailure ? "Return to Lobby" : "Leave Room";
+        }
+
+        public void HideReconnect()
+        {
+            if (reconnectContainer != null)
+                reconnectContainer.style.display = DisplayStyle.None;
+        }
+
+        private void HandleReconnectLeaveClicked()
+        {
+            ReconnectLeaveRequested?.Invoke();
+        }
+
+        private void OnDestroy()
+        {
+            if (reconnectLeaveButton != null)
+                reconnectLeaveButton.clicked -= HandleReconnectLeaveClicked;
+            if (Instance == this) Instance = null;
         }
     }
 }

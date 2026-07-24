@@ -64,6 +64,7 @@ namespace MahjongGame.UI
                     profile.Nickname = LoginUsernamePolicy.Normalize(user);
                     ProfileManager.Instance.SaveProfile();
                 }
+                NetworkManager.Instance.RoomService?.ReconnectSavedRoom(LoginUsernamePolicy.Normalize(user));
                 await NetworkManager.Instance.LoadSceneAndUnloadCurrentAsync(SceneNames.MainLobby, SceneNames.Login);
             }
             else

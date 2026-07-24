@@ -7,6 +7,7 @@ namespace MahjongGame.Core.Network
         LoadingGameScene,
         InRound,
         WaitingForNextRound,
+        SessionCompleted,
         Closed
     }
 }

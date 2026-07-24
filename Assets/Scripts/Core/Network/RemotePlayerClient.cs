@@ -2,31 +2,45 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using MahjongGame.Core.Network.Messages;
-using MahjongGame.Core.Network.Transport;
 
 namespace MahjongGame.Core.Network
 {
-    public class RemotePlayerClient : Agents.IPlayerClient
+    public class RemotePlayerClient : Agents.IPlayerClient, INetworkDecisionClient
     {
         private readonly int _playerId;
-        private readonly GameEndpoint _endpoint;
+        private readonly SeatMessageStream _messageStream;
         private GameSession _session;
+        private long _activeDecisionId;
+        private NetworkDecisionContext _activeDecision;
         
-        public RemotePlayerClient(int playerId, GameEndpoint endpoint, GameSession session = null)
+        public RemotePlayerClient(int playerId, SeatMessageStream messageStream, GameSession session = null)
         {
             _playerId = playerId;
-            _endpoint = endpoint;
+            _messageStream = messageStream ?? throw new System.ArgumentNullException(nameof(messageStream));
             _session = session;
         }
 
         public int PlayerId => _playerId;
-        public GameEndpoint Endpoint => _endpoint;
+        public SeatMessageStream MessageStream => _messageStream;
 
         public CancellationToken TurnCancellationToken { get; set; }
 
         public void SetSession(GameSession session)
         {
             _session = session;
+        }
+
+        public void SetActiveDecision(NetworkDecisionContext decision)
+        {
+            _activeDecisionId = decision?.DecisionId ?? 0;
+            _activeDecision = decision;
+        }
+
+        public void CloseDecision(long decisionId)
+        {
+            if (_activeDecisionId != decisionId) return;
+            _activeDecisionId = 0;
+            _activeDecision = null;
         }
 
         public void OnRoundStart(int roundNumber, WindDirection prevalentWind, WindDirection seatWind, int dealerIndex)
@@ -74,6 +88,8 @@ namespace MahjongGame.Core.Network
         {
             var msg = new TileDrawnMessage
             {
+                decisionId = _activeDecisionId,
+                decision = RoomGameSnapshotBuilder.CreateDecisionSnapshot(_activeDecision),
                 tile = new SimpleTileData(drawnTile)
             };
             Send("TileDrawn", msg);
@@ -87,7 +103,11 @@ namespace MahjongGame.Core.Network
 
         public void OnTurnWithoutDraw()
         {
-            Send("TurnWithoutDraw", new TurnWithoutDrawMessage());
+            Send("TurnWithoutDraw", new TurnWithoutDrawMessage
+            {
+                decisionId = _activeDecisionId,
+                decision = RoomGameSnapshotBuilder.CreateDecisionSnapshot(_activeDecision)
+            });
         }
 
         public void OnWallCountChanged(int remainingCount)
@@ -99,6 +119,8 @@ namespace MahjongGame.Core.Network
         {
             var msg = new DiscardedMessage
             {
+                decisionId = _activeDecisionId,
+                decision = RoomGameSnapshotBuilder.CreateDecisionSnapshot(_activeDecision),
                 playerId = playerId,
                 tile = new SimpleTileData(tile)
             };
@@ -124,6 +146,8 @@ namespace MahjongGame.Core.Network
                 tile = forceDiscardTile != null ? new SimpleTileData(forceDiscardTile) : null
             };
             Send("Timeout", msg);
+            _activeDecisionId = 0;
+            _activeDecision = null;
         }
 
         public void OnPlayerWin(int winnerId, int totalFan, List<string> fanDetails, bool isSelfDraw)
@@ -159,12 +183,9 @@ namespace MahjongGame.Core.Network
             Send("SessionEnd", msg);
         }
 
-        private int _seq = 0;
         private void Send<T>(string type, T payload)
         {
-            _seq++;
-            string json = MessageSerializer.Serialize(type, _seq, payload);
-            _endpoint.SendMessage(json);
+            _messageStream.Send(type, payload);
         }
 
         private int[] GetScoreSnapshot()

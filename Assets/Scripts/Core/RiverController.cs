@@ -30,6 +30,17 @@ namespace MahjongGame.Core
         /// </summary>
         public void AddTileToRiver(TileVisual tile)
         {
+            AddTileToRiver(tile, true);
+        }
+
+        public void AddTileToRiverImmediate(TileVisual tile)
+        {
+            AddTileToRiver(tile, false);
+        }
+
+        private void AddTileToRiver(TileVisual tile, bool animate)
+        {
+            if (tile == null) return;
             // 1. 数据记录
             _discardedTiles.Add(tile);
             
@@ -45,10 +56,19 @@ namespace MahjongGame.Core
             
             // 4. 移动动画 (如果你有 DoTween)
             tile.transform.DOKill(); // 先杀掉可能还在进行的其它动画
-            tile.transform.DOLocalMove(targetPos, 0.5f);
+            if (animate)
+            {
+                tile.transform.DOLocalMove(targetPos, 0.5f);
             tile.transform.DOLocalRotate(new Vector3(90, 0, 0), 0.5f); // 牌河里的牌通常是倒下的
 
             // 5. 高亮新打出的牌
+            }
+            else
+            {
+                tile.transform.localPosition = targetPos;
+                tile.transform.localRotation = Quaternion.Euler(90, 0, 0);
+            }
+
             ClearHighlight();
             tile.SetHighlight(true);
             _currentHighlightedTile = tile;

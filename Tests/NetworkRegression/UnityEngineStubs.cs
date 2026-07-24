@@ -20,9 +20,28 @@ namespace UnityEngine
     {
         public static void Log(object message) { }
         public static void LogWarning(object message) { }
+        public static void LogError(object message) { }
+    }
+
+    public static class JsonUtility
+    {
+        private static readonly System.Text.Json.JsonSerializerOptions Options = new System.Text.Json.JsonSerializerOptions
+        {
+            IncludeFields = true
+        };
+
+        public static string ToJson(object value) => System.Text.Json.JsonSerializer.Serialize(value, Options);
+        public static T FromJson<T>(string json) => System.Text.Json.JsonSerializer.Deserialize<T>(json, Options);
     }
 }
 
 namespace MahjongGame.Core.Fan { public sealed class FanContext { } }
-namespace MahjongGame.Core.Network { public sealed class ServerGameState { } }
 namespace MahjongGame.Talents { public sealed class TalentContext { } }
+namespace MahjongGame.Core.Network.Transport
+{
+    public class GameEndpoint
+    {
+        public readonly System.Collections.Generic.List<string> SentMessages = new System.Collections.Generic.List<string>();
+        public void SendMessage(string message) => SentMessages.Add(message);
+    }
+}

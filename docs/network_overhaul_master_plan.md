@@ -231,29 +231,64 @@ Phase D 未实现 Reconnect、`lastSeq`、消息缓存/补包、endpoint 重绑�
 
 ## Phase E: Reconnect + Robustness
 
-状态：待执行。
+> 进度状态（2026-07-25）：E1-E4 已完成代码复验、自动检查和 Unity 真人联机验收，Phase E 最终验收通过。
 
-目标：引入断线重连、消息去重和基础健壮性。
+状态：已完成（2026-07-25）。
 
-范围：
+详细文档：
 
-- `seq` 改为服务端每连接递增。
-- 客户端记录 `lastSeq`。
-- 服务端保留最近 N 条房间消息缓存。
-- 新增：
-  - `Reconnect { roomId, lastSeq }`
-  - `ReconnectState { snapshot, missedMessages }`
-- 断线席位进入 AI 托管。
-- 重连后重新绑定 endpoint。
-- 在 Phase C 的基础心跳关房能力上，完善断线判定与重连窗口，使短暂断网不再直接关闭房间。
-- 服务端清理过期连接和空房间。
+- 架构决策：`docs/network_phase_e_reconnect_design.md`
+- 实施计划：`docs/superpowers/plans/2026-07-17-phase-e-reconnect-robustness.md`
 
-验收：
+目标：在不暂停整桌的前提下，实现同设备客户端重启、短暂断网、局内 AI 托管和权威状态恢复。
 
-- 主回合断线后可重连恢复。
-- 响应阶段断线后可重连恢复。
-- 结算面板断线后可重连恢复。
-- 局间 Ready 前断线后可重连恢复。
+固定默认值：
+
+- 心跳间隔 3 秒，客户端/服务端失活判定 10 秒。
+- 断线席位保留 120 秒。
+- 每个曾由真人拥有的席位缓存最近 256 条消息。
+- 单条客户端消息上限 64 KiB。
+- 自动重试间隔为 0/1/2/4/8/10 秒，之后每 10 秒一次。
+
+架构决策：
+
+- 身份、物理 WebSocket、逻辑席位和 `GameServer` 控制器分离。
+- username 暂作为开发期认证凭证；忽略大小写判断在线唯一性，但保留原值显示。该方案不得视为上线鉴权。
+- 保留 `IAccountAuthenticator` / `playerId` 抽象，正式账号系统留给后续独立 Phase。
+- `seq` 按逻辑席位消息流递增，endpoint 重绑不重置；公共广播也分别写入每席消息流，私有消息不得跨席缓存。
+- 客户端通过纯 C# 状态投影应用有序消息或完整权威快照，Unity 表现层从投影原子重建。
+- `decisionId` 在整个房间会话内递增；服务端拒绝过期、重复、错误阶段和错误控制者动作。
+- AI 接管和真人交还只发生在安全决策边界，当前已打开的人类决策保留到原截止时间。
+- `aiFill=false` 只限制开局补空位，不限制锁定真人席位的断线托管。
+- 任意状态下所有真人都离线时立即关房，因此 1 真人 + 3 AI 不支持真人断线后的恢复。
+- 最终结算进入 `SessionCompleted`，至少还有一名真人在线时允许恢复和查看。
+
+实施检查点：
+
+1. E1：协议 v2、开发身份、连接代次、每席消息流、客户端序号门和双向心跳。
+2. E2：完整服务端牌桌快照、显式决策模型和纯客户端状态投影。
+3. E3：补包/完整快照重连、endpoint 重绑、决策边界 AI 托管和房间过期策略。
+4. E4：UI Toolkit 重连体验、牌桌原子重建、启动恢复和完整联调。
+
+每个检查点必须运行 NetworkRegression、`dotnet build Assembly-CSharp.csproj --no-restore` 和 `git diff --check`，完成汇报并通过验收后才能继续下一个检查点。
+
+最终验收：
+
+- 2 真人短暂断网后可补包恢复，客户端强退重启后可通过完整快照恢复。
+- 主回合、响应阶段、加载阶段、局间 Ready、普通结算和最终结算均覆盖断线恢复。
+- `aiFill=false` 四真人房允许断线托管与重连。
+- 同 username 并发连接被拒绝；最后一名真人断线立即关房。
+- Dedicated Server 重启后客户端安全清理票据并返回登录页或大厅。
+- EastOnly 完成 4 小局，恢复后无重复手牌、副露、牌河、分数、操作提示或动作提交。
+
+### Phase E 验收记录
+
+- E1-E4 的协议 v2、逻辑身份与连接代次、席位消息流、权威快照、决策模型、重连/重同步、AI 托管和客户端恢复表现已完成。
+- 已修复代码复验发现的快照牌河序列化、恢复决策上下文、旧 WebSocket 回调、临时 AI 席位身份、EastOnly 最终局投影、心跳超时重连调度及票据缺失终止清理问题。
+- Unity 真人联机验收已完成，重连恢复、托管、场景路由、多小局流转和心跳超时恢复未发现阻断问题。
+- `dotnet run --project Tests\NetworkRegression\NetworkRegression.csproj --no-restore` 通过。
+- `dotnet build Assembly-CSharp.csproj --no-restore` 通过，0 警告、0 错误。
+- `git diff --check` 通过，仅有既有 LF/CRLF 行尾提示，无空白错误。
 
 ## 全局测试清单
 

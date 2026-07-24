@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 using DG.Tweening;
 
@@ -14,9 +15,15 @@ namespace MahjongGame.Core
 
         public void InitHand(int count)
         {
+            InitHand(count, true);
+        }
+
+        private void InitHand(int count, bool animate)
+        {
             ClearHand();
             for (int i = 0; i < count; i++) AddTileBack();
-            UpdateHandPositions();
+            if (animate) UpdateHandPositions();
+            else UpdateHandPositionsImmediately();
         }
 
         public void DrawCard()
@@ -81,6 +88,30 @@ namespace MahjongGame.Core
         {
             base.ClearHand();
             _justDrawn = false;
+        }
+
+        /// <summary>Rebuilds public opponent information only; every concealed tile remains a back.</summary>
+        public void RebuildFromSnapshot(int concealedTileCount, IEnumerable<Meld> melds, IEnumerable<TileData> river)
+        {
+            InitHand(Mathf.Max(0, concealedTileCount), false);
+            foreach (var meld in melds ?? Enumerable.Empty<Meld>())
+            {
+                if (meld?.Tiles == null || meld.Tiles.Count == 0) continue;
+                CreateMeldVisual(meld.Type, meld.Tiles);
+            }
+
+            RebuildRiver(river);
+        }
+
+        private void UpdateHandPositionsImmediately()
+        {
+            for (int i = 0; i < _handTiles.Count; i++)
+            {
+                var tile = _handTiles[i];
+                tile.transform.DOKill();
+                tile.transform.localPosition = new Vector3(i * tileGap, 0, 0);
+                tile.transform.localRotation = Quaternion.Euler(opponentHandRotation);
+            }
         }
 
         // --- 副露表现 ---

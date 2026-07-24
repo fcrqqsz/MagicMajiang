@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using MahjongGame.Core.Network.Messages;
 using MahjongGame.Core.Network.Transport;
 using UnityEngine;
@@ -11,82 +12,150 @@ namespace MahjongGame.Core.Network
     {
         private readonly int _maxRooms;
         private readonly bool _aiFill;
+        private readonly int _messageCacheSize;
+        private readonly TimeSpan _reconnectWindow;
         private readonly ConnectionRegistry _connections;
+        private readonly IAccountAuthenticator _accountAuthenticator;
         private readonly Dictionary<string, Room> _rooms = new Dictionary<string, Room>();
         private int _nextRoomId = 1;
         private bool _disposed;
 
-        public RoomManager(int maxRooms, bool aiFill, ConnectionRegistry connections)
+        public RoomManager(
+            int maxRooms,
+            bool aiFill,
+            ConnectionRegistry connections,
+            IAccountAuthenticator accountAuthenticator = null,
+            int messageCacheSize = SeatMessageStream.DefaultCacheCapacity,
+            int reconnectWindowSeconds = ServerBootstrapOptions.DefaultReconnectWindowSeconds)
         {
             _maxRooms = Math.Max(1, maxRooms);
             _aiFill = aiFill;
+            _messageCacheSize = Math.Max(1, messageCacheSize);
+            _reconnectWindow = TimeSpan.FromSeconds(Math.Max(1, reconnectWindowSeconds));
             _connections = connections ?? throw new ArgumentNullException(nameof(connections));
+            _accountAuthenticator = accountAuthenticator ?? new DevelopmentAccountAuthenticator();
             GameEndpoint.OnClientConnected += HandleConnected;
             GameEndpoint.OnMessageReceived += HandleMessage;
             GameEndpoint.OnClientDisconnected += HandleDisconnected;
         }
 
-        private void HandleConnected(string connectionId, GameEndpoint endpoint)
+        private void HandleConnected(string connectionId, GameEndpoint endpoint, long generation)
         {
-            _connections.Register(connectionId, endpoint);
+            if (_connections.TryGetSupersededRecord(connectionId, generation, out var superseded))
+                RemoveMemberFromRoom(connectionId, superseded.Endpoint, superseded.Generation, "Connection generation superseded.", true);
+            _connections.Register(connectionId, endpoint, generation);
         }
 
-        private void HandleMessage(string connectionId, string json, GameEndpoint endpoint)
+        private void HandleMessage(string connectionId, string json, GameEndpoint endpoint, long generation)
         {
-            if (!_connections.TryGet(connectionId, out var record) || record.Endpoint != endpoint) return;
-            _connections.Touch(connectionId, DateTime.UtcNow);
+            if (!_connections.IsActiveConnection(connectionId, endpoint, generation)) return;
+            if (!NetworkMessageLimits.IsWithinClientTextLimit(json))
+            {
+                SendError(connectionId, endpoint, NetworkErrorCodes.MessageTooLarge, "The network message exceeds the 64 KiB limit.");
+                return;
+            }
+
+            _connections.Touch(connectionId, endpoint, DateTime.UtcNow);
             var envelope = MessageSerializer.DeserializeEnvelope(json);
-            if (envelope == null || string.IsNullOrEmpty(envelope.type)) { SendError(endpoint, "InvalidMessage", "Malformed network message."); return; }
+            if (envelope == null || string.IsNullOrEmpty(envelope.type)) { SendError(connectionId, endpoint, "InvalidMessage", "Malformed network message."); return; }
+
+            if (!_connections.CanSubmitRoomCommands(connectionId, endpoint))
+            {
+                if (envelope.type != "Hello")
+                    SendError(connectionId, endpoint, NetworkErrorCodes.AuthenticationRequired, "Authenticate with Hello before sending room commands.");
+                else
+                    HandleHello(connectionId, endpoint, MessageSerializer.DeserializePayload<HelloMessage>(envelope.data));
+                return;
+            }
 
             try
             {
                 switch (envelope.type)
                 {
                     case "Hello":
-                        var hello = MessageSerializer.DeserializePayload<HelloMessage>(envelope.data);
-                        _connections.SetNickname(connectionId, hello?.nickname);
+                        SendError(connectionId, endpoint, "AlreadyAuthenticated", "This connection has already completed Hello.");
                         break;
-                    case "LeaveRoom": HandleLeaveRoom(connectionId, endpoint); break;
-                    case "Heartbeat": break;
+                    case "LeaveRoom": HandleLeaveRoom(connectionId, endpoint, generation); break;
+                    case "Heartbeat": Send(endpoint, "HeartbeatAck", new HeartbeatAckMessage()); break;
+                    case "Reconnect": HandleReconnect(connectionId, endpoint, MessageSerializer.DeserializePayload<ReconnectMessage>(envelope.data)); break;
+                    case "Resync": HandleResync(connectionId, endpoint, MessageSerializer.DeserializePayload<ResyncMessage>(envelope.data)); break;
                     case "CreateRoom": HandleCreateRoom(connectionId, endpoint, MessageSerializer.DeserializePayload<CreateRoomMessage>(envelope.data)); break;
                     case "JoinRoom": HandleJoinRoom(connectionId, endpoint, MessageSerializer.DeserializePayload<JoinRoomMessage>(envelope.data)); break;
                     case "Ready": HandleReady(connectionId, endpoint, MessageSerializer.DeserializePayload<ReadyMessage>(envelope.data)); break;
                     case "Action": HandleAction(connectionId, endpoint, MessageSerializer.DeserializePayload<ClientActionMessage>(envelope.data)); break;
-                    default: SendError(endpoint, "UnsupportedMessage", $"Message type '{envelope.type}' is not valid here."); break;
+                    default: SendError(connectionId, endpoint, "UnsupportedMessage", $"Message type '{envelope.type}' is not valid here."); break;
                 }
             }
             catch (Exception ex)
             {
                 Debug.LogError($"[RoomManager] Rejected message from {connectionId}: {ex}");
-                SendError(endpoint, "ServerError", "The request could not be processed.");
+                SendError(connectionId, endpoint, "ServerError", "The request could not be processed.");
             }
+        }
+
+        private void HandleHello(string connectionId, GameEndpoint endpoint, HelloMessage hello)
+        {
+            if (hello == null || !NetworkProtocol.IsSupported(hello.protocolVersion))
+            {
+                SendError(endpoint, NetworkErrorCodes.ProtocolMismatch, "This server requires protocol version 2.");
+                return;
+            }
+
+            if (!_accountAuthenticator.TryAuthenticate(hello.username, out var identity, out var authenticationError))
+            {
+                SendError(endpoint, authenticationError ?? NetworkErrorCodes.InvalidUsername, "The supplied username is invalid.");
+                return;
+            }
+
+            if (!_connections.TryAuthenticate(connectionId, endpoint, identity, DateTime.UtcNow, out var registryError))
+            {
+                SendError(endpoint, registryError ?? NetworkErrorCodes.AuthenticationRequired, "The supplied identity cannot use this connection.");
+                return;
+            }
+
+            Send(endpoint, "HelloAccepted", new HelloAcceptedMessage
+            {
+                protocolVersion = NetworkProtocol.Version,
+                playerId = identity.PlayerId,
+                displayName = identity.DisplayName
+            });
         }
 
         /// <summary>Expires connections whose process or network vanished without a WebSocket close event.</summary>
         public void Tick(DateTime utcNow)
         {
-            foreach (var connectionId in _connections.GetExpiredRoomConnections(utcNow))
+            foreach (var connectionId in _connections.GetExpiredAuthenticatedConnections(utcNow))
             {
-                RemoveMemberFromRoom(connectionId, "Connection heartbeat timed out.", true);
+                if (_connections.TryGet(connectionId, out var record))
+                {
+                    if (!string.IsNullOrEmpty(record.RoomId))
+                        RemoveMemberFromRoom(connectionId, record.Endpoint, record.Generation, "Connection heartbeat timed out.", true);
+                    else
+                        _connections.Remove(connectionId, record.Endpoint, out _);
+                }
             }
+
+            ExpireOfflineSeats(utcNow);
         }
 
         private void HandleCreateRoom(string connectionId, GameEndpoint endpoint, CreateRoomMessage request)
         {
-            if (!_connections.TryGet(connectionId, out var record) || !string.IsNullOrEmpty(record.RoomId)) { SendError(endpoint, "AlreadyInRoom", "Leave the current room before creating another."); return; }
-            if (request == null || request.gameMode < (int)GameMode.Single || request.gameMode > (int)GameMode.FullGame) { SendError(endpoint, "InvalidGameMode", "The requested game mode is invalid."); return; }
-            if (!PlayerLoadoutCodec.TryDecode(request.loadout, out var loadout, out var loadoutError)) { SendError(endpoint, loadoutError, "The submitted player loadout is invalid."); return; }
+            if (!_connections.TryGet(connectionId, out var record) || !record.IsAuthenticated || !string.IsNullOrEmpty(record.RoomId)) { SendError(connectionId, endpoint, "AlreadyInRoom", "Leave the current room before creating another."); return; }
+            ExpireOfflineSeats(DateTime.UtcNow);
+            if (HasOfflineReservation(record.PlayerId)) { SendError(connectionId, endpoint, NetworkErrorCodes.ReconnectRequired, "Reconnect to the reserved room seat before creating a new room."); return; }
+            if (request == null || request.gameMode < (int)GameMode.Single || request.gameMode > (int)GameMode.FullGame) { SendError(connectionId, endpoint, "InvalidGameMode", "The requested game mode is invalid."); return; }
+            if (!PlayerLoadoutCodec.TryDecode(request.loadout, out var loadout, out var loadoutError)) { SendError(connectionId, endpoint, loadoutError, "The submitted player loadout is invalid."); return; }
             RemoveClosedRooms();
-            if (_rooms.Count >= _maxRooms) { SendError(endpoint, "RoomLimitReached", "The server has reached its room limit."); return; }
+            if (_rooms.Count >= _maxRooms) { SendError(connectionId, endpoint, "RoomLimitReached", "The server has reached its room limit."); return; }
 
             string roomId = $"R{_nextRoomId++:D4}";
-            var room = new Room(roomId, (GameMode)request.gameMode, connectionId, _aiFill, SendToEndpoint);
+            var room = new Room(roomId, (GameMode)request.gameMode, connectionId, _aiFill, _messageCacheSize);
             room.OnClosed += HandleRoomClosed;
-            if (!room.TryAddHuman(connectionId, endpoint, record.Nickname, loadout, out int seat))
+            if (!room.TryAddHuman(connectionId, endpoint, record.PlayerId, record.DisplayName, loadout, out int seat))
             {
                 room.OnClosed -= HandleRoomClosed;
                 room.Dispose();
-                SendError(endpoint, "RoomCreateFailed", "Could not allocate a room seat.");
+                SendError(connectionId, endpoint, "RoomCreateFailed", "Could not allocate a room seat.");
                 return;
             }
             if (!_connections.BindRoomSeat(connectionId, roomId, seat))
@@ -94,36 +163,38 @@ namespace MahjongGame.Core.Network
                 room.RemoveHuman(connectionId, out _);
                 room.OnClosed -= HandleRoomClosed;
                 room.Dispose();
-                SendError(endpoint, "RoomCreateFailed", "Could not bind the allocated room seat.");
+                SendError(connectionId, endpoint, "RoomCreateFailed", "Could not bind the allocated room seat.");
                 return;
             }
             _rooms.Add(roomId, room);
-            SendRoomJoined(endpoint, room, seat, true, loadout);
+            SendRoomJoined(room, seat, true, loadout);
         }
 
         private void HandleJoinRoom(string connectionId, GameEndpoint endpoint, JoinRoomMessage request)
         {
-            if (!_connections.TryGet(connectionId, out var record) || !string.IsNullOrEmpty(record.RoomId)) { SendError(endpoint, "AlreadyInRoom", "Leave the current room before joining another."); return; }
-            if (request == null || string.IsNullOrWhiteSpace(request.roomId) || !_rooms.TryGetValue(request.roomId.Trim(), out var room) || room.State == RoomState.Closed) { SendError(endpoint, "RoomNotFound", "The requested room does not exist."); return; }
-            if (!PlayerLoadoutCodec.TryDecode(request.loadout, out var loadout, out var loadoutError)) { SendError(endpoint, loadoutError, "The submitted player loadout is invalid."); return; }
-            if (!room.TryAddHuman(connectionId, endpoint, record.Nickname, loadout, out int seat)) { SendError(endpoint, "RoomFullOrStarted", "The room is full or has already started."); return; }
+            if (!_connections.TryGet(connectionId, out var record) || !record.IsAuthenticated || !string.IsNullOrEmpty(record.RoomId)) { SendError(connectionId, endpoint, "AlreadyInRoom", "Leave the current room before joining another."); return; }
+            ExpireOfflineSeats(DateTime.UtcNow);
+            if (HasOfflineReservation(record.PlayerId)) { SendError(connectionId, endpoint, NetworkErrorCodes.ReconnectRequired, "Reconnect to the reserved room seat before joining another room."); return; }
+            if (request == null || string.IsNullOrWhiteSpace(request.roomId) || !_rooms.TryGetValue(request.roomId.Trim(), out var room) || room.State == RoomState.Closed) { SendError(connectionId, endpoint, "RoomNotFound", "The requested room does not exist."); return; }
+            if (!PlayerLoadoutCodec.TryDecode(request.loadout, out var loadout, out var loadoutError)) { SendError(connectionId, endpoint, loadoutError, "The submitted player loadout is invalid."); return; }
+            if (!room.TryAddHuman(connectionId, endpoint, record.PlayerId, record.DisplayName, loadout, out int seat)) { SendError(connectionId, endpoint, "RoomFullOrStarted", "The room is full or has already started."); return; }
             if (!_connections.BindRoomSeat(connectionId, room.RoomId, seat))
             {
                 room.RemoveHuman(connectionId, out _);
-                SendError(endpoint, "RoomJoinFailed", "Could not bind the allocated room seat.");
+                SendError(connectionId, endpoint, "RoomJoinFailed", "Could not bind the allocated room seat.");
                 return;
             }
-            SendRoomJoined(endpoint, room, seat, false, loadout);
+            SendRoomJoined(room, seat, false, loadout);
             room.Broadcast("PlayerJoined", new PlayerJoinedMessage { roomId = room.RoomId, seat = room.GetSeatMessage(seat) });
         }
 
         private void HandleReady(string connectionId, GameEndpoint endpoint, ReadyMessage request)
         {
             if (!TryGetRoomMember(connectionId, endpoint, out var room, out int seatIndex)) return;
-            if (request == null || request.phase < (int)ReadyPhase.MatchStart || request.phase > (int)ReadyPhase.NextRound) { SendError(endpoint, "InvalidReady", "Ready phase is invalid."); return; }
+            if (request == null || request.phase < (int)ReadyPhase.MatchStart || request.phase > (int)ReadyPhase.NextRound) { SendError(connectionId, endpoint, "InvalidReady", "Ready phase is invalid."); return; }
             if (!room.SetReady(connectionId, (ReadyPhase)request.phase, out string error))
             {
-                SendError(endpoint, "InvalidReady", error);
+                SendError(connectionId, endpoint, "InvalidReady", error);
                 return;
             }
 
@@ -137,85 +208,165 @@ namespace MahjongGame.Core.Network
         private void HandleAction(string connectionId, GameEndpoint endpoint, ClientActionMessage message)
         {
             if (!TryGetRoomMember(connectionId, endpoint, out var room, out int seatIndex)) return;
-            if (!room.SubmitAction(seatIndex, message)) SendError(endpoint, "InvalidAction", "Action is not valid for the current room state.");
+            if (!room.SubmitAction(seatIndex, message, out var errorCode))
+                SendError(connectionId, endpoint, string.IsNullOrEmpty(errorCode) ? NetworkErrorCodes.InvalidAction : errorCode,
+                    "Action is not valid for the current authoritative decision.");
         }
 
-        private void HandleLeaveRoom(string connectionId, GameEndpoint endpoint)
+        private void HandleLeaveRoom(string connectionId, GameEndpoint endpoint, long generation)
         {
-            if (!_connections.TryGet(connectionId, out var record) || string.IsNullOrEmpty(record.RoomId))
+            if (!_connections.TryGet(connectionId, out var record) || !record.IsAuthenticated || string.IsNullOrEmpty(record.RoomId))
             {
-                SendError(endpoint, "NotInRoom", "Join a room first.");
+                SendError(connectionId, endpoint, "NotInRoom", "Join a room first.");
                 return;
             }
 
-            RemoveMemberFromRoom(connectionId, "Player left the room.", false);
+            if (!_connections.IsActiveConnection(connectionId, endpoint, generation)
+                || !_rooms.TryGetValue(record.RoomId, out var room)) return;
+            if (!room.HandleExplicitLeave(record.PlayerId, connectionId, out int seatIndex, out bool shouldClose))
+            {
+                SendError(connectionId, endpoint, "NotInRoom", "Join a room first.");
+                return;
+            }
+
+            room.Broadcast("PlayerLeft", new PlayerLeftMessage
+            {
+                roomId = room.RoomId,
+                seatIndex = seatIndex,
+                reason = "Player left the room.",
+                seat = room.GetSeatMessage(seatIndex)
+            });
+            _connections.UnbindRoomSeat(connectionId);
+            if (shouldClose)
+            {
+                room.Broadcast("RoomClosed", new RoomClosedMessage { roomId = room.RoomId, reason = "No human player remains online." });
+                room.Close();
+            }
+            else room.AdvanceAfterWaitingMemberChange();
         }
 
         private bool TryGetRoomMember(string connectionId, GameEndpoint endpoint, out Room room, out int seatIndex)
         {
             room = null; seatIndex = -1;
-            if (!_connections.TryGet(connectionId, out var record) || record.Endpoint != endpoint || string.IsNullOrEmpty(record.RoomId) || !_rooms.TryGetValue(record.RoomId, out room) || room.State == RoomState.Closed) { SendError(endpoint, "NotInRoom", "Join a room first."); return false; }
+            if (!_connections.CanSubmitRoomCommands(connectionId, endpoint)
+                || !_connections.TryGet(connectionId, out var record)
+                || string.IsNullOrEmpty(record.RoomId)
+                || !_rooms.TryGetValue(record.RoomId, out room)
+                || room.State == RoomState.Closed) { SendError(connectionId, endpoint, "NotInRoom", "Join a room first."); return false; }
             seatIndex = record.SeatIndex;
             return true;
         }
 
-        private void HandleDisconnected(string connectionId)
+        private void HandleDisconnected(string connectionId, GameEndpoint endpoint, long generation)
         {
-            RemoveMemberFromRoom(connectionId, "Connection closed.", true);
+            RemoveMemberFromRoom(connectionId, endpoint, generation, "Connection closed.", true);
         }
 
-        private void RemoveMemberFromRoom(string connectionId, string reason, bool removeConnection)
+        private void RemoveMemberFromRoom(string connectionId, GameEndpoint endpoint, long generation, string reason, bool removeConnection)
         {
-            if (!_connections.TryGet(connectionId, out var record)) return;
+            if (!_connections.IsActiveConnection(connectionId, endpoint, generation)
+                || !_connections.TryGet(connectionId, out var record)) return;
 
             string roomId = record.RoomId;
-            if (!string.IsNullOrEmpty(roomId) && _rooms.TryGetValue(roomId, out var room))
+            if (!string.IsNullOrEmpty(roomId) && _rooms.TryGetValue(roomId, out var room)
+                && room.HandleDisconnect(record.PlayerId, connectionId, endpoint, DateTime.UtcNow, _reconnectWindow, out int seatIndex, out bool shouldClose))
             {
-                if (room.HandleWaitingHumanDeparture(connectionId, out int seatIndex, out bool replacedByAi, out string replacementDisplayName))
+                room.Broadcast("PlayerLeft", new PlayerLeftMessage
                 {
-                    room.Broadcast("PlayerLeft", new PlayerLeftMessage
-                    {
-                        roomId = roomId,
-                        seatIndex = seatIndex,
-                        reason = reason,
-                        seat = room.GetSeatMessage(seatIndex)
-                    });
-                    room.AdvanceAfterWaitingMemberChange();
-                }
-                else if (room.RemoveHuman(connectionId, out _))
+                    roomId = roomId,
+                    seatIndex = seatIndex,
+                    reason = reason,
+                    seat = room.GetSeatMessage(seatIndex)
+                });
+                if (shouldClose)
                 {
-                    Debug.Log($"[RoomManager] Closing room {roomId} after connection {connectionId} left: {reason}");
-                    room.Broadcast("RoomClosed", new RoomClosedMessage { roomId = roomId, reason = reason });
+                    Debug.Log($"[RoomManager] Closing room {roomId}: no human player remains online.");
+                    room.Broadcast("RoomClosed", new RoomClosedMessage { roomId = roomId, reason = "No human player remains online." });
                     room.Close();
                 }
+                else room.AdvanceAfterWaitingMemberChange();
             }
 
             if (removeConnection)
-                _connections.Remove(connectionId, out _);
+                _connections.Remove(connectionId, endpoint, out _);
             else
                 _connections.UnbindRoomSeat(connectionId);
         }
 
-        private void SendRoomJoined(GameEndpoint endpoint, Room room, int seatIndex, bool isHost, TrustedPlayerLoadout loadout) => SendToEndpoint("RoomJoined", new EndpointPayload(endpoint, new RoomJoinedMessage
+        private void HandleReconnect(string connectionId, GameEndpoint endpoint, ReconnectMessage request)
         {
-            roomId = room.RoomId,
-            seatIndex = seatIndex,
-            gameMode = (int)room.GameMode,
-            roomState = (int)room.State,
-            isHost = isHost,
-            aiFillEnabled = room.AiFillEnabled,
-            acceptedSchemaVersion = loadout.SchemaVersion,
-            acceptedTotalAlienation = loadout.TotalAlienation,
-            seats = room.GetSeatSnapshot()
-        }));
+            if (!_connections.TryGet(connectionId, out var record) || request == null || string.IsNullOrWhiteSpace(request.roomId)
+                || string.IsNullOrWhiteSpace(request.streamId) || !_rooms.TryGetValue(request.roomId.Trim(), out var room)
+                || room.State == RoomState.Closed)
+            {
+                SendReconnectRejected(endpoint, NetworkErrorCodes.RoomNotFound, "The requested room no longer exists.");
+                return;
+            }
 
-        private void SendToEndpoint(string type, object payload)
-        {
-            if (!(payload is EndpointPayload target) || target.Endpoint == null) return;
-            target.Endpoint.SendMessage(MessageSerializer.Serialize(type, 0, target.Payload));
+            if (!string.IsNullOrEmpty(record.RoomId))
+            {
+                SendReconnectRejected(endpoint, "AlreadyInRoom", "Leave the current room before reconnecting.");
+                return;
+            }
+
+            if (!room.TryReconnect(record.PlayerId, request.streamId, connectionId, endpoint, request.lastSeq, request.hasProjection,
+                    DateTime.UtcNow, out int seatIndex, out _, out var errorCode))
+            {
+                SendReconnectRejected(endpoint, errorCode ?? NetworkErrorCodes.SeatExpired, "The saved room seat can no longer be reclaimed.");
+                return;
+            }
+            if (!_connections.BindRoomSeat(connectionId, room.RoomId, seatIndex))
+            {
+                SendReconnectRejected(endpoint, NetworkErrorCodes.SeatExpired, "The recovered room seat could not be bound.");
+                return;
+            }
+
+            room.Broadcast("RoomSeatUpdated", new RoomSeatUpdatedMessage { roomId = room.RoomId, seat = room.GetSeatMessage(seatIndex) });
         }
 
+        private void HandleResync(string connectionId, GameEndpoint endpoint, ResyncMessage request)
+        {
+            if (request == null || !TryGetRoomMember(connectionId, endpoint, out var room, out int seatIndex)) return;
+            string errorCode = null;
+            if (!string.Equals(request.roomId, room.RoomId, StringComparison.Ordinal)
+                || !room.TryResync(seatIndex, request.streamId, request.lastSeq, endpoint, out _, out errorCode))
+            {
+                SendReconnectRejected(endpoint, errorCode ?? NetworkErrorCodes.StreamMismatch, "The room stream cannot be synchronized.");
+            }
+        }
+
+        private void SendRoomJoined(Room room, int seatIndex, bool isHost, TrustedPlayerLoadout loadout)
+        {
+            room.TrySendToHumanSeat(seatIndex, "RoomJoined", new RoomJoinedMessage
+            {
+                roomId = room.RoomId,
+                seatIndex = seatIndex,
+                gameMode = (int)room.GameMode,
+                roomState = (int)room.State,
+                isHost = isHost,
+                aiFillEnabled = room.AiFillEnabled,
+                acceptedSchemaVersion = loadout.SchemaVersion,
+                acceptedTotalAlienation = loadout.TotalAlienation,
+                streamId = room.Seats[seatIndex]?.MessageStream?.StreamId,
+                seats = room.GetSeatSnapshot()
+            });
+        }
+
+        private void SendError(string connectionId, GameEndpoint endpoint, string code, string message)
+        {
+            if (_connections.TryGet(connectionId, out var record)
+                && record.IsAuthenticated
+                && !string.IsNullOrEmpty(record.RoomId)
+                && _rooms.TryGetValue(record.RoomId, out var room)
+                && room.State != RoomState.Closed
+                && room.TrySendToHumanSeat(record.SeatIndex, "RoomError", new RoomErrorMessage { code = code, message = message })) return;
+
+            SendError(endpoint, code, message);
+        }
+
+        private static void Send(GameEndpoint endpoint, string type, object payload) => endpoint?.SendMessage(MessageSerializer.Serialize(type, 0, payload));
         private static void SendError(GameEndpoint endpoint, string code, string message) => endpoint?.SendMessage(MessageSerializer.Serialize("RoomError", 0, new RoomErrorMessage { code = code, message = message }));
+        private static void SendReconnectRejected(GameEndpoint endpoint, string code, string message) => endpoint?.SendMessage(MessageSerializer.Serialize("ReconnectRejected", 0, new ReconnectRejectedMessage { code = code, message = message }));
 
         private void RemoveClosedRooms()
         {
@@ -224,13 +375,43 @@ namespace MahjongGame.Core.Network
             foreach (var id in ids) { _rooms[id].Dispose(); _rooms.Remove(id); }
         }
 
+        private bool HasOfflineReservation(string playerId)
+        {
+            return _rooms.Values.Any(room => room.State != RoomState.Closed && room.HasOfflineReservation(playerId));
+        }
+
+        private void ExpireOfflineSeats(DateTime utcNow)
+        {
+            foreach (var room in new List<Room>(_rooms.Values))
+            {
+                if (!room.ExpireOfflineSeats(utcNow, out var changedSeats, out bool shouldClose)) continue;
+                foreach (var seatIndex in changedSeats)
+                    room.Broadcast("PlayerLeft", new PlayerLeftMessage
+                    {
+                        roomId = room.RoomId,
+                        seatIndex = seatIndex,
+                        reason = "Reconnect window expired.",
+                        seat = room.GetSeatMessage(seatIndex)
+                    });
+                if (shouldClose)
+                {
+                    room.Broadcast("RoomClosed", new RoomClosedMessage { roomId = room.RoomId, reason = "No human player remains online." });
+                    room.Close();
+                }
+                else room.AdvanceAfterWaitingMemberChange();
+            }
+            RemoveClosedRooms();
+        }
+
         private void HandleRoomClosed(Room room)
         {
             if (room == null) return;
             foreach (var seat in room.Seats)
             {
                 if (seat == null || seat.IsAi || string.IsNullOrEmpty(seat.ConnectionId)) continue;
-                if (_connections.TryGet(seat.ConnectionId, out var record) && record.RoomId == room.RoomId) _connections.UnbindRoomSeat(seat.ConnectionId);
+                if (_connections.TryGet(seat.ConnectionId, out var record)
+                    && ReferenceEquals(record.Endpoint, seat.Endpoint)
+                    && record.RoomId == room.RoomId) _connections.UnbindRoomSeat(seat.ConnectionId);
             }
             room.OnClosed -= HandleRoomClosed;
             _rooms.Remove(room.RoomId);

@@ -1,9 +1,52 @@
 using System;
+using System.Linq;
 using MahjongGame.Core;
 using MahjongGame.Core.Network.Messages;
 
 namespace MahjongGame.Core.Network
 {
+    public enum ClientSequenceDisposition
+    {
+        Accepted,
+        IgnoredDuplicate,
+        ResyncRequired
+    }
+
+    /// <summary>Applies one room-lifetime, one-based server message sequence on the client.</summary>
+    public sealed class ClientSequenceGate
+    {
+        public int LastSequence { get; private set; }
+        public bool IsResyncRequired { get; private set; }
+
+        public ClientSequenceDisposition Apply(int sequence)
+        {
+            if (sequence <= LastSequence) return ClientSequenceDisposition.IgnoredDuplicate;
+            if (IsResyncRequired) return ClientSequenceDisposition.ResyncRequired;
+
+            if (sequence == LastSequence + 1)
+            {
+                LastSequence = sequence;
+                return ClientSequenceDisposition.Accepted;
+            }
+
+            IsResyncRequired = true;
+            return ClientSequenceDisposition.ResyncRequired;
+        }
+
+        public void Reset()
+        {
+            LastSequence = 0;
+            IsResyncRequired = false;
+        }
+
+        /// <summary>Accepts an authoritative reconnect snapshot as the new stream baseline.</summary>
+        public void RestoreBaseline(int baselineSequence)
+        {
+            LastSequence = Math.Max(0, baselineSequence);
+            IsResyncRequired = false;
+        }
+    }
+
     /// <summary>Active room binding plus the immutable snapshot needed by a completed session's result UI.</summary>
     public sealed class ClientRoomState
     {
@@ -39,6 +82,26 @@ namespace MahjongGame.Core.Network
 
         public void SetRoomState(int roomState) => RoomStateValue = roomState;
 
+        public void ApplyRecoverySnapshot(Messages.RoomGameSnapshot snapshot)
+        {
+            if (snapshot == null) return;
+
+            RoomId = snapshot.roomId;
+            SeatIndex = snapshot.requestingSeatIndex;
+            GameMode = (GameMode)snapshot.gameMode;
+            RoomStateValue = snapshot.roomState;
+            Seats = (snapshot.seats ?? Array.Empty<Messages.RoomSnapshotSeat>()).Select(seat => seat == null ? null : new RoomSeatMessage
+            {
+                seatIndex = seat.seatIndex,
+                isOccupied = seat.isOccupied,
+                isAi = seat.isAi,
+                isOnline = seat.isOnline,
+                isTemporarilyAiControlled = seat.controller == "AiControlled",
+                controlState = seat.controller,
+                displayName = seat.displayName
+            }).ToArray();
+        }
+
         public void SetSeats(RoomSeatMessage[] seats) => Seats = CloneSeats(seats);
 
         public bool ApplySeatUpdate(RoomSeatMessage seat)
@@ -60,7 +123,7 @@ namespace MahjongGame.Core.Network
             ResultRoomId = RoomId;
             ResultSeatIndex = SeatIndex;
             ResultSeats = CloneSeats(Seats);
-            ClearActiveRoom();
+            RoomStateValue = (int)RoomState.SessionCompleted;
         }
 
         public void Reset()
@@ -103,6 +166,9 @@ namespace MahjongGame.Core.Network
                     seatIndex = seat.seatIndex,
                     isOccupied = seat.isOccupied,
                     isAi = seat.isAi,
+                    isOnline = seat.isOnline,
+                    isTemporarilyAiControlled = seat.isTemporarilyAiControlled,
+                    controlState = seat.controlState,
                     isReady = seat.isReady,
                     displayName = seat.displayName,
                     totalAlienation = seat.totalAlienation

@@ -86,8 +86,7 @@ namespace MahjongGame.Core
             // 手里有 4 张一样的牌
             // 简单的判定：手牌里同花色同数值的计数 >= 4
             // (更严谨的做法是调用 HandController.GetAnGanOptions，这里做快速预检)
-            var anGanGroups = myHand.GroupBy(t => new { t.TileSuit, t.Value }).Where(g => g.Count() == 4);
-            if (anGanGroups.Any())
+            if (GetConcealedKanOptions(myHand).Any())
             {
                 actions.CanGan = true;
             }
@@ -113,6 +112,16 @@ namespace MahjongGame.Core
             }
 
             return actions;
+        }
+
+        public static List<TileData> GetConcealedKanOptions(IEnumerable<TileData> hand)
+        {
+            return (hand ?? Enumerable.Empty<TileData>())
+                .Where(tile => tile != null)
+                .GroupBy(tile => new { tile.TileSuit, tile.Value })
+                .Where(g => g.Count() >= 4)
+                .Select(g => g.First())
+                .ToList();
         }
 
         /// <summary>

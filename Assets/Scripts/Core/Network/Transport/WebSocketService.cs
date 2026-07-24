@@ -1,4 +1,5 @@
 using System;
+using System.Threading;
 using UnityEngine;
 using WebSocketSharp;
 using WebSocketSharp.Server;
@@ -7,16 +8,21 @@ namespace MahjongGame.Core.Network.Transport
 {
     public class GameEndpoint : WebSocketBehavior
     {
-        public static event Action<string, GameEndpoint> OnClientConnected;
-        public static event Action<string, string, GameEndpoint> OnMessageReceived; // connectionId, json, endpoint
-        public static event Action<string> OnClientDisconnected;
+        private static long _nextConnectionGeneration;
+
+        public static event Action<string, GameEndpoint, long> OnClientConnected;
+        public static event Action<string, string, GameEndpoint, long> OnMessageReceived; // connectionId, json, endpoint, generation
+        public static event Action<string, GameEndpoint, long> OnClientDisconnected;
 
         public string ConnectionId { get; private set; }
+        public long ConnectionGeneration { get; private set; }
 
         protected override void OnOpen()
         {
             ConnectionId = ID; // websocket-sharp provides a unique ID
-            MainThreadDispatcher.Instance.Enqueue(() => OnClientConnected?.Invoke(ConnectionId, this));
+            long generation = Interlocked.Increment(ref _nextConnectionGeneration);
+            ConnectionGeneration = generation;
+            MainThreadDispatcher.Instance.Enqueue(() => OnClientConnected?.Invoke(ConnectionId, this, generation));
         }
 
         protected override void OnMessage(MessageEventArgs e)
@@ -24,14 +30,16 @@ namespace MahjongGame.Core.Network.Transport
             if (e.IsText)
             {
                 string data = e.Data;
-                MainThreadDispatcher.Instance.Enqueue(() => OnMessageReceived?.Invoke(ConnectionId, data, this));
+                long generation = ConnectionGeneration;
+                MainThreadDispatcher.Instance.Enqueue(() => OnMessageReceived?.Invoke(ConnectionId, data, this, generation));
             }
         }
 
         protected override void OnClose(CloseEventArgs e)
         {
             Debug.LogWarning($"[GameEndpoint] Connection closed. ID: {ID}, Reason: {e.Reason}, Code: {e.Code}");
-            MainThreadDispatcher.Instance.Enqueue(() => OnClientDisconnected?.Invoke(ConnectionId));
+            long generation = ConnectionGeneration;
+            MainThreadDispatcher.Instance.Enqueue(() => OnClientDisconnected?.Invoke(ConnectionId, this, generation));
         }
 
         protected override void OnError(WebSocketSharp.ErrorEventArgs e)

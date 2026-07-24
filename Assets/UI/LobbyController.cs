@@ -560,6 +560,7 @@ namespace MahjongGame.UI
             service.SeatSnapshotChanged += HandleSeatSnapshotChanged;
             service.RoomError += HandleRoomError;
             service.RoomClosed += HandleRoomClosed;
+            service.ReconnectSnapshotApplied += HandleReconnectSnapshotApplied;
         }
 
         private void UnsubscribeRoomService()
@@ -570,6 +571,7 @@ namespace MahjongGame.UI
             service.SeatSnapshotChanged -= HandleSeatSnapshotChanged;
             service.RoomError -= HandleRoomError;
             service.RoomClosed -= HandleRoomClosed;
+            service.ReconnectSnapshotApplied -= HandleReconnectSnapshotApplied;
         }
 
         private void HandleRoomJoined(RoomJoinedMessage message)
@@ -582,12 +584,19 @@ namespace MahjongGame.UI
             var room = NetworkManager.Instance?.RoomService;
             if (room?.HasRoom == true)
             {
+                ShowRoom();
                 RefreshRoomView();
                 return;
             }
             if (room == null) return;
             int humanCount = System.Array.FindAll(seats, seat => seat != null && seat.isOccupied && !seat.isAi).Length;
             SetRoomStatus($"当前房间：{room.RoomId} ｜ 我的席位：{room.SeatIndex + 1} ｜ 真人玩家：{humanCount}/4");
+        }
+        private void HandleReconnectSnapshotApplied(RoomGameSnapshot snapshot)
+        {
+            if (snapshot == null || ClientRecoverySceneRoutingPolicy.GetTarget((RoomState)snapshot.roomState) != ClientRecoverySceneTarget.Lobby) return;
+            ShowRoom();
+            SetRoomStatus($"已恢复房间 {snapshot.roomId}，我的席位：{snapshot.requestingSeatIndex + 1}。");
         }
         private void HandleRoomClosed(string reason) => ShowHome(reason);
 

@@ -9,6 +9,7 @@ namespace MahjongGame.Core.Network.Transport
         public static WebSocketClient Instance { get; private set; }
 
         private WebSocket _ws;
+        private long _connectionGeneration;
 
         public event Action OnConnected;
         public event Action<string> OnMessageReceived;
@@ -45,36 +46,62 @@ namespace MahjongGame.Core.Network.Transport
                 return;
             }
 
-            _ws = new WebSocket(url);
-
-            _ws.OnOpen += (sender, e) =>
+            var previousSocket = _ws;
+            _ws = null;
+            if (previousSocket != null)
             {
-                Debug.Log($"[WebSocketClient] Connection opened successfully to {url}");
-                MainThreadDispatcher.Instance.Enqueue(() => OnConnected?.Invoke());
+                _connectionGeneration++;
+                previousSocket.CloseAsync();
+            }
+
+            var socket = new WebSocket(url);
+            long generation = ++_connectionGeneration;
+            _ws = socket;
+
+            socket.OnOpen += (sender, e) =>
+            {
+                MainThreadDispatcher.Instance.Enqueue(() =>
+                {
+                    if (!IsCurrentSocket(socket, generation)) return;
+                    Debug.Log($"[WebSocketClient] Connection opened successfully to {url}");
+                    OnConnected?.Invoke();
+                });
             };
 
-            _ws.OnMessage += (sender, e) =>
+            socket.OnMessage += (sender, e) =>
             {
                 if (e.IsText)
                 {
                     string data = e.Data;
-                    MainThreadDispatcher.Instance.Enqueue(() => OnMessageReceived?.Invoke(data));
+                    MainThreadDispatcher.Instance.Enqueue(() =>
+                    {
+                        if (!IsCurrentSocket(socket, generation)) return;
+                        OnMessageReceived?.Invoke(data);
+                    });
                 }
             };
 
-            _ws.OnClose += (sender, e) =>
+            socket.OnClose += (sender, e) =>
             {
-                Debug.LogWarning($"[WebSocketClient] Connection closed. Reason: {e.Reason}, Code: {e.Code}, WasClean: {e.WasClean}");
-                MainThreadDispatcher.Instance.Enqueue(() => OnDisconnected?.Invoke(e.Reason));
+                MainThreadDispatcher.Instance.Enqueue(() =>
+                {
+                    if (!IsCurrentSocket(socket, generation)) return;
+                    Debug.LogWarning($"[WebSocketClient] Connection closed. Reason: {e.Reason}, Code: {e.Code}, WasClean: {e.WasClean}");
+                    OnDisconnected?.Invoke(e.Reason);
+                });
             };
 
-            _ws.OnError += (sender, e) =>
+            socket.OnError += (sender, e) =>
             {
-                Debug.LogError($"[WebSocketClient] Socket error: {e.Message}, Exception: {e.Exception}");
+                MainThreadDispatcher.Instance.Enqueue(() =>
+                {
+                    if (!IsCurrentSocket(socket, generation)) return;
+                    Debug.LogError($"[WebSocketClient] Socket error: {e.Message}, Exception: {e.Exception}");
+                });
             };
 
             Debug.Log($"[WebSocketClient] Initiating connection request to {url}...");
-            _ws.ConnectAsync();
+            socket.ConnectAsync();
         }
 
         public void SendNetworkMessage(string msg)
@@ -91,11 +118,15 @@ namespace MahjongGame.Core.Network.Transport
 
         public void Disconnect()
         {
-            if (_ws != null)
-            {
-                _ws.CloseAsync();
-                _ws = null;
-            }
+            var socket = _ws;
+            _ws = null;
+            _connectionGeneration++;
+            socket?.CloseAsync();
+        }
+
+        private bool IsCurrentSocket(WebSocket socket, long generation)
+        {
+            return generation == _connectionGeneration && ReferenceEquals(_ws, socket);
         }
 
         private void OnDestroy()

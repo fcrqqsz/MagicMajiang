@@ -7,4 +7,11 @@
     <ui:VisualElement name="LoadingContainer" style="flex-grow: 1; align-items: center; justify-content: center; background-color: rgba(0, 0, 0, 0.8); position: absolute; left: 0; top: 0; right: 0; bottom: 0;">
         <ui:Label text="Loading..." style="color: rgb(255, 255, 255); font-size: 36px; -unity-font-style: bold;" />
     </ui:VisualElement>
+    <ui:VisualElement name="ReconnectContainer" style="flex-grow: 1; align-items: center; justify-content: center; background-color: rgba(0, 0, 0, 0.88); position: absolute; left: 0; top: 0; right: 0; bottom: 0;">
+        <ui:VisualElement style="min-width: 420px; max-width: 640px; padding-left: 32px; padding-right: 32px; padding-top: 28px; padding-bottom: 28px; align-items: center; background-color: rgb(31, 38, 52); border-top-left-radius: 12px; border-top-right-radius: 12px; border-bottom-left-radius: 12px; border-bottom-right-radius: 12px;">
+            <ui:Label text="Reconnecting" style="color: rgb(255, 255, 255); font-size: 28px; -unity-font-style: bold; margin-bottom: 14px;" />
+            <ui:Label name="ReconnectStatusLabel" text="Connecting to the room server..." style="color: rgb(220, 226, 235); font-size: 18px; white-space: normal; unity-text-align: middle-center; margin-bottom: 22px;" />
+            <ui:Button name="ReconnectLeaveButton" text="Leave Room" style="min-width: 160px; height: 38px;" />
+        </ui:VisualElement>
+    </ui:VisualElement>
 </ui:UXML>

@@ -3,8 +3,10 @@ using UnityEngine.UIElements;
 using UnityEngine.SceneManagement;
 using System.Collections.Generic;
 using System.Collections;
+using System.Linq;
 using MahjongGame.Core;
 using MahjongGame.Core.Network;
+using MahjongGame.Core.Network.Messages;
 using MahjongGame.Systems;
 
 namespace MahjongGame.UI
@@ -49,6 +51,41 @@ namespace MahjongGame.UI
             _session = session;
             _isShowingFinalResult = false;
             UpdateButtonText();
+        }
+
+        /// <summary>Stops stale result animation before a recovered projection chooses the visible result.</summary>
+        public void ResetForRecovery()
+        {
+            StopAllCoroutines();
+            CancelInvoke();
+            _isShowingFinalResult = false;
+            if (_overlay == null) return;
+            _overlay.RemoveFromClassList("overlay--visible");
+            _overlay.style.display = DisplayStyle.None;
+        }
+
+        public void ApplyRecoveryResult(RoomGameSnapshot snapshot)
+        {
+            ResetForRecovery();
+            var result = snapshot?.result;
+            if (result == null) return;
+
+            SetSessionInfo(GameManager.Instance?.Session);
+            if (result.isSessionOver)
+            {
+                if (_session != null) ShowSessionResult();
+                return;
+            }
+            if (result.isDrawGame)
+            {
+                ShowDraw(new List<string> { "流局" });
+                return;
+            }
+            if (result.winnerId < 0) return;
+
+            var details = result.fanDetails?.ToList() ?? new List<string>();
+            if (IsLocalSeat(result.winnerId)) ShowWin(result.fanCount, details, result.isSelfDraw);
+            else ShowLose(result.winnerId, result.fanCount, details);
         }
 
         private void UpdateButtonText()

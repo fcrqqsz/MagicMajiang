@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 using MahjongGame.Systems;
 using DG.Tweening;
@@ -62,6 +63,27 @@ namespace MahjongGame.Core
             if (myRiver != null) myRiver.Clear();
         }
 
+        /// <summary>Builds an authoritative river without replaying obsolete motion after recovery.</summary>
+        protected void RebuildRiver(IEnumerable<TileData> tiles)
+        {
+            if (myRiver == null || tilePrefab == null) return;
+            myRiver.Clear();
+            foreach (var data in tiles ?? Enumerable.Empty<TileData>())
+            {
+                if (data == null) continue;
+                GameObject go = Instantiate(tilePrefab);
+                TileVisual visual = go.GetComponent<TileVisual>();
+                if (visual == null)
+                {
+                    Destroy(go);
+                    continue;
+                }
+
+                visual.Initialize(data, this, GetTileSprite(data));
+                myRiver.AddTileToRiverImmediate(visual);
+            }
+        }
+
         /// <summary>
         /// 统一的生成副露视觉对象的方法
         /// </summary>
@@ -83,7 +105,8 @@ namespace MahjongGame.Core
                 TileVisual visual = go.GetComponent<TileVisual>();
                 
                 // 判断是否是扣着的牌（暗杠的第1和第4张）
-                bool isConcealed = (type == MeldType.Kan_Concealed && (i == 0 || i == 3));
+                // MCR declares concealed-kong tile faces to every seat; only the remaining hand stays private.
+                bool isConcealed = false;
 
                 if (!isConcealed)
                 {

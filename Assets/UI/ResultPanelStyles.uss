@@ -78,5 +78,5 @@
 
 /* 全局字体修正 */
 .unity-text-element {
-    -unity-font-definition: url('project://database/Assets/Font/MSYH.TTC');
+    -unity-font-definition: url('project://database/Assets/Font/MSYH_UITK.asset');
 }

@@ -20,7 +20,54 @@ namespace MahjongGame.Core.Network.Messages
     }
 
     [Serializable]
-    public class HelloMessage { public int protocolVersion = 1; public string nickname; }
+    public class HelloMessage
+    {
+        public int protocolVersion = NetworkProtocol.Version;
+        public string username;
+
+        // Kept while pre-v2 clients are still accepted by the room layer.
+        public string nickname;
+    }
+
+    [Serializable]
+    public class HelloAcceptedMessage
+    {
+        public int protocolVersion = NetworkProtocol.Version;
+        public string playerId;
+        public string displayName;
+    }
+
+    [Serializable]
+    public class ReconnectMessage
+    {
+        public string roomId;
+        public string streamId;
+        public int lastSeq;
+        public bool hasProjection;
+    }
+
+    [Serializable]
+    public class ResyncMessage
+    {
+        public string roomId;
+        public string streamId;
+        public int lastSeq;
+    }
+
+    [Serializable]
+    public class ReconnectStateMessage
+    {
+        public int baselineSeq;
+        public RoomGameSnapshot snapshot;
+        public NetworkMessageEnvelope[] missedMessages;
+    }
+
+    [Serializable]
+    public class ReconnectRejectedMessage
+    {
+        public string code;
+        public string message;
+    }
 
     [Serializable]
     public class DeckTileCountMessage
@@ -59,6 +106,9 @@ namespace MahjongGame.Core.Network.Messages
     public class HeartbeatMessage { }
 
     [Serializable]
+    public class HeartbeatAckMessage { }
+
+    [Serializable]
     public class ReadyMessage { public int phase; }
 
     [Serializable]
@@ -67,6 +117,9 @@ namespace MahjongGame.Core.Network.Messages
         public int seatIndex;
         public bool isOccupied;
         public bool isAi;
+        public bool isOnline;
+        public bool isTemporarilyAiControlled;
+        public string controlState;
         public bool isReady;
         public string displayName;
         public int totalAlienation;
@@ -76,6 +129,7 @@ namespace MahjongGame.Core.Network.Messages
     public class RoomJoinedMessage
     {
         public string roomId;
+        public string streamId;
         public int seatIndex;
         public int gameMode;
         public int roomState;
@@ -118,7 +172,11 @@ namespace MahjongGame.Core.Network.Messages
     public class RoomClosedMessage { public string roomId; public string reason; }
 
     [Serializable]
-    public class TurnWithoutDrawMessage { }
+    public class TurnWithoutDrawMessage
+    {
+        public long decisionId;
+        public SnapshotDecision decision;
+    }
 
     [Serializable]
     public class WallCountMessage { public int remainingCount; }
@@ -195,6 +253,8 @@ namespace MahjongGame.Core.Network.Messages
     [Serializable]
     public class TileDrawnMessage
     {
+        public long decisionId;
+        public SnapshotDecision decision;
         public SimpleTileData tile;
     }
 
@@ -207,6 +267,8 @@ namespace MahjongGame.Core.Network.Messages
     [Serializable]
     public class DiscardedMessage
     {
+        public long decisionId;
+        public SnapshotDecision decision;
         public int playerId;
         public SimpleTileData tile;
     }
@@ -247,6 +309,7 @@ namespace MahjongGame.Core.Network.Messages
     [Serializable]
     public class ClientActionMessage
     {
+        public long decisionId;
         public int actionType; // ClientActionType
         public SimpleTileData targetTile;
         public int[] chiCombinations;

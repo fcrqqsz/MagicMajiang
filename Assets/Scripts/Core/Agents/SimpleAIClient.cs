@@ -39,6 +39,15 @@ namespace MahjongGame.Core.Agents
             _server = server;
         }
 
+        /// <summary>Seeds a temporary controller from the server's authoritative state at a decision boundary.</summary>
+        public void RestoreAuthoritativeState(List<TileData> hand, List<Meld> melds, ScoringOptions scoringOptions)
+        {
+            _hand = (hand ?? new List<TileData>()).Select(CloneTile).ToList();
+            _melds = (melds ?? new List<Meld>()).Where(meld => meld != null).Select(CloneMeld).ToList();
+            OnTalentInfo(scoringOptions);
+            SortHand();
+        }
+
         public void OnGameStart(List<TileData> startingHand)
         {
             _hand = new List<TileData>(startingHand);
@@ -252,6 +261,23 @@ namespace MahjongGame.Core.Agents
                 if (a.TileSuit != b.TileSuit) return a.TileSuit.CompareTo(b.TileSuit);
                 return a.Value.CompareTo(b.Value);
             });
+        }
+
+        private static TileData CloneTile(TileData tile)
+        {
+            if (tile == null) return null;
+            return new TileData(tile.TileSuit, tile.Value, tile.OriginalOwnerID)
+            {
+                ID = tile.ID,
+                IsModified = tile.IsModified,
+                SpecialEffectID = tile.SpecialEffectID
+            };
+        }
+
+        private static Meld CloneMeld(Meld meld)
+        {
+            return new Meld(meld.Type, (meld.Tiles ?? new List<TileData>()).Select(CloneTile).Where(tile => tile != null).ToList(),
+                meld.SourcePlayerID, meld.IsConcealed);
         }
 
         private TileData ChooseTileToDiscard()

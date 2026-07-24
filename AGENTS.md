@@ -10,7 +10,7 @@
 - **Engine**: Unity 2022.3.61t9 (Tuanjie 1.6.8)
 - **UI**: UI Toolkit (UXML/USS) — **禁止使用 Canvas/UGUI**
 - **Animation**: DOTween (Pro)
-- **Text**: TextMeshPro (SDF)，字体使用 `-unity-font-definition` 引用 SDF 资产
+- **Text**: UI Toolkit 的 `-unity-font-definition` 统一引用由 `Assets/Font/MSYH.TTC` 生成的 TextCore `Assets/Font/MSYH_UITK.asset`；不得直接引用 TTC 或 TMP 的 `MSYH_SDF.asset`
 - **Language**: C#
 
 ## Architecture
@@ -124,7 +124,7 @@ Assets/UI/                   # UI Toolkit 面板
 - DoTween 动画绑定动态 GameObject 时，**必须**链式调用 `.SetLink(gameObject)` 防止销毁报错
 - `FanRuleRegistry` / `TalentRegistry` 均为纯 C# 单例，属性懒加载，避免空引用
 - 胡牌计算使用多路径拆解算法，遍历所有方案取番数最大值
-- UI Toolkit 字体引用 `-unity-font-definition` (SDF 资产)，不用原始字体文件
+- UI Toolkit 字体引用 `-unity-font-definition` 时，统一使用由 `Assets/Font/MSYH.TTC` 生成的 TextCore `Assets/Font/MSYH_UITK.asset`。不得直接引用 TTC；`MSYH_SDF.asset` 是 TMP_FontAsset，当前 UI Toolkit 不支持，禁止在 USS 中引用。共用 `PanelSettings.asset` 必须绑定 `SuperMajiangTextSettings.asset`
 - **超时取消**: 客户端 async 方法通过 `CancellationToken` 实现可取消（`ct.Register(() => tcs.TrySetCanceled())`），外层统一 `catch (OperationCanceledException)`
 - **服务端快照**: `ServerGameState` 镜像每个玩家手牌/副露，超时时从快照取真实牌自动出牌，避免虚构兜底牌
 - `HandController.ForceRemoveTile()`: 超时自动出牌专用，移除牌到牌河但不触发 `OnTileDiscardedEvent` 避免竞态

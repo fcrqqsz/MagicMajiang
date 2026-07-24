@@ -2,7 +2,7 @@
     flex-grow: 1;
     flex-direction: row;
     background-color: rgb(30, 30, 30);
-    -unity-font-definition: url('project://database/Assets/Font/MSYH.TTC');
+    -unity-font-definition: url('project://database/Assets/Font/MSYH_UITK.asset');
 }
 
 .sidebar {

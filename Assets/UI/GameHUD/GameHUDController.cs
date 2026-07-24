@@ -1,7 +1,9 @@
+using System;
 using UnityEngine;
 using UnityEngine.UIElements;
 using MahjongGame.Core;
 using MahjongGame.Core.Network;
+using MahjongGame.Core.Network.Messages;
 using MahjongGame.Systems;
 using DG.Tweening;
 
@@ -136,6 +138,32 @@ namespace MahjongGame.UI
             _isTimerRunning = false;
         }
 
+        /// <summary>Cancels transient HUD state before applying an authoritative recovery projection.</summary>
+        public void ResetForRecovery()
+        {
+            StopTimer();
+            _pulseTween?.Kill();
+            _pulseTween = null;
+            _timerText.text = string.Empty;
+            SetActivePlayer(-1);
+        }
+
+        public void ApplyRecoverySnapshot(RoomGameSnapshot snapshot, GameSession session)
+        {
+            if (snapshot == null || session == null) return;
+            ResetForRecovery();
+            UpdateRoundInfo(session);
+            UpdateRemainingCount(snapshot.remainingWallCount);
+
+            var decision = snapshot.activeDecision;
+            if (decision == null || decision.deadlineUnixMilliseconds <= 0) return;
+            long remainingMilliseconds = decision.deadlineUnixMilliseconds - DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            if (remainingMilliseconds <= 0) return;
+
+            int activeSeat = decision.actingSeatIndex >= 0 ? decision.actingSeatIndex : decision.discardingSeatIndex;
+            StartTimer(Mathf.Max(0.1f, remainingMilliseconds / 1000f), activeSeat);
+        }
+
         void Update()
         {
             // 实时更新牌山余量（仅在数量变化时更新，避免每帧 GC）
@@ -171,9 +199,8 @@ namespace MahjongGame.UI
             // 停止之前的脉冲动画
             _pulseTween?.Kill();
 
-            int previousSlot = _activePlayerIndex >= 0 ? PlayerIndexToUISlot(_activePlayerIndex) : -1;
             _activePlayerIndex = playerIndex;
-            int activeSlot = PlayerIndexToUISlot(playerIndex);
+            int activeSlot = playerIndex >= 0 ? PlayerIndexToUISlot(playerIndex) : -1;
 
             for (int slot = 0; slot < 4; slot++)
             {
@@ -250,7 +277,8 @@ namespace MahjongGame.UI
         private int PlayerIndexToUISlot(int playerIndex)
         {
             // 玩家0(本地)=底部(0), 1=右(1), 2=上(2), 3=左(3)
-            return playerIndex;
+            int localSeat = NetworkManager.Instance?.RoomService?.SeatIndex ?? 0;
+            return (playerIndex - localSeat + 4) % 4;
         }
 
         private bool IsNetworkRoom => NetworkManager.Instance?.RoomService?.HasRoom == true;

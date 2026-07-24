@@ -7,7 +7,6 @@
     align-items: center;
     justify-content: flex-start;
     padding-top: 200px;
-    picking-mode: Ignore;
 }
 
 .floating-panel-body {
@@ -100,5 +99,5 @@
 
 /* 字体修正 (确保显示中文) */
 .unity-text-element {
-    -unity-font-definition: url('project://database/Assets/Font/MSYH.TTC');
+    -unity-font-definition: url('project://database/Assets/Font/MSYH_UITK.asset');
 }

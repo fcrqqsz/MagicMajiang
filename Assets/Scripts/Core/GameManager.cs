@@ -49,6 +49,7 @@ namespace MahjongGame.Core
         private GameServer _currentServer;
         private List<IPlayerClient> _clients;
         private MahjongGame.Core.Network.RemoteServerProxy _currentClientProxy;
+        private int _lastRecoveryPresentationVersion = -1;
         private DeckConfig _hostConfig;
         // 事件委托缓存，用于正确取消订阅
         private System.Action<int, float> _onTurnStartedHandler;
@@ -279,10 +280,45 @@ namespace MahjongGame.Core
             var localPlayer = new LocalPlayerClient(localSeatIndex, null, playerHandController);
             _clients = new List<IPlayerClient> { localPlayer };
             _currentClientProxy?.Cleanup();
-            _currentClientProxy = new RemoteServerProxy(localPlayer);
+            _currentClientProxy = new RemoteServerProxy(localPlayer, NetworkManager.Instance.RoomService);
             localPlayer.SetServer(_currentClientProxy);
             GameHUDController.Instance?.UpdateRoundInfo(Session);
-            NetworkManager.Instance.RoomService.SendReady(ReadyPhase.GameSceneLoaded);
+            var recoveredSnapshot = NetworkManager.Instance.RoomService.GameState.Snapshot;
+            if (recoveredSnapshot != null)
+                ApplyNetworkRecoverySnapshot(recoveredSnapshot, NetworkManager.Instance.RoomService.RecoveryPresentationVersion);
+
+            if (NetworkManager.Instance.RoomService.RoomState == RoomState.LoadingGameScene)
+                NetworkManager.Instance.RoomService.SendReady(ReadyPhase.GameSceneLoaded);
+        }
+
+        /// <summary>Applies one E2 projection to the Unity presentation after all stale input has been cancelled.</summary>
+        public void ApplyNetworkRecoverySnapshot(RoomGameSnapshot snapshot, int recoveryPresentationVersion = 0)
+        {
+            if (snapshot == null) return;
+            if (recoveryPresentationVersion > 0 && recoveryPresentationVersion == _lastRecoveryPresentationVersion) return;
+            if (recoveryPresentationVersion > 0) _lastRecoveryPresentationVersion = recoveryPresentationVersion;
+
+            if (Session == null || Session.Mode != (GameMode)snapshot.gameMode)
+                Session = new GameSession((GameMode)snapshot.gameMode);
+
+            Session.Mode = (GameMode)snapshot.gameMode;
+            Session.PrevalentWind = (WindDirection)snapshot.prevalentWind;
+            Session.DealerIndex = Mathf.Clamp(snapshot.dealerIndex, 0, 3);
+            Session.TotalRoundsPlayed = Mathf.Clamp(snapshot.roundNumber - 1, 0, Session.GetTotalRounds());
+            Session.RoundInWind = Session.TotalRoundsPlayed % 4;
+            SessionScorePolicy.ApplyAuthoritativeScores(Session, snapshot.scores);
+            if (snapshot.result != null)
+            {
+                Session.LastWinnerId = snapshot.result.winnerId;
+                Session.LastFanCount = snapshot.result.fanCount;
+                Session.LastIsSelfDraw = snapshot.result.isSelfDraw;
+                Session.LastLoserId = snapshot.result.loserId;
+            }
+
+            var localPlayer = _clients?.OfType<LocalPlayerClient>().FirstOrDefault();
+            localPlayer?.RestoreFromSnapshot(snapshot);
+            GameHUDController.Instance?.ApplyRecoverySnapshot(snapshot, Session);
+            ResultPanelController.Instance?.ApplyRecoveryResult(snapshot);
         }
 
         private void OnRoundFinished()

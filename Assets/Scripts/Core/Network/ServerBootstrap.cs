@@ -10,13 +10,12 @@ namespace MahjongGame.Core.Network
     [DefaultExecutionOrder(-1000)]
     public sealed class ServerBootstrap : MonoBehaviour
     {
-        [SerializeField] private int defaultPort = 9876;
-        [SerializeField] private int defaultMaxRooms = 1;
-        [SerializeField] private bool defaultAiFill = true;
-
         public int Port { get; private set; }
         public int MaxRooms { get; private set; }
         public bool AiFill { get; private set; }
+        public int ReconnectWindowSeconds { get; private set; }
+        public int MessageCacheSize { get; private set; }
+        public int HeartbeatTimeoutSeconds { get; private set; }
         private ConnectionRegistry _connectionRegistry;
         private RoomManager _roomManager;
 
@@ -37,9 +36,10 @@ namespace MahjongGame.Core.Network
 
             service.Port = Port;
             service.StartServer();
-            _connectionRegistry = new ConnectionRegistry();
-            _roomManager = new RoomManager(MaxRooms, AiFill, _connectionRegistry);
-            Debug.Log($"[ServerBootstrap] ServerBootstrap started. Port={Port}, MaxRooms={MaxRooms}, AiFill={AiFill}");
+            _connectionRegistry = new ConnectionRegistry(HeartbeatTimeoutSeconds);
+            _roomManager = new RoomManager(MaxRooms, AiFill, _connectionRegistry, messageCacheSize: MessageCacheSize,
+                reconnectWindowSeconds: ReconnectWindowSeconds);
+            Debug.Log($"[ServerBootstrap] ServerBootstrap started. Port={Port}, MaxRooms={MaxRooms}, AiFill={AiFill}, ReconnectWindowSeconds={ReconnectWindowSeconds}, MessageCacheSize={MessageCacheSize}, HeartbeatTimeoutSeconds={HeartbeatTimeoutSeconds}");
         }
 
         private void OnDestroy()
@@ -56,54 +56,13 @@ namespace MahjongGame.Core.Network
 
         private void ParseCommandLineArguments(string[] args)
         {
-            Port = defaultPort;
-            MaxRooms = defaultMaxRooms;
-            AiFill = defaultAiFill;
-
-            for (int i = 0; i < args.Length; i++)
-            {
-                string argument = args[i];
-                if (TryReadValue(argument, "--port", args, ref i, out string portValue))
-                {
-                    if (int.TryParse(portValue, out int port) && port > 0 && port <= 65535)
-                        Port = port;
-                    else
-                        Debug.LogWarning($"[ServerBootstrap] Ignoring invalid --port value '{portValue}'.");
-                }
-                else if (TryReadValue(argument, "--maxRooms", args, ref i, out string maxRoomsValue))
-                {
-                    if (int.TryParse(maxRoomsValue, out int maxRooms) && maxRooms > 0)
-                        MaxRooms = maxRooms;
-                    else
-                        Debug.LogWarning($"[ServerBootstrap] Ignoring invalid --maxRooms value '{maxRoomsValue}'.");
-                }
-                else if (TryReadValue(argument, "--aiFill", args, ref i, out string aiFillValue))
-                {
-                    if (bool.TryParse(aiFillValue, out bool aiFill))
-                        AiFill = aiFill;
-                    else
-                        Debug.LogWarning($"[ServerBootstrap] Ignoring invalid --aiFill value '{aiFillValue}'.");
-                }
-            }
-        }
-
-        private static bool TryReadValue(string argument, string option, string[] args, ref int index, out string value)
-        {
-            string prefix = option + "=";
-            if (argument.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
-            {
-                value = argument.Substring(prefix.Length);
-                return true;
-            }
-
-            if (string.Equals(argument, option, StringComparison.OrdinalIgnoreCase) && index + 1 < args.Length)
-            {
-                value = args[++index];
-                return true;
-            }
-
-            value = null;
-            return false;
+            var options = ServerBootstrapOptions.Parse(args);
+            Port = options.Port;
+            MaxRooms = options.MaxRooms;
+            AiFill = options.AiFill;
+            ReconnectWindowSeconds = options.ReconnectWindowSeconds;
+            MessageCacheSize = options.MessageCacheSize;
+            HeartbeatTimeoutSeconds = options.HeartbeatTimeoutSeconds;
         }
     }
 }

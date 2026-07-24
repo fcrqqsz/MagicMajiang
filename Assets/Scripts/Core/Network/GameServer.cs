@@ -17,6 +17,7 @@ namespace MahjongGame.Core.Network
         public int ResponseTimeoutMs = 10000;
         public bool UseDebugHand = false;
         public List<TileData> DebugHand = new List<TileData>();
+        public NetworkDecisionTracker DecisionTracker;
     }
     public interface IServer
     {
@@ -30,6 +31,7 @@ namespace MahjongGame.Core.Network
     {
         private readonly IWallService _wallService;
         private GameServerOptions _options;
+        private NetworkDecisionTracker _decisionTracker;
 
         public GameServer(IWallService wallService) : this(wallService, null)
         {
@@ -49,6 +51,7 @@ namespace MahjongGame.Core.Network
 
             ActionTimeoutMs = _options.ActionTimeoutMs;
             ResponseTimeoutMs = _options.ResponseTimeoutMs;
+            _decisionTracker = _options.DecisionTracker ?? new NetworkDecisionTracker();
         }
 
         private List<IPlayerClient> _clients;
@@ -63,9 +66,11 @@ namespace MahjongGame.Core.Network
         // 当前局结果 (供 GameManager 读取)
         public int WinnerId { get; private set; } = -1;
         public int WinFan { get; private set; }
+        public List<string> WinFanDetails { get; private set; } = new List<string>();
         public bool WinIsSelfDraw { get; private set; }
         public int LoserId { get; private set; } = -1; // 放炮者
         public bool IsDrawGame { get; private set; }
+        public NetworkDecisionContext ActiveDecision => _decisionTracker?.Active;
 
         private TaskCompletionSource<ClientAction> _pendingActionTcs;
         private Dictionary<int, ClientAction> _pendingResponses = new Dictionary<int, ClientAction>();
@@ -74,6 +79,9 @@ namespace MahjongGame.Core.Network
         // 临时流转控制
         private bool _skipNextDraw = false;
         private TileData _lastDrawnTile; // 记录当前摸牌，供超时自动出牌使用
+
+        /// <summary>The draw that opened the current main decision, if this main turn drew a tile.</summary>
+        public TileData LastDrawnTile => _lastDrawnTile;
 
         // 服务端场面快照 + 取消令牌
         private ServerGameState _gameState;
@@ -85,6 +93,7 @@ namespace MahjongGame.Core.Network
 
         // 服务端验证用
         private Dictionary<int, ScoringOptions> _scoringOptions = new Dictionary<int, ScoringOptions>();
+        private readonly Dictionary<int, List<TileData>> _peekWallTiles = new Dictionary<int, List<TileData>>();
         private TileData _lastDiscardedTile; // 响应阶段：被打出的那张牌
 
         // 局结束事件，GameManager 监听此事件驱动多局循环
@@ -93,6 +102,29 @@ namespace MahjongGame.Core.Network
         // 回合切换事件 (供 HUD 倒计时使用)
         public event System.Action<int, float> OnTurnStarted;  // (playerIndex, timeoutSeconds)
         public event System.Action OnTurnEnded;
+
+        public int RemainingWallCount => _wallService?.RemainingCount ?? 0;
+
+        public List<TileData> GetHandSnapshot(int seatIndex) => _gameState?.GetHand(seatIndex) ?? new List<TileData>();
+        public List<Meld> GetMeldSnapshot(int seatIndex) => _gameState?.GetMelds(seatIndex) ?? new List<Meld>();
+        public List<TileData> GetRiverSnapshot(int seatIndex) => _gameState?.GetRiver(seatIndex) ?? new List<TileData>();
+
+        public ScoringOptions GetScoringOptionsSnapshot(int seatIndex)
+        {
+            if (!_scoringOptions.TryGetValue(seatIndex, out var options)) return new ScoringOptions();
+            return new ScoringOptions
+            {
+                BonusFan = options.BonusFan,
+                RelaxedPureStraight = options.RelaxedPureStraight
+            };
+        }
+
+        public List<TileData> GetPeekWallSnapshot(int seatIndex)
+        {
+            return _peekWallTiles.TryGetValue(seatIndex, out var tiles)
+                ? CloneTiles(tiles)
+                : new List<TileData>();
+        }
 
         public async void StartGame(List<IPlayerClient> clients, List<DeckConfig> configs,
             GameSession session = null, Dictionary<int, TalentSlotConfig> talentConfigs = null)
@@ -105,9 +137,11 @@ namespace MahjongGame.Core.Network
             if (_session != null) _session.ResetRoundState();
             WinnerId = -1;
             WinFan = 0;
+            WinFanDetails = new List<string>();
             WinIsSelfDraw = false;
             LoserId = -1;
             IsDrawGame = false;
+            _peekWallTiles.Clear();
 
             // 缓存牌库配置
             _deckConfigs = new Dictionary<int, DeckConfig>();
@@ -167,6 +201,7 @@ namespace MahjongGame.Core.Network
                 if (_talentManager.PlayerHasTalent(i, "peek"))
                 {
                     var topTiles = _wallService.PeekTopTiles(PeekTalent.PeekCount);
+                    _peekWallTiles[i] = CloneTiles(topTiles);
                     _clients[i].OnPeekWallTiles(topTiles);
                 }
             }
@@ -190,6 +225,7 @@ namespace MahjongGame.Core.Network
         public void StopGame()
         {
             _isGameActive = false;
+            CloseActiveDecision();
             
             // 取消当前的回合等待 CTS
             if (_turnCts != null && !_turnCts.IsCancellationRequested)
@@ -284,6 +320,9 @@ namespace MahjongGame.Core.Network
                 }
 
                 var currentPlayer = _clients[_currentPlayerIndex];
+                _pendingActionTcs = new TaskCompletionSource<ClientAction>();
+                var mainDecision = _decisionTracker.OpenMainTurn(_currentPlayerIndex, GetDeadlineUnixMilliseconds(ActionTimeoutMs));
+                SetRemoteDecision(currentPlayer, mainDecision);
 
                 // 1. 摸牌阶段
                 if (!_skipNextDraw)
@@ -327,8 +366,6 @@ namespace MahjongGame.Core.Network
                 _skipNextDraw = false;
 
                 // 2. 等待当前玩家出牌或自摸、暗杠（带超时）
-                _pendingActionTcs = new TaskCompletionSource<ClientAction>();
-
                 TileData _autoDiscardCache = null;
                 ClientAction action = await AwaitWithTimeout(
                     _pendingActionTcs,
@@ -343,6 +380,7 @@ namespace MahjongGame.Core.Network
                     fallbackFactory: () => ClientAction.Discard(_currentPlayerIndex, _autoDiscardCache)
                 );
                 _pendingActionTcs = null;
+                CloseDecision(mainDecision.DecisionId);
 
                 if (action.ActionType == ClientActionType.Hu)
                 {
@@ -362,28 +400,35 @@ namespace MahjongGame.Core.Network
                     TileData discardedTile = action.TargetTile;
                     discardedTile = _talentManager.ExecuteOnDiscard(action.PlayerId, discardedTile, _gameState, _session, _deckConfigs);
                     _gameState.RemoveTile(action.PlayerId, discardedTile);
+                    _gameState.RecordDiscard(action.PlayerId, discardedTile);
 
                     // 3. 广播他人打牌，并收集响应
                     _lastDiscardedTile = discardedTile; // 缓存，供响应阶段验证使用
                     _pendingResponses.Clear();
                     _responsesTcs = new TaskCompletionSource<bool>();
+                    var responseDecision = _decisionTracker.OpenResponse(
+                        _currentPlayerIndex,
+                        discardedTile,
+                        Enumerable.Range(0, _clients.Count).Where(index => index != _currentPlayerIndex),
+                        GetDeadlineUnixMilliseconds(ResponseTimeoutMs));
 
                     // 创建响应阶段 CTS，设置到所有非当前玩家
                     _turnCts?.Dispose();
                     _turnCts = new CancellationTokenSource();
                     for (int i = 0; i < _clients.Count; i++)
                     {
-                        if (i != _currentPlayerIndex)
-                            _clients[i].TurnCancellationToken = _turnCts.Token;
-                    }
-
-                    // 通知其他玩家
-                    for (int i = 0; i < _clients.Count; i++)
-                    {
+                        SetRemoteDecision(_clients[i], responseDecision);
                         if (i != _currentPlayerIndex)
                         {
-                            _clients[i].OnOtherPlayerDiscarded(_currentPlayerIndex, discardedTile);
+                            _clients[i].TurnCancellationToken = _turnCts.Token;
                         }
+                    }
+
+                    // The discard is a public table event, so write it to every seat stream,
+                    // including the discarder. The discarder client ignores the response prompt.
+                    for (int i = 0; i < _clients.Count; i++)
+                    {
+                        _clients[i].OnOtherPlayerDiscarded(_currentPlayerIndex, discardedTile);
                     }
 
                     // 等待所有其他3家回复（带超时）
@@ -406,6 +451,7 @@ namespace MahjongGame.Core.Network
                         fallbackFactory: () => true
                     );
                     _responsesTcs = null;
+                    CloseDecision(responseDecision.DecisionId);
 
                     // 4. 裁决响应优先级 (胡 > 碰/杠 > 吃)
                     ClientAction resolvedAction = ResolveResponses();
@@ -420,8 +466,15 @@ namespace MahjongGame.Core.Network
                         else
                         {
                             // 执行碰/杠/吃，更新快照
+                            if (!_gameState.TryClaimDiscard(_currentPlayerIndex, _lastDiscardedTile))
+                            {
+                                Debug.LogError($"[GameServer] Could not consume claimed discard from player {_currentPlayerIndex}.");
+                                continue;
+                            }
                             _gameState.ApplyMeld(resolvedAction.PlayerId, resolvedAction.ActionType,
-                                resolvedAction.TargetTile, resolvedAction.ChiCombinations);
+                                _lastDiscardedTile, resolvedAction.ChiCombinations);
+                            resolvedAction = new ClientAction(resolvedAction.PlayerId, resolvedAction.ActionType,
+                                _lastDiscardedTile, resolvedAction.ChiCombinations);
                             BroadcastAction(resolvedAction);
 
                             // 跳转回合
@@ -465,7 +518,29 @@ namespace MahjongGame.Core.Network
         /// </summary>
         public void SubmitAction(ClientAction action)
         {
+            SubmitActionInternal(action, false);
+        }
+
+        private void SubmitActionInternal(ClientAction action, bool isValidatedNetworkAction)
+        {
             if (!_isGameActive) return;
+            var activeDecision = _decisionTracker?.Active;
+            if (action == null || action.PlayerId < 0 || _clients == null || action.PlayerId >= _clients.Count) return;
+            bool requiresDirectAiAuthorization = _clients[action.PlayerId] is IDirectActionAuthorizer;
+            bool isDirectAiAuthorized = !requiresDirectAiAuthorization
+                || ((_clients[action.PlayerId] as IDirectActionAuthorizer)?.CanSubmitDirectAction(activeDecision) ?? false);
+            if (!NetworkActionSubmissionPolicy.CanProceedToActionHandling(
+                    isValidatedNetworkAction, requiresDirectAiAuthorization, isDirectAiAuthorized))
+            {
+                Debug.LogWarning($"[GameServer] Rejected direct action from seat {action.PlayerId} because AI control is not latched for the active decision.");
+                return;
+            }
+            if (!isValidatedNetworkAction && !NetworkActionSubmissionPolicy.CanProcessDirectAction(
+                    isDirectAiAuthorized, RecordDirectActionSubmission(action)))
+            {
+                Debug.LogWarning($"[GameServer] Rejected direct action from seat {action.PlayerId} because the active decision did not admit it.");
+                return;
+            }
 
             // 如果当前在等待主玩家出牌
             if (_pendingActionTcs != null && action.PlayerId == _currentPlayerIndex)
@@ -501,6 +576,29 @@ namespace MahjongGame.Core.Network
                     _responsesTcs.TrySetResult(true);
                 }
             }
+        }
+
+        /// <summary>
+        /// Validates a network action against the currently published decision before
+        /// passing it to the existing authoritative action validation path.
+        /// </summary>
+        public bool SubmitNetworkAction(int boundSeatIndex, long decisionId, ClientAction action, out string errorCode)
+        {
+            errorCode = null;
+            if (action == null || action.PlayerId != boundSeatIndex)
+            {
+                errorCode = NetworkErrorCodes.WrongController;
+                return false;
+            }
+
+            if (_decisionTracker == null || !_decisionTracker.TrySubmitNetworkAction(
+                    decisionId, boundSeatIndex, action.ActionType, out errorCode))
+            {
+                return false;
+            }
+
+            SubmitActionInternal(action, true);
+            return true;
         }
 
         private void CompleteHuResponseCollection()
@@ -741,9 +839,58 @@ namespace MahjongGame.Core.Network
             }
         }
 
+        private static long GetDeadlineUnixMilliseconds(int timeoutMilliseconds)
+        {
+            return DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() + Math.Max(0, timeoutMilliseconds);
+        }
+
+        private static void SetRemoteDecision(IPlayerClient client, NetworkDecisionContext decision)
+        {
+            if (client is INetworkDecisionClient remoteClient)
+            {
+                remoteClient.SetActiveDecision(decision);
+            }
+        }
+
+        private void CloseDecision(long decisionId)
+        {
+            _decisionTracker?.Close(decisionId);
+            if (_clients == null) return;
+            foreach (var client in _clients.OfType<INetworkDecisionClient>()) client.CloseDecision(decisionId);
+        }
+
+        private void CloseActiveDecision()
+        {
+            var activeDecision = _decisionTracker?.Active;
+            if (activeDecision != null)
+            {
+                CloseDecision(activeDecision.DecisionId);
+            }
+        }
+
+        private bool RecordDirectActionSubmission(ClientAction action)
+        {
+            if (action == null) return false;
+            var activeDecision = _decisionTracker?.Active;
+            if (activeDecision == null) return false;
+
+            return _decisionTracker.TrySubmitNetworkAction(activeDecision.DecisionId, action.PlayerId, action.ActionType, out _);
+        }
+
+        private static List<TileData> CloneTiles(IEnumerable<TileData> tiles)
+        {
+            return (tiles ?? Enumerable.Empty<TileData>()).Select(tile => new TileData(tile.TileSuit, tile.Value, tile.OriginalOwnerID)
+            {
+                ID = tile.ID,
+                IsModified = tile.IsModified,
+                SpecialEffectID = tile.SpecialEffectID
+            }).ToList();
+        }
+
         private void HandlePlayerWin(ClientAction winAction, bool isSelfDraw, int loserId = -1)
         {
             _isGameActive = false;
+            CloseActiveDecision();
             OnTurnEnded?.Invoke();
 
             int pid = winAction.PlayerId;
@@ -782,6 +929,7 @@ namespace MahjongGame.Core.Network
             // 使用服务端权威计算结果
             WinnerId = pid;
             WinFan = serverFan;
+            WinFanDetails = serverDetails?.ToList() ?? new List<string>();
             WinIsSelfDraw = isSelfDraw;
             LoserId = loserId;
 
@@ -802,6 +950,7 @@ namespace MahjongGame.Core.Network
         private void HandleDrawGame()
         {
             _isGameActive = false;
+            CloseActiveDecision();
             OnTurnEnded?.Invoke();
             IsDrawGame = true;
 

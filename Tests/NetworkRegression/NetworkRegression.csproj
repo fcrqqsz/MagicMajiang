@@ -11,6 +11,28 @@
     <Compile Include="UnityEngineStubs.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\TurnActionPolicy.cs" Link="TurnActionPolicy.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\ConnectionLivenessPolicy.cs" Link="ConnectionLivenessPolicy.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\Network\ServerBootstrapOptions.cs" Link="ServerBootstrapOptions.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\Network\SeatMessageStream.cs" Link="SeatMessageStream.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\Network\RoomLifecyclePolicy.cs" Link="RoomLifecyclePolicy.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\Network\RoomMembershipPolicy.cs" Link="RoomMembershipPolicy.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\Network\SeatDecisionControlLatch.cs" Link="SeatDecisionControlLatch.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\Network\ClientReconnectTicket.cs" Link="ClientReconnectTicket.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\Network\ClientReconnectRecoveryPolicy.cs" Link="ClientReconnectRecoveryPolicy.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\Network\ClientReconnectRetryPolicy.cs" Link="ClientReconnectRetryPolicy.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\Network\ClientRecoveryInputPolicy.cs" Link="ClientRecoveryInputPolicy.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\Network\ClientRecoverySceneRoutingPolicy.cs" Link="ClientRecoverySceneRoutingPolicy.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\Network\ConnectionRegistry.cs" Link="ConnectionRegistry.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\Network\ClientHelloProtocol.cs" Link="ClientHelloProtocol.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\Network\ClientHelloHandshakePolicy.cs" Link="ClientHelloHandshakePolicy.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\Network\RoomErrorPresentationPolicy.cs" Link="RoomErrorPresentationPolicy.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\Network\NetworkMessageLimits.cs" Link="NetworkMessageLimits.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\Network\NetworkDecisionTracker.cs" Link="NetworkDecisionTracker.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\Network\NetworkDecisionClient.cs" Link="NetworkDecisionClient.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\Network\NetworkActionSubmissionPolicy.cs" Link="NetworkActionSubmissionPolicy.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\Network\RoomGameSnapshot.cs" Link="RoomGameSnapshot.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\Network\ClientGameState.cs" Link="ClientGameState.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\Network\ClientProjectionLineage.cs" Link="ClientProjectionLineage.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\Network\RemotePlayerClient.cs" Link="RemotePlayerClient.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\ClientRoomState.cs" Link="ClientRoomState.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\RoomState.cs" Link="RoomState.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\RoomDeparturePolicy.cs" Link="RoomDeparturePolicy.cs" />
@@ -20,15 +42,23 @@
     <Compile Include="..\..\Assets\Scripts\Systems\LoginUsernamePolicy.cs" Link="LoginUsernamePolicy.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\Protocol.cs" Link="Protocol.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\Messages\NetworkMessage.cs" Link="NetworkMessage.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\Network\Messages\MessageSerializer.cs" Link="MessageSerializer.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\Network\IAccountAuthenticator.cs" Link="IAccountAuthenticator.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\Network\DevelopmentAccountAuthenticator.cs" Link="DevelopmentAccountAuthenticator.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\Network\UsernameIdentityPolicy.cs" Link="UsernameIdentityPolicy.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\PlayerLoadoutCodec.cs" Link="PlayerLoadoutCodec.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\SessionTalentPolicy.cs" Link="SessionTalentPolicy.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\SessionScorePolicy.cs" Link="SessionScorePolicy.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\GameSession.cs" Link="GameSession.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\Network\ServerGameState.cs" Link="ServerGameState.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Interfaces\IWallService.cs" Link="IWallService.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\Agents\IPlayerClient.cs" Link="IPlayerClient.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Services\WallService.cs" Link="WallService.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\TileData.cs" Link="TileData.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\Meld.cs" Link="Meld.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\MahjongEnums.cs" Link="MahjongEnums.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\DeckConfig.cs" Link="DeckConfig.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\ScoringOptions.cs" Link="ScoringOptions.cs" />
     <Compile Include="..\..\Assets\Scripts\Talent\TalentSlotConfig.cs" Link="TalentSlotConfig.cs" />
     <Compile Include="..\..\Assets\Scripts\Talent\TalentRule.cs" Link="TalentRule.cs" />
     <Compile Include="..\..\Assets\Scripts\Talent\TalentRuleAttribute.cs" Link="TalentRuleAttribute.cs" />

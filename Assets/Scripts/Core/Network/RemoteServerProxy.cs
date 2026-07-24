@@ -10,16 +10,15 @@ namespace MahjongGame.Core.Network
     public class RemoteServerProxy : IServer
     {
         private Agents.IPlayerClient _localClient;
+        private readonly ClientRoomService _roomService;
+        private long _activeDecisionId;
 
-        public RemoteServerProxy(Agents.IPlayerClient localClient)
+        public RemoteServerProxy(Agents.IPlayerClient localClient, ClientRoomService roomService)
         {
             _localClient = localClient;
-            
-            // Register message callback
-            if (WebSocketClient.Instance != null)
-            {
-                WebSocketClient.Instance.OnMessageReceived += HandleMessage;
-            }
+            _roomService = roomService ?? throw new System.ArgumentNullException(nameof(roomService));
+            _roomService.AcceptedSequenceEnvelope += HandleAcceptedSequenceEnvelope;
+            _roomService.ReconnectSnapshotApplied += HandleReconnectSnapshot;
         }
 
         public void SetLocalClient(Agents.IPlayerClient localClient)
@@ -29,16 +28,21 @@ namespace MahjongGame.Core.Network
 
         public void Cleanup()
         {
-            if (WebSocketClient.Instance != null)
-            {
-                WebSocketClient.Instance.OnMessageReceived -= HandleMessage;
-            }
+            _roomService.AcceptedSequenceEnvelope -= HandleAcceptedSequenceEnvelope;
+            _roomService.ReconnectSnapshotApplied -= HandleReconnectSnapshot;
         }
 
         public void SubmitAction(ClientAction action)
         {
+            if (_roomService.IsResyncRequired || !_roomService.CanSubmitCommands)
+            {
+                Debug.LogWarning("[RemoteServerProxy] Ignoring action while client recovery is required.");
+                return;
+            }
+
             var msg = new ClientActionMessage
             {
+                decisionId = _activeDecisionId,
                 actionType = (int)action.ActionType,
                 targetTile = action.TargetTile != null ? new SimpleTileData(action.TargetTile) : null,
                 chiCombinations = action.ChiCombinations,
@@ -47,12 +51,11 @@ namespace MahjongGame.Core.Network
             };
 
             string json = MessageSerializer.Serialize("Action", 0, msg);
-            WebSocketClient.Instance.SendNetworkMessage(json);
+            WebSocketClient.Instance?.SendNetworkMessage(json);
         }
 
-        private void HandleMessage(string json)
+        private void HandleAcceptedSequenceEnvelope(NetworkMessageEnvelope envelope)
         {
-            var envelope = MessageSerializer.DeserializeEnvelope(json);
             if (envelope == null) return;
 
             switch (envelope.type)
@@ -60,7 +63,7 @@ namespace MahjongGame.Core.Network
                 case "RoundStart":
                     var roundMsg = MessageSerializer.DeserializePayload<RoundStartMessage>(envelope.data);
                     if (roundMsg == null) break;
-                    SyncSessionScores(roundMsg.scores);
+                    SyncSessionAtRoundStart(roundMsg);
                     _localClient.OnRoundStart(roundMsg.roundNumber, (WindDirection)roundMsg.prevalentWind, (WindDirection)roundMsg.seatWind, roundMsg.dealerIndex);
                     break;
                 case "TalentInfo":
@@ -78,6 +81,7 @@ namespace MahjongGame.Core.Network
                     break;
                 case "TileDrawn":
                     var drawnMsg = MessageSerializer.DeserializePayload<TileDrawnMessage>(envelope.data);
+                    _activeDecisionId = drawnMsg?.decisionId ?? 0;
                     _localClient.OnTileDrawn(drawnMsg.tile?.ToTileData());
                     break;
                 case "PlayerDrew":
@@ -85,6 +89,8 @@ namespace MahjongGame.Core.Network
                     _localClient.OnPlayerDrawn(pDrewMsg.playerId);
                     break;
                 case "TurnWithoutDraw":
+                    var turnWithoutDrawMsg = MessageSerializer.DeserializePayload<TurnWithoutDrawMessage>(envelope.data);
+                    _activeDecisionId = turnWithoutDrawMsg?.decisionId ?? 0;
                     _localClient.OnTurnWithoutDraw();
                     break;
                 case "WallCount":
@@ -93,30 +99,36 @@ namespace MahjongGame.Core.Network
                     break;
                 case "Discarded":
                     var discMsg = MessageSerializer.DeserializePayload<DiscardedMessage>(envelope.data);
+                    _activeDecisionId = discMsg?.decisionId ?? 0;
                     _localClient.OnOtherPlayerDiscarded(discMsg.playerId, discMsg.tile?.ToTileData());
                     break;
                 case "ActionResolved":
                     var resolvedMsg = MessageSerializer.DeserializePayload<ActionResolvedMessage>(envelope.data);
+                    _activeDecisionId = 0;
                     _localClient.OnActionResolved(resolvedMsg.playerId, (ClientActionType)resolvedMsg.actionType, resolvedMsg.tile?.ToTileData(), resolvedMsg.chiCombinations);
                     break;
                 case "Timeout":
                     var timeoutMsg = MessageSerializer.DeserializePayload<TimeoutMessage>(envelope.data);
+                    _activeDecisionId = 0;
                     _localClient.OnTimeout(timeoutMsg.tile?.ToTileData());
                     break;
                 case "PlayerWin":
                     var winMsg = MessageSerializer.DeserializePayload<PlayerWinMessage>(envelope.data);
                     if (winMsg == null) break;
+                    _activeDecisionId = 0;
                     SyncSessionAfterRound(winMsg.scores, winMsg.completedRounds);
                     _localClient.OnPlayerWin(winMsg.winnerId, winMsg.totalFan, winMsg.fanDetails?.ToList(), winMsg.isSelfDraw);
                     break;
                 case "DrawGame":
                     var drawMsg = MessageSerializer.DeserializePayload<DrawGameMessage>(envelope.data);
                     if (drawMsg == null) break;
+                    _activeDecisionId = 0;
                     SyncSessionAfterRound(drawMsg.scores, drawMsg.completedRounds);
                     _localClient.OnDrawGame();
                     break;
                 case "SessionEnd":
                     var endMsg = MessageSerializer.DeserializePayload<SessionEndMessage>(envelope.data);
+                    _activeDecisionId = 0;
                     _localClient.OnSessionEnd(endMsg.scores);
                     break;
                 // Room-control messages are consumed by ClientRoomService on the same WebSocket.
@@ -134,11 +146,17 @@ namespace MahjongGame.Core.Network
             }
         }
 
+        private void HandleReconnectSnapshot(RoomGameSnapshot snapshot)
+        {
+            _activeDecisionId = snapshot?.activeDecision?.decisionId ?? 0;
+        }
+
         private void SyncSessionAfterRound(int[] scores, int completedRounds)
         {
             var session = GameManager.Instance?.Session;
             if (session == null) return;
 
+            session.Mode = _roomService.GameMode;
             SyncSessionScores(scores);
 
             int targetCompletedRounds = Mathf.Clamp(completedRounds, 0, session.GetTotalRounds());
@@ -148,6 +166,20 @@ namespace MahjongGame.Core.Network
             }
 
             ResultPanelController.Instance?.SetSessionInfo(session);
+        }
+
+        private void SyncSessionAtRoundStart(RoundStartMessage roundStart)
+        {
+            var session = GameManager.Instance?.Session;
+            if (session == null || roundStart == null) return;
+
+            session.Mode = _roomService.GameMode;
+            session.PrevalentWind = (WindDirection)roundStart.prevalentWind;
+            session.DealerIndex = Mathf.Clamp(roundStart.dealerIndex, 0, 3);
+            session.TotalRoundsPlayed = Mathf.Clamp(roundStart.roundNumber - 1, 0, session.GetTotalRounds());
+            session.RoundInWind = session.TotalRoundsPlayed % 4;
+            SyncSessionScores(roundStart.scores);
+            GameHUDController.Instance?.UpdateRoundInfo(session);
         }
 
         private void SyncSessionScores(int[] scores)

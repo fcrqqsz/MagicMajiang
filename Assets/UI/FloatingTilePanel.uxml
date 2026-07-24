@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" editor-extension-mode="False">
     <ui:Style src="FloatingTilePanelStyles.uss" />
-    <ui:VisualElement style="flex-grow: 1; width: 100%; height: 100%; picking-mode: Ignore;">
+    <ui:VisualElement style="flex-grow: 1; width: 100%; height: 100%;">
         <ui:VisualElement name="FloatingTilePanelRoot" class="floating-panel-root" picking-mode="Ignore">
             <ui:VisualElement name="FloatingPanelBody" class="floating-panel-body">
                 <ui:Label name="FloatingPanelTitle" text="窥探" class="floating-panel-title" />

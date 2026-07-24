@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using UnityEngine;
 using MahjongGame.Core.Network;
+using MahjongGame.Core.Network.Messages;
 using MahjongGame.Core;
 using MahjongGame.UI;
 
@@ -31,6 +32,7 @@ namespace MahjongGame.Core.Agents
 
         // 天赋加成
         private ScoringOptions _scoringOptions;
+        private CancellationTokenSource _presentationCancellation = new CancellationTokenSource();
 
         public LocalPlayerClient(int playerId, IServer server, HandController handController)
         {
@@ -42,6 +44,113 @@ namespace MahjongGame.Core.Agents
         public void SetServer(IServer server)
         {
             _server = server;
+        }
+
+        /// <summary>Cancels every UI wait owned by the old projection before a recovered table is rebuilt.</summary>
+        public void CancelPendingInput()
+        {
+            var cancellation = _presentationCancellation;
+            _presentationCancellation = new CancellationTokenSource();
+            cancellation.Cancel();
+            cancellation.Dispose();
+            _isWaitingForUI = false;
+            _lastDiscarderId = -1;
+            ActionPanelController.Instance?.Hide();
+            FloatingTilePanelController.Instance?.Hide();
+            UI.WaitHintController.Instance?.HideHint();
+            _handController?.SetInteractable(false);
+            GameHUDController.Instance?.StopTimer();
+        }
+
+        private CancellationTokenSource CreateOperationCancellation()
+        {
+            return CancellationTokenSource.CreateLinkedTokenSource(TurnCancellationToken, _presentationCancellation.Token);
+        }
+
+        /// <summary>Rebuilds the client-only table presentation from one authoritative per-seat snapshot.</summary>
+        public void RestoreFromSnapshot(RoomGameSnapshot snapshot)
+        {
+            if (snapshot == null || snapshot.requestingSeatIndex != PlayerId || _handController == null) return;
+
+            CancelPendingInput();
+            _roundWind = (WindDirection)snapshot.prevalentWind;
+            _seatWind = (WindDirection)snapshot.requestingSeatWind;
+            _handController.RoundWind = _roundWind;
+            _handController.SeatWind = _seatWind;
+            _scoringOptions = new ScoringOptions
+            {
+                BonusFan = snapshot.privateSeat?.scoringOptions?.bonusFan ?? 0,
+                RelaxedPureStraight = snapshot.privateSeat?.scoringOptions?.relaxedPureStraight ?? false
+            };
+            _handController.ScoringOptions = _scoringOptions;
+
+            _handController.RebuildFromSnapshot(
+                ToTiles(snapshot.privateSeat?.concealedHand),
+                ToMelds(snapshot.privateSeat?.melds),
+                ToTiles(GetRiverTiles(snapshot.rivers, PlayerId)));
+
+            foreach (var seat in snapshot.seats ?? Array.Empty<RoomSnapshotSeat>())
+            {
+                if (seat == null || seat.seatIndex == PlayerId) continue;
+                var view = GameManager.Instance?.GetOpponentView(seat.seatIndex);
+                view?.RebuildFromSnapshot(
+                    seat.concealedTileCount,
+                    ToMelds(seat.publicMelds),
+                    ToTiles(GetRiverTiles(snapshot.rivers, seat.seatIndex)));
+            }
+
+            var localSeat = (snapshot.seats ?? Array.Empty<RoomSnapshotSeat>()).FirstOrDefault(seat => seat?.seatIndex == PlayerId);
+            var activeDecision = snapshot.activeDecision;
+            long now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            if (activeDecision != null
+                && (NetworkDecisionPhase)activeDecision.phase == NetworkDecisionPhase.Response
+                && activeDecision.discardingSeatIndex >= 0
+                && activeDecision.discardingSeatIndex < 4
+                && activeDecision.targetTile != null)
+            {
+                // Keep the rebuilt river aligned even when this recovering seat is not
+                // eligible to respond but another player claims the current discard.
+                _lastDiscarderId = activeDecision.discardingSeatIndex;
+            }
+            if (activeDecision == null || !ClientRecoveryInputPolicy.CanRestoreInput(activeDecision, localSeat, PlayerId, now)) return;
+
+            float remainingSeconds = Mathf.Max(0.1f, (activeDecision.deadlineUnixMilliseconds - now) / 1000f);
+            if ((NetworkDecisionPhase)activeDecision.phase == NetworkDecisionPhase.MainTurn)
+            {
+                ResumeMainTurnDecision(snapshot.mainTurnDrawnTile?.ToTileData(), remainingSeconds);
+                return;
+            }
+
+            var targetTile = activeDecision.targetTile?.ToTileData();
+            if (targetTile != null)
+                HandleOtherPlayerDiscarded(activeDecision.discardingSeatIndex, targetTile, false, remainingSeconds);
+        }
+
+        private static List<TileData> ToTiles(IEnumerable<SimpleTileData> tiles)
+        {
+            return (tiles ?? Enumerable.Empty<SimpleTileData>())
+                .Select(tile => tile?.ToTileData())
+                .Where(tile => tile != null)
+                .ToList();
+        }
+
+        private static List<Meld> ToMelds(IEnumerable<SnapshotMeld> melds)
+        {
+            var result = new List<Meld>();
+            foreach (var meld in melds ?? Enumerable.Empty<SnapshotMeld>())
+            {
+                var tiles = ToTiles(meld?.tiles);
+                if (tiles.Count == 0) continue;
+                result.Add(new Meld((MeldType)meld.meldType, tiles, meld.sourceSeatIndex, meld.isConcealed));
+            }
+            return result;
+        }
+
+        private static SimpleTileData[] GetRiverTiles(SeatRiverSnapshot[] rivers, int index)
+        {
+            return rivers != null && index >= 0 && index < rivers.Length
+                ? rivers[index]?.tiles ?? Array.Empty<SimpleTileData>()
+                : Array.Empty<SimpleTileData>();
         }
 
         public void OnGameStart(List<TileData> startingHand)
@@ -71,17 +180,44 @@ namespace MahjongGame.Core.Agents
 
         public async void OnTileDrawn(TileData drawnTile)
         {
-            var ct = TurnCancellationToken;
+            using var operationCancellation = CreateOperationCancellation();
+            var ct = operationCancellation.Token;
             try
             {
                 // 表现层：摸牌动画
                 _handController.DrawCardData(drawnTile);
                 await Task.Delay(300, ct);
+                await BeginMainTurnDecision(drawnTile, null, ct);
+            }
+            catch (OperationCanceledException)
+            {
+                // 超时取消 — OnTimeout 已处理 UI 清理和手牌同步
+                _handController.SetInteractable(false);
+                GameHUDController.Instance?.StopTimer();
+            }
+        }
 
+        private async void ResumeMainTurnDecision(TileData drawnTile, float? recoveryTimerSeconds)
+        {
+            using var operationCancellation = CreateOperationCancellation();
+            try
+            {
+                await BeginMainTurnDecision(drawnTile, recoveryTimerSeconds, operationCancellation.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                _handController.SetInteractable(false);
+                GameHUDController.Instance?.StopTimer();
+            }
+        }
+
+        /// <summary>Offers self-actions when this main turn drew a tile, then waits for the authoritative discard.</summary>
+        private async Task BeginMainTurnDecision(TileData drawnTile, float? recoveryTimerSeconds, CancellationToken ct)
+        {
+            if (drawnTile != null)
+            {
                 var handData = _handController.GetHandData();
                 var melds = _handController.Melds;
-
-                // 1. 检查自摸、暗杠
                 var actions = ActionValidator.CheckSelfActions(handData, melds, drawnTile, _scoringOptions, _roundWind, _seatWind);
                 if (actions.HasAction)
                 {
@@ -130,55 +266,34 @@ namespace MahjongGame.Core.Agents
 
                     if (actionTaken) return;
                 }
-
-                // 2. 等待玩家打出牌
-                _handController.SetInteractable(true);
-                if (GameManager.Instance != null)
-                {
-                    GameHUDController.Instance?.StartTimer(GameManager.Instance.actionTimeout, PlayerId);
-                }
-
-                var tcs = new TaskCompletionSource<TileData>();
-                Action<TileData> onDiscard = (tile) => tcs.TrySetResult(tile);
-                using (ct.Register(() => tcs.TrySetCanceled()))
-                {
-                    _handController.OnTileDiscardedEvent += onDiscard;
-                    try
-                    {
-                        var discardedTile = await tcs.Task;
-                        _handController.OnTileDiscardedEvent -= onDiscard;
-                        _handController.SetInteractable(false);
-                        GameHUDController.Instance?.StopTimer();
-                        _server.SubmitAction(ClientAction.Discard(PlayerId, discardedTile));
-                    }
-                    catch (TaskCanceledException)
-                    {
-                        _handController.OnTileDiscardedEvent -= onDiscard;
-                        GameHUDController.Instance?.StopTimer();
-                        throw;
-                    }
-                }
             }
-            catch (OperationCanceledException)
-            {
-                // 超时取消 — OnTimeout 已处理 UI 清理和手牌同步
-                _handController.SetInteractable(false);
-                GameHUDController.Instance?.StopTimer();
-            }
+
+            await WaitForDiscardAfterAction(recoveryTimerSeconds, ct);
         }
 
-        public async void OnOtherPlayerDiscarded(int discarderId, TileData discardedTile)
+        public void OnOtherPlayerDiscarded(int discarderId, TileData discardedTile)
+        {
+            HandleOtherPlayerDiscarded(discarderId, discardedTile, true, null);
+        }
+
+        private async void HandleOtherPlayerDiscarded(int discarderId, TileData discardedTile, bool applyDiscardVisual, float? recoveryTimerSeconds)
         {
             if (!Network.ResponseActionPolicy.CanRespondToDiscard(PlayerId, discarderId)) return;
 
-            var ct = TurnCancellationToken;
+            using var operationCancellation = CreateOperationCancellation();
+            var ct = operationCancellation.Token;
             try
             {
+                // A recovery snapshot already rebuilt this river, but the same discard still
+                // must be removed if a later Chi/Pon/MingGan claims it.
                 _lastDiscarderId = discarderId;
 
                 // 表现层：其他玩家打出牌，渲染到其牌河
-                var view = GameManager.Instance.GetOpponentView(discarderId);
-                if (view != null) view.DiscardTile(discardedTile);
+                if (applyDiscardVisual)
+                {
+                    var view = GameManager.Instance.GetOpponentView(discarderId);
+                    if (view != null) view.DiscardTile(discardedTile);
+                }
 
                 var handData = _handController.GetHandData();
                 var melds = _handController.Melds;
@@ -190,7 +305,11 @@ namespace MahjongGame.Core.Agents
                 {
                     _isWaitingForUI = true;
                     bool actionTaken = false;
-                    if (GameManager.Instance != null)
+                    if (recoveryTimerSeconds.HasValue)
+                    {
+                        GameHUDController.Instance?.StartTimer(recoveryTimerSeconds.Value, PlayerId);
+                    }
+                    else if (GameManager.Instance != null)
                     {
                         GameHUDController.Instance?.StartTimer(GameManager.Instance.responseTimeout, PlayerId);
                     }
@@ -320,45 +439,40 @@ namespace MahjongGame.Core.Agents
 
         public void OnTurnWithoutDraw()
         {
-            _handController.SetInteractable(true);
-            WaitForDiscardAfterAction();
+            ResumeMainTurnDecision(null, null);
         }
 
-        private async void WaitForDiscardAfterAction()
+        private async Task WaitForDiscardAfterAction(float? recoveryTimerSeconds, CancellationToken ct)
         {
-            var ct = TurnCancellationToken;
-            try
+            _handController.SetInteractable(true);
+            if (recoveryTimerSeconds.HasValue)
             {
-                if (GameManager.Instance != null)
-                {
-                    GameHUDController.Instance?.StartTimer(GameManager.Instance.actionTimeout, PlayerId);
-                }
-
-                var tcs = new TaskCompletionSource<TileData>();
-                Action<TileData> onDiscard = (tile) => tcs.TrySetResult(tile);
-                using (ct.Register(() => tcs.TrySetCanceled()))
-                {
-                    _handController.OnTileDiscardedEvent += onDiscard;
-                    try
-                    {
-                        var discardedTile = await tcs.Task;
-                        _handController.OnTileDiscardedEvent -= onDiscard;
-                        _handController.SetInteractable(false);
-                        GameHUDController.Instance?.StopTimer();
-                        _server.SubmitAction(ClientAction.Discard(PlayerId, discardedTile));
-                    }
-                    catch (TaskCanceledException)
-                    {
-                        _handController.OnTileDiscardedEvent -= onDiscard;
-                        GameHUDController.Instance?.StopTimer();
-                        throw;
-                    }
-                }
+                GameHUDController.Instance?.StartTimer(recoveryTimerSeconds.Value, PlayerId);
             }
-            catch (OperationCanceledException)
+            else if (GameManager.Instance != null)
             {
-                _handController.SetInteractable(false);
-                GameHUDController.Instance?.StopTimer();
+                GameHUDController.Instance?.StartTimer(GameManager.Instance.actionTimeout, PlayerId);
+            }
+
+            var tcs = new TaskCompletionSource<TileData>();
+            Action<TileData> onDiscard = (tile) => tcs.TrySetResult(tile);
+            using (ct.Register(() => tcs.TrySetCanceled()))
+            {
+                _handController.OnTileDiscardedEvent += onDiscard;
+                try
+                {
+                    var discardedTile = await tcs.Task;
+                    _handController.OnTileDiscardedEvent -= onDiscard;
+                    _handController.SetInteractable(false);
+                    GameHUDController.Instance?.StopTimer();
+                    _server.SubmitAction(ClientAction.Discard(PlayerId, discardedTile));
+                }
+                catch (TaskCanceledException)
+                {
+                    _handController.OnTileDiscardedEvent -= onDiscard;
+                    GameHUDController.Instance?.StopTimer();
+                    throw;
+                }
             }
         }
 

@@ -6,6 +6,7 @@ using MahjongGame.Core;
 using MahjongGame.Core.Network.Interfaces;
 using MahjongGame.Core.Network.Mock;
 using MahjongGame.Core.Network;
+using MahjongGame.Core.Network.Messages;
 
 namespace MahjongGame.Systems
 {
@@ -16,6 +17,9 @@ namespace MahjongGame.Systems
         public IAuthService AuthService { get; private set; }
         public IMatchmakingService MatchmakingService { get; private set; }
         public ClientRoomService RoomService { get; private set; }
+        private bool _isRoutingRecoverySnapshot;
+        private RoomGameSnapshot _queuedRecoverySnapshot;
+        private LoadingScreenController _loadingScreen;
 
         private void Awake()
         {
@@ -31,6 +35,8 @@ namespace MahjongGame.Systems
                 RoomService = new ClientRoomService("ws://127.0.0.1:9876/game");
                 RoomService.RoomReady += HandleRoomReady;
                 RoomService.RoomClosed += HandleRoomClosed;
+                RoomService.ReconnectSnapshotApplied += HandleReconnectSnapshotApplied;
+                RoomService.RecoveryProgressChanged += HandleRecoveryProgressChanged;
             }
             else
             {
@@ -51,19 +57,122 @@ namespace MahjongGame.Systems
             {
                 RoomService.RoomReady -= HandleRoomReady;
                 RoomService.RoomClosed -= HandleRoomClosed;
+                RoomService.ReconnectSnapshotApplied -= HandleReconnectSnapshotApplied;
+                RoomService.RecoveryProgressChanged -= HandleRecoveryProgressChanged;
                 RoomService.Dispose();
             }
+            DetachLoadingScreen();
         }
 
         private void Start()
         {
+            AttachLoadingScreen();
             // Auto load login scene additively
             _ = LoadSceneAdditiveAsync(SceneNames.Login);
         }
 
         private void Update()
         {
+            AttachLoadingScreen();
             RoomService?.Tick(Time.unscaledTime);
+        }
+
+        private void HandleRecoveryProgressChanged(ClientRecoveryProgress progress)
+        {
+            AttachLoadingScreen();
+            if (progress == null) return;
+            if (progress.Stage == ClientRecoveryStage.Restored) return;
+            _loadingScreen?.ShowReconnect(progress);
+            if (progress.Stage == ClientRecoveryStage.TerminalFailure)
+                _ = RouteTerminalRecoveryToLobbyAsync();
+        }
+
+        private async void HandleReconnectSnapshotApplied(RoomGameSnapshot snapshot)
+        {
+            if (snapshot == null) return;
+            _queuedRecoverySnapshot = snapshot;
+            if (_isRoutingRecoverySnapshot) return;
+
+            _isRoutingRecoverySnapshot = true;
+            try
+            {
+                while (_queuedRecoverySnapshot != null)
+                {
+                    var pending = _queuedRecoverySnapshot;
+                    _queuedRecoverySnapshot = null;
+                    await RouteRecoverySnapshotAsync(pending);
+                }
+            }
+            finally
+            {
+                _isRoutingRecoverySnapshot = false;
+            }
+        }
+
+        private async Task RouteRecoverySnapshotAsync(RoomGameSnapshot snapshot)
+        {
+            var target = ClientRecoverySceneRoutingPolicy.GetTarget((RoomState)snapshot.roomState);
+            switch (target)
+            {
+                case ClientRecoverySceneTarget.Lobby:
+                    await EnsureRecoverySceneAsync(SceneNames.MainLobby);
+                    break;
+                case ClientRecoverySceneTarget.Game:
+                    await EnsureRecoverySceneAsync(SceneNames.Game);
+                    GameManager.Instance?.ApplyNetworkRecoverySnapshot(snapshot, RoomService?.RecoveryPresentationVersion ?? 0);
+                    break;
+                default:
+                    await RouteTerminalRecoveryToLobbyAsync();
+                    return;
+            }
+
+            AttachLoadingScreen();
+            _loadingScreen?.HideReconnect();
+        }
+
+        private async Task RouteTerminalRecoveryToLobbyAsync()
+        {
+            var game = SceneManager.GetSceneByName(SceneNames.Game);
+            if (!game.isLoaded) return;
+            await EnsureRecoverySceneAsync(SceneNames.MainLobby);
+        }
+
+        private async Task EnsureRecoverySceneAsync(string targetScene)
+        {
+            if (!SceneManager.GetSceneByName(targetScene).isLoaded)
+                await LoadSceneAdditiveAsync(targetScene);
+
+            SetActiveSceneIfLoaded(targetScene);
+            foreach (var sceneName in new[] { SceneNames.Login, SceneNames.MainLobby, SceneNames.Game })
+            {
+                if (sceneName == targetScene) continue;
+                if (SceneManager.GetSceneByName(sceneName).isLoaded)
+                    await UnloadSceneAsync(sceneName);
+            }
+        }
+
+        private void AttachLoadingScreen()
+        {
+            if (_loadingScreen == LoadingScreenController.Instance) return;
+            DetachLoadingScreen();
+            _loadingScreen = LoadingScreenController.Instance;
+            if (_loadingScreen != null)
+                _loadingScreen.ReconnectLeaveRequested += HandleReconnectLeaveRequested;
+        }
+
+        private void DetachLoadingScreen()
+        {
+            if (_loadingScreen != null)
+                _loadingScreen.ReconnectLeaveRequested -= HandleReconnectLeaveRequested;
+            _loadingScreen = null;
+        }
+
+        private async void HandleReconnectLeaveRequested()
+        {
+            RoomService?.LeaveRoomOrAbandonRecovery();
+            AttachLoadingScreen();
+            _loadingScreen?.HideReconnect();
+            await EnsureRecoverySceneAsync(SceneNames.MainLobby);
         }
 
         private async void HandleRoomClosed(string reason)

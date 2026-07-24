@@ -123,13 +123,7 @@ namespace MahjongGame.Core
         /// </summary>
         public List<TileData> GetAnGanOptions()
         {
-            var groups = _handTiles
-                .GroupBy(t => new { t.Data.TileSuit, t.Data.Value })
-                .Where(g => g.Count() >= 4)
-                .Select(g => g.First().Data) 
-                .ToList();
-            
-            return groups;
+            return ActionValidator.GetConcealedKanOptions(_handTiles.Select(tile => tile.Data));
         }
 
         /// <summary>
@@ -283,22 +277,27 @@ namespace MahjongGame.Core
 
         public void AddTileDirectly(TileData data)
         {
+            AddTileDirectly(data, true);
+        }
+
+        private void AddTileDirectly(TileData data, bool animate)
+        {
             if (data == null) return;
 
             GameObject go = Instantiate(tilePrefab);
             TileVisual visual = go.GetComponent<TileVisual>();
             Sprite face = GetTileSprite(data);
             visual.Initialize(data, this, face);
-            AddTileToHand(visual);
+            AddTileToHand(visual, animate);
         }
 
-        private void AddTileToHand(TileVisual visual)
+        private void AddTileToHand(TileVisual visual, bool animate = true)
         {
             visual.transform.SetParent(this.transform);
             _handTiles.Add(visual);
             _lastDrawnTile = visual; 
             
-            UpdateHandPositions();
+            if (animate) UpdateHandPositions();
         }
 
         public override void OnTileClicked(TileVisual clickedTile)
@@ -406,6 +405,19 @@ namespace MahjongGame.Core
             UpdateHandPositions();
         }
 
+        private void SortHandImmediately()
+        {
+            _handTiles.Sort((a, b) =>
+            {
+                if (a.Data.TileSuit != b.Data.TileSuit) return a.Data.TileSuit.CompareTo(b.Data.TileSuit);
+                return a.Data.Value.CompareTo(b.Data.Value);
+            });
+
+            for (int i = 0; i < _handTiles.Count; i++)
+                _handTiles[i].transform.SetSiblingIndex(i);
+            _lastDrawnTile = null;
+        }
+
         protected override void UpdateHandPositions()
         {
             for (int i = 0; i < _handTiles.Count; i++)
@@ -431,6 +443,36 @@ namespace MahjongGame.Core
             base.ClearHand();
             _selectedTile = null;
             Melds.Clear();
+        }
+
+        /// <summary>Atomically replaces the local table view with the server's privacy-filtered snapshot.</summary>
+        public void RebuildFromSnapshot(IEnumerable<TileData> concealedHand, IEnumerable<Meld> melds, IEnumerable<TileData> river)
+        {
+            ClearHand();
+            foreach (var tile in concealedHand ?? Enumerable.Empty<TileData>())
+                AddTileDirectly(tile, false);
+            foreach (var meld in melds ?? Enumerable.Empty<Meld>())
+            {
+                if (meld?.Tiles == null || meld.Tiles.Count == 0) continue;
+                Melds.Add(meld);
+                CreateMeldVisual(meld.Type, meld.Tiles);
+            }
+
+            SortHandImmediately();
+            _selectedTile = null;
+            UpdateHandPositionsImmediately();
+            RebuildRiver(river);
+        }
+
+        private void UpdateHandPositionsImmediately()
+        {
+            for (int i = 0; i < _handTiles.Count; i++)
+            {
+                var tile = _handTiles[i];
+                tile.transform.DOKill();
+                tile.transform.localPosition = new Vector3(i * tileGap, 0, 0);
+                tile.transform.localRotation = Quaternion.Euler(handRotation);
+            }
         }
 
         private bool _isInteractable = false;
