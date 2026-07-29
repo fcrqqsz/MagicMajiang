@@ -16,6 +16,8 @@ internal static class SnapshotReconnectTests
         TestSeatLifecycleAndControl(runner);
         TestTicketAndRecoveryPolicies(runner);
         TestConcealedKanProjection(runner);
+        TestAddedKanProjection(runner);
+        TestSelfTurnKongOptions(runner);
     }
 
     private static void TestAuthoritativeTableState(RegressionRunner runner)
@@ -490,6 +492,95 @@ internal static class SnapshotReconnectTests
             && meld.tileCount == 4
             && meld.tiles.All(tile => tile.suit == (int)Suit.Pin && tile.value == 8),
             "Client projection must retain the public concealed-kan declaration.");
+    }
+
+    private static void TestSelfTurnKongOptions(RegressionRunner runner)
+    {
+        var empty = SelfTurnKongResolver.Resolve(null, null);
+        runner.Check(!empty.HasAny,
+            "An empty self-turn state must have no kong targets.");
+
+        var hand = new List<TileData>
+        {
+            new(Suit.Man, 5, 0), new(Suit.Man, 5, 0), new(Suit.Man, 5, 0), new(Suit.Man, 5, 0),
+            new(Suit.Sou, 3, 0), new(Suit.Sou, 3, 0), new(Suit.Sou, 3, 0), new(Suit.Sou, 3, 0),
+            new(Suit.Pin, 9, 0), new(Suit.Dragon, 1, 0)
+        };
+        var pinNinePon = new Meld(MeldType.Pon, new List<TileData>
+        {
+            new(Suit.Pin, 9, 1), new(Suit.Pin, 9, 1), new(Suit.Pin, 9, 1)
+        }, 1);
+        var redDragonPon = new Meld(MeldType.Pon, new List<TileData>
+        {
+            new(Suit.Dragon, 1, 2), new(Suit.Dragon, 1, 2), new(Suit.Dragon, 1, 2)
+        }, 2);
+        var duplicatePinNinePon = new Meld(MeldType.Pon, new List<TileData>
+        {
+            new(Suit.Pin, 9, 3), new(Suit.Pin, 9, 3), new(Suit.Pin, 9, 3)
+        }, 3);
+
+        var options = SelfTurnKongResolver.Resolve(hand, new[] { pinNinePon, redDragonPon, duplicatePinNinePon });
+        runner.Check(options.AnGangTargets.Select(tile => tile.GetName()).SequenceEqual(new[] { "5万", "3条" }),
+            "Self-turn options must preserve every concealed-kong target in hand order.");
+        runner.Check(options.JiaGangTargets.Select(tile => tile.GetName()).SequenceEqual(new[] { "9筒", "中" }),
+            "Self-turn options must preserve separate added-kong targets without duplicate pon entries.");
+    }
+
+    private static void TestAddedKanProjection(RegressionRunner runner)
+    {
+        var ponTile = new SimpleTileData(new TileData(Suit.Pin, 9, 0));
+        var pon = new SnapshotMeld
+        {
+            meldType = (int)MeldType.Pon,
+            tileCount = 3,
+            tiles = new[] { ponTile, ponTile, ponTile }
+        };
+        var state = new ClientGameState();
+        state.ApplySnapshot(new RoomGameSnapshot
+        {
+            requestingSeatIndex = 0,
+            seats = new[]
+            {
+                new RoomSnapshotSeat { seatIndex = 0, concealedTileCount = 5, publicMelds = new[] { pon } },
+                new RoomSnapshotSeat { seatIndex = 1 },
+                new RoomSnapshotSeat { seatIndex = 2 },
+                new RoomSnapshotSeat { seatIndex = 3 }
+            },
+            privateSeat = new SnapshotPrivateSeat
+            {
+                seatIndex = 0,
+                concealedHand = new[]
+                {
+                    ponTile,
+                    new SimpleTileData(new TileData(Suit.Man, 1, 0)),
+                    new SimpleTileData(new TileData(Suit.Man, 2, 0))
+                },
+                melds = new[] { pon }
+            },
+            rivers = EmptyRivers()
+        }, 0);
+
+        var disposition = state.ApplyEnvelope(new NetworkMessageEnvelope
+        {
+            type = "ActionResolved",
+            seq = 1,
+            data = UnityEngine.JsonUtility.ToJson(new ActionResolvedMessage
+            {
+                playerId = 0,
+                actionType = (int)ClientActionType.JiaGang,
+                tile = ponTile
+            })
+        });
+
+        var publicMeld = state.Snapshot.seats[0].publicMelds.Single();
+        var privateMeld = state.Snapshot.privateSeat.melds.Single();
+        runner.Check(disposition == ClientSequenceDisposition.Accepted
+            && state.Snapshot.seats[0].concealedTileCount == 4
+            && state.Snapshot.privateSeat.concealedHand.Length == 2
+            && publicMeld.meldType == (int)MeldType.Kan_Added
+            && publicMeld.tileCount == 4
+            && privateMeld.meldType == (int)MeldType.Kan_Added,
+            "Added-kong projection must upgrade the original pon and consume exactly one private tile.");
     }
 
     private static List<TileData>[] EmptyTileLists() =>

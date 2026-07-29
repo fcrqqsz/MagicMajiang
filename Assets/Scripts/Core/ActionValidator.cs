@@ -7,12 +7,15 @@ namespace MahjongGame.Core
     {
         public bool CanHu;
         public bool CanPon;
-        public bool CanGan; // 明杠
+        public bool CanMingGan;
+        public bool CanAnGan;
+        public bool CanJiaGang;
         public bool CanChiLeft;   // 吃左边 (例如打3，我有12)
         public bool CanChiMiddle; // 吃中间 (例如打3，我有24)
         public bool CanChiRight;  // 吃右边 (例如打3，我有45)
         
-        public bool HasAction => CanHu || CanPon || CanGan || CanChiLeft || CanChiMiddle || CanChiRight;
+        public bool HasAction => CanHu || CanPon || CanMingGan || CanAnGan || CanJiaGang
+            || CanChiLeft || CanChiMiddle || CanChiRight;
     }
 
     public static class ActionValidator
@@ -41,7 +44,7 @@ namespace MahjongGame.Core
             // 3. 检查明杠 (手里有 3张)
             if (handCounts[targetIdx] >= 3)
             {
-                actions.CanGan = true;
+                actions.CanMingGan = true;
             }
 
             // 4. 检查吃 (只能吃上家的牌)
@@ -69,7 +72,7 @@ namespace MahjongGame.Core
         /// <param name="myHand">手牌数据</param>
         /// <param name="myMelds">已有的副露</param>
         /// <param name="drawnTile">刚摸到的那张牌</param>
-        public static AllowedActions CheckSelfActions(List<TileData> myHand, List<Meld> myMelds, TileData drawnTile, ScoringOptions options = null, WindDirection roundWind = WindDirection.East, WindDirection seatWind = WindDirection.East)
+        public static AllowedActions CheckSelfActions(List<TileData> myHand, List<Meld> myMelds, TileData drawnTile, ScoringOptions options = null, WindDirection roundWind = WindDirection.East, WindDirection seatWind = WindDirection.East, SelfTurnKongOptions kongOptions = null)
         {
             AllowedActions actions = new AllowedActions();
 
@@ -82,46 +85,21 @@ namespace MahjongGame.Core
                 actions.CanHu = true;
             }
 
-            // 2. 检查暗杠 (An Gang)
-            // 手里有 4 张一样的牌
-            // 简单的判定：手牌里同花色同数值的计数 >= 4
-            // (更严谨的做法是调用 HandController.GetAnGanOptions，这里做快速预检)
-            if (GetConcealedKanOptions(myHand).Any())
-            {
-                actions.CanGan = true;
-            }
-
-            // 3. 检查加杠 (Jia Gang / Added Kan)
-            // 条件：已有 Pon 的副露，且手牌里（包括刚摸的）有一张相同的牌
-            foreach (var meld in myMelds)
-            {
-                if (meld.Type == MeldType.Pon)
-                {
-                    // 检查手牌里是否有和这个碰(Pon)一样的牌
-                    // Pon 的代表牌通常是 FirstTile
-                    bool hasMatchingTile = myHand.Any(t => t.TileSuit == meld.FirstTile.TileSuit && t.Value == meld.FirstTile.Value);
-                    
-                    if (hasMatchingTile)
-                    {
-                        actions.CanGan = true;
-                        // 注意：AllowedActions 只有一个 CanGan，UI 上显示的都是 [杠]
-                        // 具体是暗杠还是加杠，点击后由 HandController 区分
-                        break; 
-                    }
-                }
-            }
+            var resolvedKongOptions = kongOptions ?? SelfTurnKongResolver.Resolve(myHand, myMelds);
+            actions.CanAnGan = resolvedKongOptions.AnGangTargets.Count > 0;
+            actions.CanJiaGang = resolvedKongOptions.JiaGangTargets.Count > 0;
 
             return actions;
         }
 
         public static List<TileData> GetConcealedKanOptions(IEnumerable<TileData> hand)
         {
-            return (hand ?? Enumerable.Empty<TileData>())
-                .Where(tile => tile != null)
-                .GroupBy(tile => new { tile.TileSuit, tile.Value })
-                .Where(g => g.Count() >= 4)
-                .Select(g => g.First())
-                .ToList();
+            return SelfTurnKongResolver.Resolve(hand, null).AnGangTargets.ToList();
+        }
+
+        public static List<TileData> GetAddedKanOptions(IEnumerable<TileData> hand, IEnumerable<Meld> melds)
+        {
+            return SelfTurnKongResolver.Resolve(hand, melds).JiaGangTargets.ToList();
         }
 
         /// <summary>

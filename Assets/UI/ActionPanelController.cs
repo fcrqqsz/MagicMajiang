@@ -7,6 +7,17 @@ using System.Linq;
 
 namespace MahjongGame.UI
 {
+    public enum ActionPanelChoice
+    {
+        Chi,
+        Pon,
+        MingGan,
+        AnGan,
+        JiaGang,
+        Hu,
+        Skip
+    }
+
     public class ActionPanelController : MonoBehaviour
     {
         public static ActionPanelController Instance;
@@ -14,11 +25,12 @@ namespace MahjongGame.UI
         [SerializeField] private UIDocument _document;
         private VisualElement _root;
         private VisualElement _btnContainer;
-        private Button _btnChi, _btnPon, _btnGan, _btnHu, _btnSkip;
+        private Button _btnChi, _btnPon, _btnMingGan, _btnAnGan, _btnJiaGang, _btnHu, _btnSkip;
 
         // 当前的回调函数引用
-        private Action<string> _currentCallback;
+        private Action<ActionPanelChoice> _currentCallback;
         private Action<int> _currentChiCallback;
+        private Action<TileData> _currentKongCallback;
 
         void Awake()
         {
@@ -35,17 +47,21 @@ namespace MahjongGame.UI
 
             _btnChi = _root.Q<Button>("BtnChi");
             _btnPon = _root.Q<Button>("BtnPon");
-            _btnGan = _root.Q<Button>("BtnGan");
+            _btnMingGan = _root.Q<Button>("BtnMingGan");
+            _btnAnGan = _root.Q<Button>("BtnAnGan");
+            _btnJiaGang = _root.Q<Button>("BtnJiaGang");
             _btnHu =  _root.Q<Button>("BtnHu");
             _btnSkip = _root.Q<Button>("BtnSkip");
 
             // --- 关键修复：只在这里绑定一次事件 ---
             // 点击时，只调用 _currentCallback，不要在这里 += 具体的逻辑
-            _btnChi.clicked += () => SafeInvoke(() => _currentCallback?.Invoke("Chi"));
-            _btnPon.clicked += () => SafeInvoke(() => _currentCallback?.Invoke("Pon"));
-            _btnGan.clicked += () => SafeInvoke(() => _currentCallback?.Invoke("Gan"));
-            _btnHu.clicked +=  () => SafeInvoke(() => _currentCallback?.Invoke("Hu"));
-            _btnSkip.clicked += () => SafeInvoke(() => _currentCallback?.Invoke("Skip"));
+            _btnChi.clicked += () => SafeInvoke(() => _currentCallback?.Invoke(ActionPanelChoice.Chi));
+            _btnPon.clicked += () => SafeInvoke(() => _currentCallback?.Invoke(ActionPanelChoice.Pon));
+            _btnMingGan.clicked += () => SafeInvoke(() => _currentCallback?.Invoke(ActionPanelChoice.MingGan));
+            _btnAnGan.clicked += () => SafeInvoke(() => _currentCallback?.Invoke(ActionPanelChoice.AnGan));
+            _btnJiaGang.clicked += () => SafeInvoke(() => _currentCallback?.Invoke(ActionPanelChoice.JiaGang));
+            _btnHu.clicked +=  () => SafeInvoke(() => _currentCallback?.Invoke(ActionPanelChoice.Hu));
+            _btnSkip.clicked += () => SafeInvoke(() => _currentCallback?.Invoke(ActionPanelChoice.Skip));
 
             Hide();
         }
@@ -63,9 +79,10 @@ namespace MahjongGame.UI
             // 清理回调，防止意外触发
             _currentCallback = null;
             _currentChiCallback = null;
+            _currentKongCallback = null;
         }
 
-        public void Show(AllowedActions actions, Action<string> callback)
+        public void Show(AllowedActions actions, Action<ActionPanelChoice> callback)
         {
             // 1. 赋值回调
             _currentCallback = callback;
@@ -76,7 +93,9 @@ namespace MahjongGame.UI
             // 3. 设置可见性
             SetVisible(_btnChi, actions.CanChiLeft || actions.CanChiMiddle || actions.CanChiRight);
             SetVisible(_btnPon, actions.CanPon);
-            SetVisible(_btnGan, actions.CanGan);
+            SetVisible(_btnMingGan, actions.CanMingGan);
+            SetVisible(_btnAnGan, actions.CanAnGan);
+            SetVisible(_btnJiaGang, actions.CanJiaGang);
             SetVisible(_btnHu, actions.CanHu);
             SetVisible(_btnSkip, true);
 
@@ -127,6 +146,38 @@ namespace MahjongGame.UI
             }
         }
 
+        public void ShowKongSelection(ActionPanelChoice choice, IReadOnlyList<TileData> targets, Action<TileData> callback)
+        {
+            if (targets == null || targets.Count == 0) return;
+
+            _currentKongCallback = callback;
+            HideMainButtons();
+            ClearTempButtons();
+
+            string actionName = choice == ActionPanelChoice.AnGan ? "暗杠" : "加杠";
+            foreach (var target in targets)
+            {
+                if (target == null) continue;
+                var selectedTarget = target;
+                Button btn = new Button
+                {
+                    text = $"{actionName}\n{selectedTarget.GetName()}"
+                };
+                btn.AddToClassList("action-btn");
+                btn.AddToClassList("kong-target-btn");
+                btn.userData = "temp_kong";
+                btn.clicked += () =>
+                {
+                    if (_root.style.display == DisplayStyle.None) return;
+                    var selectedCallback = _currentKongCallback;
+                    RestoreMainButtons();
+                    Hide();
+                    selectedCallback?.Invoke(selectedTarget);
+                };
+                _btnContainer.Add(btn);
+            }
+        }
+
         private void SetVisible(VisualElement elem, bool visible)
         {
             elem.style.display = visible ? DisplayStyle.Flex : DisplayStyle.None;
@@ -136,7 +187,9 @@ namespace MahjongGame.UI
         {
             SetVisible(_btnChi, false);
             SetVisible(_btnPon, false);
-            SetVisible(_btnGan, false);
+            SetVisible(_btnMingGan, false);
+            SetVisible(_btnAnGan, false);
+            SetVisible(_btnJiaGang, false);
             SetVisible(_btnHu, false);
             SetVisible(_btnSkip, false);
         }
@@ -148,7 +201,8 @@ namespace MahjongGame.UI
             for (int i = _btnContainer.childCount - 1; i >= 0; i--)
             {
                 var child = _btnContainer.ElementAt(i);
-                if (child.userData as string == "temp_chi")
+                string tempType = child.userData as string;
+                if (tempType == "temp_chi" || tempType == "temp_kong")
                 {
                     child.RemoveFromHierarchy();
                 }

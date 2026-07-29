@@ -218,7 +218,8 @@ namespace MahjongGame.Core.Agents
             {
                 var handData = _handController.GetHandData();
                 var melds = _handController.Melds;
-                var actions = ActionValidator.CheckSelfActions(handData, melds, drawnTile, _scoringOptions, _roundWind, _seatWind);
+                var kongOptions = _handController.GetSelfTurnKongOptions();
+                var actions = ActionValidator.CheckSelfActions(handData, melds, drawnTile, _scoringOptions, _roundWind, _seatWind, kongOptions);
                 if (actions.HasAction)
                 {
                     bool actionTaken = false;
@@ -228,7 +229,7 @@ namespace MahjongGame.Core.Agents
                     {
                         if (!_isWaitingForUI) return;
 
-                        if (choice == "Hu")
+                        if (choice == ActionPanelChoice.Hu)
                         {
                             int totalFan;
                             List<string> fanDetails;
@@ -239,19 +240,31 @@ namespace MahjongGame.Core.Agents
                             _server.SubmitAction(action);
                             actionTaken = true;
                         }
-                        else if (choice == "Gan")
+                        else if (choice == ActionPanelChoice.AnGan || choice == ActionPanelChoice.JiaGang)
                         {
-                            var anGanOpts = _handController.GetAnGanOptions();
-                            if (anGanOpts.Count > 0)
+                            var targets = choice == ActionPanelChoice.AnGan
+                                ? kongOptions.AnGangTargets
+                                : kongOptions.JiaGangTargets;
+                            var actionType = choice == ActionPanelChoice.AnGan
+                                ? ClientActionType.AnGan
+                                : ClientActionType.JiaGang;
+
+                            if (targets.Count == 1)
                             {
-                                _server.SubmitAction(new ClientAction(PlayerId, ClientActionType.AnGan, anGanOpts[0]));
+                                _server.SubmitAction(new ClientAction(PlayerId, actionType, targets[0]));
+                                actionTaken = true;
                             }
-                            else
+                            else if (targets.Count > 1)
                             {
-                                var jiaGanOpts = _handController.GetJiaGangOptions();
-                                _server.SubmitAction(new ClientAction(PlayerId, ClientActionType.JiaGang, jiaGanOpts[0]));
+                                ActionPanelController.Instance.ShowKongSelection(choice, targets, selectedTile =>
+                                {
+                                    if (!_isWaitingForUI) return;
+                                    _server.SubmitAction(new ClientAction(PlayerId, actionType, selectedTile));
+                                    actionTaken = true;
+                                    _isWaitingForUI = false;
+                                });
+                                return;
                             }
-                            actionTaken = true;
                         }
 
                         _isWaitingForUI = false;
@@ -318,7 +331,7 @@ namespace MahjongGame.Core.Agents
                     {
                         if (!_isWaitingForUI) return;
 
-                        if (choice == "Hu")
+                        if (choice == ActionPanelChoice.Hu)
                         {
                             int totalFan;
                             List<string> fanDetails;
@@ -330,17 +343,17 @@ namespace MahjongGame.Core.Agents
                             _server.SubmitAction(action);
                             actionTaken = true;
                         }
-                        else if (choice == "Pon")
+                        else if (choice == ActionPanelChoice.Pon)
                         {
                             _server.SubmitAction(new ClientAction(PlayerId, ClientActionType.Pon, discardedTile));
                             actionTaken = true;
                         }
-                        else if (choice == "Gan")
+                        else if (choice == ActionPanelChoice.MingGan)
                         {
                             _server.SubmitAction(new ClientAction(PlayerId, ClientActionType.MingGan, discardedTile));
                             actionTaken = true;
                         }
-                        else if (choice == "Chi")
+                        else if (choice == ActionPanelChoice.Chi)
                         {
                             var chiOptions = ActionValidator.GetChiCombinations(handData, discardedTile);
 

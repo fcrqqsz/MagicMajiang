@@ -37,9 +37,12 @@
 /* 各个按钮的颜色 */
 .btn-chi { background-color: #4CAF50; } /* 绿 */
 .btn-pon { background-color: #2196F3; } /* 蓝 */
-.btn-gan { background-color: #FF9800; } /* 橙 */
+.btn-ming-gang { background-color: #FF9800; } /* 橙 */
+.btn-an-gang { background-color: #9C27B0; } /* 紫 */
+.btn-jia-gang { background-color: #FF7043; } /* 深橙 */
 .btn-hu  { background-color: #F44336; width: 120px; height: 120px; font-size: 48px; } /* 红，大一点 */
 .btn-skip{ background-color: #9E9E9E; width: 80px; height: 80px; font-size: 24px; } /* 灰，小一点 */
+.kong-target-btn { width: 140px; height: 100px; background-color: #7E57C2; }
 
 /* 字体修正 (确保显示中文) */
 .unity-text-element {

@@ -60,6 +60,7 @@
     <Compile Include="..\..\Assets\Scripts\Core\Services\WallService.cs" Link="WallService.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\TileData.cs" Link="TileData.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Meld.cs" Link="Meld.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\SelfTurnKongOptions.cs" Link="SelfTurnKongOptions.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\MahjongEnums.cs" Link="MahjongEnums.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\DeckConfig.cs" Link="DeckConfig.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\ScoringOptions.cs" Link="ScoringOptions.cs" />

@@ -123,7 +123,7 @@ namespace MahjongGame.Core
         /// </summary>
         public List<TileData> GetAnGanOptions()
         {
-            return ActionValidator.GetConcealedKanOptions(_handTiles.Select(tile => tile.Data));
+            return GetSelfTurnKongOptions().AnGangTargets.ToList();
         }
 
         /// <summary>
@@ -165,20 +165,12 @@ namespace MahjongGame.Core
         /// </summary>
         public List<TileData> GetJiaGangOptions()
         {
-            List<TileData> options = new List<TileData>();
+            return GetSelfTurnKongOptions().JiaGangTargets.ToList();
+        }
 
-            foreach (var meld in Melds)
-            {
-                if (meld.Type == MeldType.Pon)
-                {
-                    var match = _handTiles.FirstOrDefault(t => t.Data.TileSuit == meld.FirstTile.TileSuit && t.Data.Value == meld.FirstTile.Value);
-                    if (match != null)
-                    {
-                        options.Add(match.Data);
-                    }
-                }
-            }
-            return options;
+        public SelfTurnKongOptions GetSelfTurnKongOptions()
+        {
+            return SelfTurnKongResolver.Resolve(_handTiles.Select(tile => tile.Data), Melds);
         }
 
         /// <summary>

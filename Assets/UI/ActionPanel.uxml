@@ -4,7 +4,9 @@
         <ui:VisualElement name="ButtonContainer" class="button-row">
             <ui:Button name="BtnChi" text="吃" class="action-btn btn-chi" />
             <ui:Button name="BtnPon" text="碰" class="action-btn btn-pon" />
-            <ui:Button name="BtnGan" text="杠" class="action-btn btn-gan" />
+            <ui:Button name="BtnMingGan" text="明杠" class="action-btn btn-ming-gang" />
+            <ui:Button name="BtnAnGan" text="暗杠" class="action-btn btn-an-gang" />
+            <ui:Button name="BtnJiaGang" text="加杠" class="action-btn btn-jia-gang" />
             <ui:Button name="BtnHu" text="胡" class="action-btn btn-hu" />
             <ui:Button name="BtnSkip" text="过" class="action-btn btn-skip" />
         </ui:VisualElement>
