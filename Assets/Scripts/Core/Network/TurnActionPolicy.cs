@@ -19,5 +19,10 @@ namespace MahjongGame.Core.Network
                 || actionType == ClientActionType.MingGan
                 || actionType == ClientActionType.Chi;
         }
+
+        public static bool IsRobKongResponseAction(ClientActionType actionType)
+        {
+            return actionType == ClientActionType.Skip || actionType == ClientActionType.Hu;
+        }
     }
 }

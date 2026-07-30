@@ -95,6 +95,7 @@ namespace MahjongGame.Core.Network
         private Dictionary<int, ScoringOptions> _scoringOptions = new Dictionary<int, ScoringOptions>();
         private readonly Dictionary<int, List<TileData>> _peekWallTiles = new Dictionary<int, List<TileData>>();
         private TileData _lastDiscardedTile; // 响应阶段：被打出的那张牌
+        private TileData _pendingRobKongTile; // 加杠声明阶段：尚未落副露、可被抢胡的牌
 
         // 局结束事件，GameManager 监听此事件驱动多局循环
         public event System.Action OnRoundFinished;
@@ -388,12 +389,27 @@ namespace MahjongGame.Core.Network
                     HandlePlayerWin(action, true);
                     break;
                 }
-                else if (action.ActionType == ClientActionType.AnGan || action.ActionType == ClientActionType.JiaGang)
+                else if (action.ActionType == ClientActionType.AnGan)
                 {
-                    // 杠牌，更新快照并广播动作
+                    // 暗杠不能被抢胡，立即生效。
                     _gameState.ApplyMeld(_currentPlayerIndex, action.ActionType, action.TargetTile, action.ChiCombinations);
                     BroadcastAction(action);
                     continue; // 直接重新循环
+                }
+                else if (action.ActionType == ClientActionType.JiaGang)
+                {
+                    // 加杠先公开声明，但在抢杠窗口关闭前不能修改权威副露。
+                    ClientAction robKongWin = await CollectRobKongResponses(action.TargetTile);
+                    if (robKongWin != null && robKongWin.ActionType == ClientActionType.Hu)
+                    {
+                        HandlePlayerWin(robKongWin, false, _currentPlayerIndex, action.TargetTile, true);
+                        break;
+                    }
+
+                    // 所有人过或超时：此时才真正将碰升级为加杠，然后进入岭上补牌。
+                    _gameState.ApplyMeld(_currentPlayerIndex, action.ActionType, action.TargetTile, action.ChiCombinations);
+                    BroadcastAction(action);
+                    continue;
                 }
                 else if (action.ActionType == ClientActionType.Discard)
                 {
@@ -513,6 +529,64 @@ namespace MahjongGame.Core.Network
                 _clients.Count);
         }
 
+        private async Task<ClientAction> CollectRobKongResponses(TileData targetTile)
+        {
+            _pendingRobKongTile = targetTile;
+            _pendingResponses.Clear();
+            _responsesTcs = new TaskCompletionSource<bool>();
+            var robKongDecision = _decisionTracker.OpenRobKong(
+                _currentPlayerIndex,
+                targetTile,
+                Enumerable.Range(0, _clients.Count).Where(index => index != _currentPlayerIndex),
+                GetDeadlineUnixMilliseconds(ResponseTimeoutMs));
+
+            _turnCts?.Dispose();
+            _turnCts = new CancellationTokenSource();
+            for (int i = 0; i < _clients.Count; i++)
+            {
+                SetRemoteDecision(_clients[i], robKongDecision);
+                if (i != _currentPlayerIndex)
+                {
+                    _clients[i].TurnCancellationToken = _turnCts.Token;
+                }
+            }
+
+            // 该牌是公开的加杠声明，不是弃牌：客户端只能据此打开胡/过响应。
+            for (int i = 0; i < _clients.Count; i++)
+            {
+                _clients[i].OnAddedKongDeclared(_currentPlayerIndex, targetTile);
+            }
+
+            try
+            {
+                await AwaitWithTimeout(
+                    _responsesTcs,
+                    ResponseTimeoutMs,
+                    onTimeout: () =>
+                    {
+                        Debug.LogWarning("[GameServer] 抢杠响应超时，为未回复玩家自动填充 Skip");
+                        _turnCts.Cancel();
+                        for (int i = 0; i < _clients.Count; i++)
+                        {
+                            if (i != _currentPlayerIndex && !_pendingResponses.ContainsKey(i))
+                            {
+                                _clients[i].OnTimeout(null);
+                                _pendingResponses[i] = ClientAction.Skip(i);
+                            }
+                        }
+                    },
+                    fallbackFactory: () => true);
+
+                return ResolveResponses();
+            }
+            finally
+            {
+                _responsesTcs = null;
+                CloseDecision(robKongDecision.DecisionId);
+                _pendingRobKongTile = null;
+            }
+        }
+
         /// <summary>
         /// 供客户端调用，提交决策
         /// </summary>
@@ -554,16 +628,20 @@ namespace MahjongGame.Core.Network
                 _pendingActionTcs.TrySetResult(validated);
             }
             // 如果在等待其他人响应
-            else if (_responsesTcs != null && ResponseActionPolicy.CanRespondToDiscard(action.PlayerId, _currentPlayerIndex))
+            else if (_responsesTcs != null && CanRespondToActiveResponse(action.PlayerId))
             {
                 if (_pendingResponses.ContainsKey(action.PlayerId)) return;
 
-                if (!TurnActionPolicy.IsResponseAction(action.ActionType))
+                bool isRobKong = IsRobKongResponseActive;
+                bool isAllowedResponse = isRobKong
+                    ? TurnActionPolicy.IsRobKongResponseAction(action.ActionType)
+                    : TurnActionPolicy.IsResponseAction(action.ActionType);
+                if (!isAllowedResponse)
                 {
                     Debug.LogWarning($"[GameServer] Ignoring late or invalid response action from player {action.PlayerId}: {action.ActionType}");
                     return;
                 }
-                var validated = ValidateResponseAction(action);
+                var validated = isRobKong ? ValidateRobKongResponseAction(action) : ValidateResponseAction(action);
                 _pendingResponses[action.PlayerId] = validated;
 
                 if (validated.ActionType == ClientActionType.Hu)
@@ -619,7 +697,8 @@ namespace MahjongGame.Core.Network
         private List<int> GetPotentialHuPlayerIds()
         {
             var potentialHuPlayerIds = new List<int>();
-            if (_lastDiscardedTile == null) return potentialHuPlayerIds;
+            TileData targetTile = IsRobKongResponseActive ? _pendingRobKongTile : _lastDiscardedTile;
+            if (targetTile == null) return potentialHuPlayerIds;
 
             var roundWind = _session?.PrevalentWind ?? WindDirection.East;
             for (int playerId = 0; playerId < _clients.Count; playerId++)
@@ -630,11 +709,20 @@ namespace MahjongGame.Core.Network
                 var melds = _gameState.GetMelds(playerId);
                 var options = _scoringOptions.ContainsKey(playerId) ? _scoringOptions[playerId] : null;
                 var seatWind = _session?.GetSeatWind(playerId) ?? WindDirection.East;
-                if (MahjongLogic.CheckWinWithFan(hand, melds, _lastDiscardedTile, false, out _, out _, roundWind, seatWind, options))
+                if (MahjongLogic.CheckWinWithFan(hand, melds, targetTile, false, out _, out _, roundWind, seatWind, options, IsRobKongResponseActive))
                     potentialHuPlayerIds.Add(playerId);
             }
 
             return potentialHuPlayerIds;
+        }
+
+        private bool IsRobKongResponseActive => _decisionTracker?.Active?.Phase == NetworkDecisionPhase.RobKong;
+
+        private bool CanRespondToActiveResponse(int playerId)
+        {
+            return IsRobKongResponseActive
+                ? ResponseActionPolicy.CanRobAddedKong(playerId, _currentPlayerIndex)
+                : ResponseActionPolicy.CanRespondToDiscard(playerId, _currentPlayerIndex);
         }
 
         /// <summary>
@@ -815,6 +903,32 @@ namespace MahjongGame.Core.Network
             return action;
         }
 
+        /// <summary>验证抢杠声明的响应；该阶段不允许吃、碰或任何类型的杠。</summary>
+        private ClientAction ValidateRobKongResponseAction(ClientAction action)
+        {
+            if (action.ActionType == ClientActionType.Skip) return action;
+            if (action.ActionType != ClientActionType.Hu || _pendingRobKongTile == null)
+            {
+                Debug.LogWarning($"[ServerValidation] 玩家{action.PlayerId} 提交了非法抢杠响应 {action.ActionType}，自动Skip");
+                return ClientAction.Skip(action.PlayerId);
+            }
+
+            int pid = action.PlayerId;
+            var hand = _gameState.GetHand(pid);
+            var melds = _gameState.GetMelds(pid);
+            var options = _scoringOptions.ContainsKey(pid) ? _scoringOptions[pid] : null;
+            var roundWind = _session?.PrevalentWind ?? WindDirection.East;
+            var seatWind = _session?.GetSeatWind(pid) ?? WindDirection.East;
+            if (!MahjongLogic.CheckWinWithFan(hand, melds, _pendingRobKongTile, false,
+                    out _, out _, roundWind, seatWind, options, true))
+            {
+                Debug.LogWarning($"[ServerValidation] 玩家{pid} 抢杠胡验证失败，自动Skip");
+                return ClientAction.Skip(pid);
+            }
+
+            return action;
+        }
+
         /// <summary>
         /// 检查手牌列表中是否包含指定花色和数值的牌
         /// </summary>
@@ -887,7 +1001,7 @@ namespace MahjongGame.Core.Network
             }).ToList();
         }
 
-        private void HandlePlayerWin(ClientAction winAction, bool isSelfDraw, int loserId = -1)
+        private void HandlePlayerWin(ClientAction winAction, bool isSelfDraw, int loserId = -1, TileData winTileOverride = null, bool isRobKongWin = false)
         {
             _isGameActive = false;
             CloseActiveDecision();
@@ -901,14 +1015,14 @@ namespace MahjongGame.Core.Network
             var seatWind = _session?.GetSeatWind(pid) ?? WindDirection.East;
 
             // 确定胡的那张牌
-            TileData winTile = isSelfDraw ? _lastDrawnTile : _lastDiscardedTile;
+            TileData winTile = winTileOverride ?? (isSelfDraw ? _lastDrawnTile : _lastDiscardedTile);
 
             // 服务端权威重算番数
             int serverFan = 0;
             List<string> serverDetails = null;
             if (winTile != null)
             {
-                MahjongLogic.CheckWinWithFan(hand, melds, winTile, isSelfDraw, out serverFan, out serverDetails, roundWind, seatWind, options);
+                MahjongLogic.CheckWinWithFan(hand, melds, winTile, isSelfDraw, out serverFan, out serverDetails, roundWind, seatWind, options, isRobKongWin);
             }
 
             // 断言比对：记录客户端与服务端计算差异（Phase 0 验证用）
@@ -919,7 +1033,7 @@ namespace MahjongGame.Core.Network
                 Debug.LogWarning($"  服务端番种: {(serverDetails != null ? string.Join(", ", serverDetails) : "null")}");
                 Debug.LogWarning($"  手牌: [{string.Join(", ", hand.Select(t => t.ToString()))}]");
                 Debug.LogWarning($"  副露: [{string.Join(", ", melds.Select(m => $"{m.Type}:{m.FirstTile}"))}]");
-                Debug.LogWarning($"  胡牌: {winTile} 自摸={isSelfDraw} 圈风={roundWind} 门风={seatWind}");
+                Debug.LogWarning($"  胡牌: {winTile} 自摸={isSelfDraw} 抢杠={isRobKongWin} 圈风={roundWind} 门风={seatWind}");
             }
             else
             {

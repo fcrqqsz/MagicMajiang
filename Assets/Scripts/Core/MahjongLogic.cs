@@ -20,7 +20,7 @@ namespace MahjongGame.Core
         /// <summary>
         /// 完整胡牌判定 (含8番起胡校验)
         /// </summary>
-        public static bool CheckWinWithFan(List<TileData> hand, List<Meld> melds, TileData winTile, bool isSelfDraw, out int totalFan, out List<string> fanDetails, WindDirection roundWind = WindDirection.East, WindDirection seatWind = WindDirection.East, ScoringOptions options = null)
+        public static bool CheckWinWithFan(List<TileData> hand, List<Meld> melds, TileData winTile, bool isSelfDraw, out int totalFan, out List<string> fanDetails, WindDirection roundWind = WindDirection.East, WindDirection seatWind = WindDirection.East, ScoringOptions options = null, bool isRobKongWin = false)
         {
             totalFan = 0;
             fanDetails = null;
@@ -38,6 +38,7 @@ namespace MahjongGame.Core
             {
                 var ctx = new Fan.FanContext(hand, melds, winTile, isSelfDraw, roundWind, seatWind, decomp);
                 ctx.Wait = decomp.Wait;
+                ctx.IsRobKongWin = isRobKongWin;
 
                 int currentFan = _calculator.CalculateTotalFan(ctx, out List<string> currentDetails);
 

@@ -127,6 +127,18 @@ namespace MahjongGame.Core.Network
             Send("Discarded", msg);
         }
 
+        public void OnAddedKongDeclared(int playerId, TileData tile)
+        {
+            var msg = new AddedKongDeclaredMessage
+            {
+                decisionId = _activeDecisionId,
+                decision = RoomGameSnapshotBuilder.CreateDecisionSnapshot(_activeDecision),
+                playerId = playerId,
+                tile = new SimpleTileData(tile)
+            };
+            Send("AddedKongDeclared", msg);
+        }
+
         public void OnActionResolved(int playerId, ClientActionType actionType, TileData tile, int[] chiCombinations)
         {
             var msg = new ActionResolvedMessage

@@ -165,6 +165,32 @@ namespace MahjongGame.Core.Agents
             }
         }
 
+        public async void OnAddedKongDeclared(int declaringPlayerId, TileData targetTile)
+        {
+            if (!Network.ResponseActionPolicy.CanRobAddedKong(PlayerId, declaringPlayerId)) return;
+
+            var ct = TurnCancellationToken;
+            try
+            {
+                await Task.Delay(UnityEngine.Random.Range(200, 600), ct);
+                bool canWin = MahjongLogic.CheckWinWithFan(_hand, _melds, targetTile, false,
+                    out int totalFan, out List<string> fanDetails, _roundWind, _seatWind, _scoringOptions, true);
+                if (canWin)
+                {
+                    var action = new ClientAction(PlayerId, ClientActionType.Hu, targetTile);
+                    action.SetHuDetails(totalFan, fanDetails);
+                    _server.SubmitAction(action);
+                    return;
+                }
+
+                _server.SubmitAction(ClientAction.Skip(PlayerId));
+            }
+            catch (OperationCanceledException)
+            {
+                // 响应超时 — 服务端自动填充 Skip
+            }
+        }
+
         public async void OnActionResolved(int actionPlayerId, ClientActionType actionType, TileData targetTile, int[] chiCombinations)
         {
             if (actionPlayerId == PlayerId)

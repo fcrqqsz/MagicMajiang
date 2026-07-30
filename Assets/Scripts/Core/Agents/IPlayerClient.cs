@@ -45,6 +45,11 @@ namespace MahjongGame.Core.Agents
         void OnOtherPlayerDiscarded(int playerId, TileData discardedTile);
 
         /// <summary>
+        /// 广播：某人声明加杠，其他玩家可在该牌真正落副露前选择胡或过。
+        /// </summary>
+        void OnAddedKongDeclared(int playerId, TileData targetTile);
+
+        /// <summary>
         /// 广播：某人执行了某个动作（比如碰、杠、吃）
         /// 用于客户端同步表现层的副露动画、更新其余牌的数量等
         /// </summary>

@@ -18,6 +18,9 @@ internal static class SnapshotReconnectTests
         TestConcealedKanProjection(runner);
         TestAddedKanProjection(runner);
         TestSelfTurnKongOptions(runner);
+        TestRobKongDecisionPhase(runner);
+        TestRobKongDeclarationProjection(runner);
+        TestRobKongRemoteNotification(runner);
     }
 
     private static void TestAuthoritativeTableState(RegressionRunner runner)
@@ -73,6 +76,7 @@ internal static class SnapshotReconnectTests
             && ineligible == "NotEligible"
             && tracker.TrySubmitNetworkAction(response.DecisionId, 1, ClientActionType.Skip, out _),
             "Response decisions must reject stale and ineligible actions.");
+        runner.Check(tracker.Close(response.DecisionId), "The active response decision must close by ID.");
 
         var expiredTracker = new NetworkDecisionTracker();
         var expired = expiredTracker.OpenMainTurn(0, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
@@ -446,6 +450,17 @@ internal static class SnapshotReconnectTests
             && !ClientRecoveryInputPolicy.CanRestoreInput(decision, localSeat, 1, 1001),
             "Recovered input must require an unexpired decision controlled by the local human.");
 
+        var robKongDecision = new SnapshotDecision
+        {
+            decisionId = 100,
+            phase = 2,
+            discardingSeatIndex = 0,
+            eligibleSeats = new[] { 1, 2, 3 },
+            deadlineUnixMilliseconds = 1001
+        };
+        runner.Check(ClientRecoveryInputPolicy.CanRestoreInput(robKongDecision, localSeat, 1, 1000),
+            "Recovered eligible humans must regain an unexpired rob-kong Hu-or-skip decision.");
+
         var lineage = new ClientProjectionLineage();
         lineage.Bind("R0001", "stream-a");
         runner.Check(lineage.Matches("R0001", "stream-a")
@@ -581,6 +596,139 @@ internal static class SnapshotReconnectTests
             && publicMeld.tileCount == 4
             && privateMeld.meldType == (int)MeldType.Kan_Added,
             "Added-kong projection must upgrade the original pon and consume exactly one private tile.");
+    }
+
+    private static void TestRobKongDecisionPhase(RegressionRunner runner)
+    {
+        var tracker = new NetworkDecisionTracker();
+        var deadline = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() + 10000;
+        var openRobKong = typeof(NetworkDecisionTracker).GetMethod("OpenRobKong");
+        if (openRobKong == null)
+        {
+            runner.Check(false,
+                "Rob-kong declarations must open a dedicated network decision instead of a discard response.");
+            return;
+        }
+
+        var decision = (NetworkDecisionContext)openRobKong.Invoke(tracker, new object[]
+        {
+            0,
+            new TileData(Suit.Pin, 7, 0),
+            new[] { 1, 2, 3 },
+            deadline
+        });
+        runner.Check((int)decision.Phase == 2
+            && !tracker.TrySubmitNetworkAction(decision.DecisionId, 0, ClientActionType.Skip, out var declarerError)
+            && declarerError == "NotEligible"
+            && !tracker.TrySubmitNetworkAction(decision.DecisionId, 1, ClientActionType.Pon, out var ponError)
+            && ponError == "WrongPhase"
+            && !tracker.TrySubmitNetworkAction(decision.DecisionId, 1, ClientActionType.MingGan, out var mingGanError)
+            && mingGanError == "WrongPhase"
+            && !tracker.TrySubmitNetworkAction(decision.DecisionId, 1, ClientActionType.Chi, out var chiError)
+            && chiError == "WrongPhase"
+            && !tracker.TrySubmitNetworkAction(decision.DecisionId, 1, ClientActionType.AnGan, out var anGanError)
+            && anGanError == "WrongPhase"
+            && !tracker.TrySubmitNetworkAction(decision.DecisionId, 1, ClientActionType.JiaGang, out var jiaGangError)
+            && jiaGangError == "WrongPhase"
+            && !tracker.TrySubmitNetworkAction(decision.DecisionId, 1, ClientActionType.Discard, out var discardError)
+            && discardError == "WrongPhase"
+            && tracker.TrySubmitNetworkAction(decision.DecisionId, 1, ClientActionType.Hu, out _)
+            && !tracker.TrySubmitNetworkAction(decision.DecisionId, 1, ClientActionType.Hu, out var duplicateError)
+            && duplicateError == "DuplicateAction"
+            && tracker.TrySubmitNetworkAction(decision.DecisionId, 2, ClientActionType.Skip, out _),
+            "Rob-kong decisions must admit only Hu-or-skip from non-declarers and retain normal decision safeguards.");
+    }
+
+    private static void TestRobKongDeclarationProjection(RegressionRunner runner)
+    {
+        var ponTile = new SimpleTileData(new TileData(Suit.Sou, 6, 0));
+        var pon = new SnapshotMeld
+        {
+            meldType = (int)MeldType.Pon,
+            tileCount = 3,
+            tiles = new[] { ponTile, ponTile, ponTile }
+        };
+        var state = new ClientGameState();
+        state.ApplySnapshot(new RoomGameSnapshot
+        {
+            requestingSeatIndex = 1,
+            seats = new[]
+            {
+                new RoomSnapshotSeat { seatIndex = 0, concealedTileCount = 5, publicMelds = new[] { pon } },
+                new RoomSnapshotSeat { seatIndex = 1 },
+                new RoomSnapshotSeat { seatIndex = 2 },
+                new RoomSnapshotSeat { seatIndex = 3 }
+            },
+            privateSeat = new SnapshotPrivateSeat { seatIndex = 1 },
+            rivers = EmptyRivers()
+        }, 0);
+
+        var declaration = new NetworkMessageEnvelope
+        {
+            type = "AddedKongDeclared",
+            seq = 1,
+            data = UnityEngine.JsonUtility.ToJson(new DiscardedMessage
+            {
+                decisionId = 52,
+                playerId = 0,
+                tile = ponTile,
+                decision = new SnapshotDecision
+                {
+                    decisionId = 52,
+                    phase = 2,
+                    discardingSeatIndex = 0,
+                    targetTile = ponTile,
+                    eligibleSeats = new[] { 1, 2, 3 },
+                    deadlineUnixMilliseconds = 9999
+                }
+            })
+        };
+        var declarationDisposition = state.ApplyEnvelope(declaration);
+        var declaredMeld = state.Snapshot.seats[0].publicMelds.Single();
+        runner.Check(declarationDisposition == ClientSequenceDisposition.Accepted
+            && state.Snapshot.activeDecision != null
+            && state.Snapshot.activeDecision.phase == 2
+            && state.Snapshot.seats[0].concealedTileCount == 5
+            && declaredMeld.meldType == (int)MeldType.Pon
+            && state.Snapshot.rivers[0].tiles.Length == 0,
+            "An added-kong declaration must publish the rob-kong decision without changing melds, hand counts, or rivers.");
+
+        var confirmationDisposition = state.ApplyEnvelope(new NetworkMessageEnvelope
+        {
+            type = "ActionResolved",
+            seq = 2,
+            data = UnityEngine.JsonUtility.ToJson(new ActionResolvedMessage
+            {
+                playerId = 0,
+                actionType = (int)ClientActionType.JiaGang,
+                tile = ponTile
+            })
+        });
+        runner.Check(confirmationDisposition == ClientSequenceDisposition.Accepted
+            && state.Snapshot.seats[0].publicMelds.Single().meldType == (int)MeldType.Kan_Added,
+            "Only an accepted added-kong action may upgrade the declared pon in the client projection.");
+    }
+
+    private static void TestRobKongRemoteNotification(RegressionRunner runner)
+    {
+        var endpoint = new GameEndpoint();
+        var remote = new RemotePlayerClient(1, new SeatMessageStream(endpoint, 4));
+        var method = typeof(RemotePlayerClient).GetMethod("OnAddedKongDeclared");
+        if (method == null)
+        {
+            runner.Check(false,
+                "Remote clients must publish a sequenced added-kong declaration to the local projection.");
+            return;
+        }
+
+        method.Invoke(remote, new object[] { 0, new TileData(Suit.Wind, 1, 0) });
+        var envelope = MessageSerializer.DeserializeEnvelope(endpoint.SentMessages.Single());
+        var payload = MessageSerializer.DeserializePayload<DiscardedMessage>(envelope.data);
+        runner.Check(envelope.type == "AddedKongDeclared"
+            && payload.playerId == 0
+            && payload.tile.suit == (int)Suit.Wind
+            && payload.tile.value == 1,
+            "Remote added-kong declarations must preserve the declaring seat and public target tile.");
     }
 
     private static List<TileData>[] EmptyTileLists() =>

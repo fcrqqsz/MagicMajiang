@@ -8,7 +8,8 @@ namespace MahjongGame.Core.Network
     public enum NetworkDecisionPhase
     {
         MainTurn,
-        Response
+        Response,
+        RobKong
     }
 
     /// <summary>Immutable view of one active, room-scoped action decision.</summary>
@@ -95,6 +96,15 @@ namespace MahjongGame.Core.Network
             return Active;
         }
 
+        /// <summary>Opens the Hu-or-skip window after a player declares an added kong.</summary>
+        public NetworkDecisionContext OpenRobKong(int declaringSeatIndex, TileData targetTile, IEnumerable<int> eligibleSeats, long deadlineUnixMilliseconds)
+        {
+            EnsureNoActiveDecision();
+            _active = new NetworkDecisionContext(++_nextDecisionId, NetworkDecisionPhase.RobKong,
+                -1, declaringSeatIndex, targetTile, eligibleSeats, Array.Empty<int>(), -1, deadlineUnixMilliseconds);
+            return Active;
+        }
+
         public bool TrySubmitNetworkAction(long decisionId, int seatIndex, ClientActionType actionType, out string errorCode)
         {
             errorCode = null;
@@ -145,13 +155,17 @@ namespace MahjongGame.Core.Network
                     return false;
                 }
 
-                if (!TurnActionPolicy.IsResponseAction(actionType))
+                bool isAllowedResponse = _active.Phase == NetworkDecisionPhase.RobKong
+                    ? TurnActionPolicy.IsRobKongResponseAction(actionType)
+                    : TurnActionPolicy.IsResponseAction(actionType);
+                if (!isAllowedResponse)
                 {
                     errorCode = NetworkErrorCodes.WrongPhase;
                     return false;
                 }
 
-                if (actionType == ClientActionType.Chi
+                if (_active.Phase == NetworkDecisionPhase.Response
+                    && actionType == ClientActionType.Chi
                     && seatIndex != (_active.DiscardingSeatIndex + 1) % 4)
                 {
                     errorCode = NetworkErrorCodes.NotEligible;

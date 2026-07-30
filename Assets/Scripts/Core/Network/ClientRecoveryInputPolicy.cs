@@ -15,7 +15,8 @@ namespace MahjongGame.Core.Network
             bool isControlledByLocalHuman = decision != null
                 && (((NetworkDecisionPhase)decision.phase == NetworkDecisionPhase.MainTurn
                         && decision.controllerSeatIndex == localSeatIndex)
-                    || ((NetworkDecisionPhase)decision.phase == NetworkDecisionPhase.Response
+                    || (((NetworkDecisionPhase)decision.phase == NetworkDecisionPhase.Response
+                            || (NetworkDecisionPhase)decision.phase == NetworkDecisionPhase.RobKong)
                         && Array.IndexOf(decision.eligibleSeats ?? Array.Empty<int>(), localSeatIndex) >= 0
                         && Array.IndexOf(decision.submittedSeats ?? Array.Empty<int>(), localSeatIndex) < 0));
 

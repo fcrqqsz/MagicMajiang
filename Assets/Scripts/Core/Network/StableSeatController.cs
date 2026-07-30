@@ -99,6 +99,12 @@ namespace MahjongGame.Core.Network
             if (_temporaryAiOwnsDecision) _temporaryAi.OnOtherPlayerDiscarded(playerId, discardedTile);
         }
 
+        public void OnAddedKongDeclared(int playerId, TileData targetTile)
+        {
+            _remote.OnAddedKongDeclared(playerId, targetTile);
+            if (_temporaryAiOwnsDecision) _temporaryAi.OnAddedKongDeclared(playerId, targetTile);
+        }
+
         public void OnActionResolved(int playerId, ClientActionType actionType, TileData targetTile, int[] chiCombinations = null)
         {
             _remote.OnActionResolved(playerId, actionType, targetTile, chiCombinations);

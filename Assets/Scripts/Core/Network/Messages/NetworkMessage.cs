@@ -274,6 +274,15 @@ namespace MahjongGame.Core.Network.Messages
     }
 
     [Serializable]
+    public class AddedKongDeclaredMessage
+    {
+        public long decisionId;
+        public SnapshotDecision decision;
+        public int playerId;
+        public SimpleTileData tile;
+    }
+
+    [Serializable]
     public class ActionResolvedMessage
     {
         public int playerId;

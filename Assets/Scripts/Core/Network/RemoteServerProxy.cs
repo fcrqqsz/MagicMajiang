@@ -102,6 +102,11 @@ namespace MahjongGame.Core.Network
                     _activeDecisionId = discMsg?.decisionId ?? 0;
                     _localClient.OnOtherPlayerDiscarded(discMsg.playerId, discMsg.tile?.ToTileData());
                     break;
+                case "AddedKongDeclared":
+                    var addedKongMsg = MessageSerializer.DeserializePayload<AddedKongDeclaredMessage>(envelope.data);
+                    _activeDecisionId = addedKongMsg?.decisionId ?? 0;
+                    _localClient.OnAddedKongDeclared(addedKongMsg.playerId, addedKongMsg.tile?.ToTileData());
+                    break;
                 case "ActionResolved":
                     var resolvedMsg = MessageSerializer.DeserializePayload<ActionResolvedMessage>(envelope.data);
                     _activeDecisionId = 0;

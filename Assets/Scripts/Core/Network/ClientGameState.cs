@@ -183,6 +183,24 @@ namespace MahjongGame.Core.Network
                     };
                     return;
                 }
+                case "AddedKongDeclared":
+                {
+                    var message = MessageSerializer.DeserializePayload<AddedKongDeclaredMessage>(envelope.data);
+                    if (message == null || message.playerId < 0 || message.playerId >= 4) return;
+                    snapshot.activeDecision = CloneDecision(message.decision) ?? new SnapshotDecision
+                    {
+                        decisionId = message.decisionId,
+                        phase = (int)NetworkDecisionPhase.RobKong,
+                        actingSeatIndex = -1,
+                        discardingSeatIndex = message.playerId,
+                        targetTile = CloneTile(message.tile),
+                        eligibleSeats = Array.Empty<int>(),
+                        submittedSeats = Array.Empty<int>(),
+                        controllerSeatIndex = -1,
+                        deadlineUnixMilliseconds = 0
+                    };
+                    return;
+                }
                 case "ActionResolved":
                 {
                     var message = MessageSerializer.DeserializePayload<ActionResolvedMessage>(envelope.data);

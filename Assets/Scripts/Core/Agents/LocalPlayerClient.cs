@@ -123,7 +123,12 @@ namespace MahjongGame.Core.Agents
 
             var targetTile = activeDecision.targetTile?.ToTileData();
             if (targetTile != null)
-                HandleOtherPlayerDiscarded(activeDecision.discardingSeatIndex, targetTile, false, remainingSeconds);
+            {
+                if ((NetworkDecisionPhase)activeDecision.phase == NetworkDecisionPhase.RobKong)
+                    HandleAddedKongDeclared(activeDecision.discardingSeatIndex, targetTile, remainingSeconds);
+                else
+                    HandleOtherPlayerDiscarded(activeDecision.discardingSeatIndex, targetTile, false, remainingSeconds);
+            }
         }
 
         private static List<TileData> ToTiles(IEnumerable<SimpleTileData> tiles)
@@ -287,6 +292,75 @@ namespace MahjongGame.Core.Agents
         public void OnOtherPlayerDiscarded(int discarderId, TileData discardedTile)
         {
             HandleOtherPlayerDiscarded(discarderId, discardedTile, true, null);
+        }
+
+        public void OnAddedKongDeclared(int declaringPlayerId, TileData targetTile)
+        {
+            HandleAddedKongDeclared(declaringPlayerId, targetTile, null);
+        }
+
+        private async void HandleAddedKongDeclared(int declaringPlayerId, TileData targetTile, float? recoveryTimerSeconds)
+        {
+            if (!Network.ResponseActionPolicy.CanRobAddedKong(PlayerId, declaringPlayerId)) return;
+
+            using var operationCancellation = CreateOperationCancellation();
+            var ct = operationCancellation.Token;
+            try
+            {
+                var handData = _handController.GetHandData();
+                var melds = _handController.Melds;
+                bool canHu = MahjongLogic.CheckWinWithFan(handData, melds, targetTile, false,
+                    out _, out _, _roundWind, _seatWind, _scoringOptions, true);
+                if (!canHu)
+                {
+                    _server.SubmitAction(ClientAction.Skip(PlayerId));
+                    return;
+                }
+
+                _isWaitingForUI = true;
+                if (recoveryTimerSeconds.HasValue)
+                {
+                    GameHUDController.Instance?.StartTimer(recoveryTimerSeconds.Value, PlayerId);
+                }
+                else if (GameManager.Instance != null)
+                {
+                    GameHUDController.Instance?.StartTimer(GameManager.Instance.responseTimeout, PlayerId);
+                }
+
+                var actions = new AllowedActions { CanHu = true };
+                bool actionTaken = false;
+                ActionPanelController.Instance.Show(actions, (choice) =>
+                {
+                    if (!_isWaitingForUI) return;
+
+                    if (choice == ActionPanelChoice.Hu)
+                    {
+                        MahjongLogic.CheckWinWithFan(handData, melds, targetTile, false,
+                            out int totalFan, out List<string> fanDetails, _roundWind, _seatWind, _scoringOptions, true);
+                        var action = new ClientAction(PlayerId, ClientActionType.Hu, targetTile);
+                        action.SetHuDetails(totalFan, fanDetails);
+                        _server.SubmitAction(action);
+                        actionTaken = true;
+                    }
+
+                    _isWaitingForUI = false;
+                    ActionPanelController.Instance.Hide();
+                    GameHUDController.Instance?.StopTimer();
+                });
+
+                while (_isWaitingForUI)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    await Task.Yield();
+                }
+
+                if (!actionTaken)
+                    _server.SubmitAction(ClientAction.Skip(PlayerId));
+            }
+            catch (OperationCanceledException)
+            {
+                GameHUDController.Instance?.StopTimer();
+            }
         }
 
         private async void HandleOtherPlayerDiscarded(int discarderId, TileData discardedTile, bool applyDiscardVisual, float? recoveryTimerSeconds)

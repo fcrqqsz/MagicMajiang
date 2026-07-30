@@ -11,6 +11,11 @@ namespace MahjongGame.Core.Network
             return responderId >= 0 && discarderId >= 0 && responderId != discarderId;
         }
 
+        public static bool CanRobAddedKong(int responderId, int declaringPlayerId)
+        {
+            return responderId >= 0 && declaringPlayerId >= 0 && responderId != declaringPlayerId;
+        }
+
         /// <summary>Selects the highest-priority response, resolving ties from the discarder&apos;s next seat onward.</summary>
         public static ClientAction SelectHighestPriorityResponse(IEnumerable<ClientAction> responses, int discarderId, int playerCount)
         {
