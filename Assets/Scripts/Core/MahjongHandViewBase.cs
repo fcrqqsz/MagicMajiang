@@ -104,9 +104,8 @@ namespace MahjongGame.Core
                 GameObject go = Instantiate(tilePrefab, meldSpawnPoint);
                 TileVisual visual = go.GetComponent<TileVisual>();
                 
-                // 判断是否是扣着的牌（暗杠的第1和第4张）
-                // MCR declares concealed-kong tile faces to every seat; only the remaining hand stays private.
-                bool isConcealed = false;
+                // MCR 暗杠的四张牌均须朝下，明杠/加杠仍保持牌面朝上。
+                bool isConcealed = MeldVisualPolicy.IsTileFaceDown(type, i);
 
                 if (!isConcealed)
                 {

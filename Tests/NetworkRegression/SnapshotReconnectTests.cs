@@ -16,6 +16,7 @@ internal static class SnapshotReconnectTests
         TestSeatLifecycleAndControl(runner);
         TestTicketAndRecoveryPolicies(runner);
         TestConcealedKanProjection(runner);
+        TestConcealedKongVisualPolicy(runner);
         TestAddedKanProjection(runner);
         TestSelfTurnKongOptions(runner);
         TestRobKongDecisionPhase(runner);
@@ -507,6 +508,25 @@ internal static class SnapshotReconnectTests
             && meld.tileCount == 4
             && meld.tiles.All(tile => tile.suit == (int)Suit.Pin && tile.value == 8),
             "Client projection must retain the public concealed-kan declaration.");
+    }
+
+    private static void TestConcealedKongVisualPolicy(RegressionRunner runner)
+    {
+        var policyType = typeof(Meld).Assembly.GetType("MahjongGame.Core.MeldVisualPolicy");
+        var method = policyType?.GetMethod("IsTileFaceDown");
+        if (method == null)
+        {
+            runner.Check(false,
+                "Concealed-kong visuals must have a shared policy instead of inheriting exposed-meld faces.");
+            return;
+        }
+
+        bool FaceDown(MeldType type, int index) => (bool)method.Invoke(null, new object[] { type, index });
+        runner.Check(Enumerable.Range(0, 4).All(index => FaceDown(MeldType.Kan_Concealed, index))
+            && !FaceDown(MeldType.Kan_Exposed, 0)
+            && !FaceDown(MeldType.Kan_Added, 3)
+            && !FaceDown(MeldType.Pon, 0),
+            "MCR concealed kongs must render every tile face-down while exposed melds remain face-up.");
     }
 
     private static void TestSelfTurnKongOptions(RegressionRunner runner)
