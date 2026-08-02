@@ -62,6 +62,7 @@
     <Compile Include="..\..\Assets\Scripts\Core\Services\WallService.cs" Link="WallService.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\TileData.cs" Link="TileData.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Meld.cs" Link="Meld.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\OpponentMeldState.cs" Link="OpponentMeldState.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\MeldVisualPolicy.cs" Link="MeldVisualPolicy.cs" />
     <Compile Include="..\..\Assets\UI\ResultHandLayoutPolicy.cs" Link="ResultHandLayoutPolicy.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\SelfTurnKongOptions.cs" Link="SelfTurnKongOptions.cs" />

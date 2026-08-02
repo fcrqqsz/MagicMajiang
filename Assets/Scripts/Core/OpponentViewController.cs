@@ -12,6 +12,7 @@ namespace MahjongGame.Core
         public Vector3 opponentHandRotation = new Vector3(0f, 0f, 0f); 
 
         private bool _justDrawn = false;
+        private readonly OpponentMeldState _meldState = new OpponentMeldState();
 
         public void InitHand(int count)
         {
@@ -87,6 +88,7 @@ namespace MahjongGame.Core
         public override void ClearHand()
         {
             base.ClearHand();
+            _meldState.Clear();
             _justDrawn = false;
         }
 
@@ -94,11 +96,8 @@ namespace MahjongGame.Core
         public void RebuildFromSnapshot(int concealedTileCount, IEnumerable<Meld> melds, IEnumerable<TileData> river)
         {
             InitHand(Mathf.Max(0, concealedTileCount), false);
-            foreach (var meld in melds ?? Enumerable.Empty<Meld>())
-            {
-                if (meld?.Tiles == null || meld.Tiles.Count == 0) continue;
-                CreateMeldVisual(meld.Type, meld.Tiles);
-            }
+            _meldState.Replace(melds);
+            RebuildMeldVisuals();
 
             RebuildRiver(river);
         }
@@ -131,8 +130,32 @@ namespace MahjongGame.Core
             }
             UpdateHandPositions();
 
-            // 2. 复用基类逻辑生成副露模型
-            CreateMeldVisual(type, meldTiles);
+            // 2. 加杠升级已有碰；其余动作新增副露，然后从本地状态重建视觉。
+            if (!_meldState.TryApply(type, meldTiles))
+            {
+                Debug.LogWarning($"[OpponentView] 无法应用副露 {type}：未找到匹配的已有碰或牌数据为空");
+                return;
+            }
+
+            RebuildMeldVisuals();
+        }
+
+        private void RebuildMeldVisuals()
+        {
+            if (meldSpawnPoint != null)
+            {
+                foreach (Transform child in meldSpawnPoint)
+                {
+                    child.DOKill();
+                    Destroy(child.gameObject);
+                }
+            }
+
+            _currentMeldOffset = 0f;
+            foreach (var meld in _meldState.Melds)
+            {
+                CreateMeldVisual(meld.Type, meld.Tiles);
+            }
         }
     }
 }

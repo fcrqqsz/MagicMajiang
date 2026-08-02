@@ -24,6 +24,8 @@ internal static class SnapshotReconnectTests
         TestConcealedKanProjection(runner);
         TestConcealedKongVisualPolicy(runner);
         TestAddedKanProjection(runner);
+        TestOpponentAddedKongUpgradesPon(runner);
+        TestOpponentAddedKongRejectsMissingPon(runner);
         TestSelfTurnKongOptions(runner);
         TestRobKongDecisionPhase(runner);
         TestRobKongDeclarationProjection(runner);
@@ -876,6 +878,58 @@ internal static class SnapshotReconnectTests
             && publicMeld.tileCount == 4
             && privateMeld.meldType == (int)MeldType.Kan_Added,
             "Added-kong projection must upgrade the original pon and consume exactly one private tile.");
+    }
+
+    private static void TestOpponentAddedKongUpgradesPon(RegressionRunner runner)
+    {
+        var pinNine = new TileData(Suit.Pin, 9, 1);
+        var state = new OpponentMeldState();
+        state.Replace(new[]
+        {
+            new Meld(MeldType.Pon, new List<TileData>
+            {
+                pinNine,
+                new(Suit.Pin, 9, 1),
+                new(Suit.Pin, 9, 1)
+            }, 1)
+        });
+
+        var upgraded = state.TryApply(MeldType.Kan_Added, new[]
+        {
+            new TileData(Suit.Pin, 9, 0)
+        });
+        var meld = state.Melds.Single();
+
+        runner.Check(upgraded
+            && state.Melds.Count == 1
+            && meld.Type == MeldType.Kan_Added
+            && meld.Tiles.Count == 4,
+            "An opponent added kong must upgrade the matching pon without adding another meld.");
+    }
+
+    private static void TestOpponentAddedKongRejectsMissingPon(RegressionRunner runner)
+    {
+        var state = new OpponentMeldState();
+        state.Replace(new[]
+        {
+            new Meld(MeldType.Pon, new List<TileData>
+            {
+                new(Suit.Sou, 3, 2),
+                new(Suit.Sou, 3, 2),
+                new(Suit.Sou, 3, 2)
+            }, 2)
+        });
+
+        var upgraded = state.TryApply(MeldType.Kan_Added, new[]
+        {
+            new TileData(Suit.Dragon, 1, 0)
+        });
+
+        runner.Check(!upgraded
+            && state.Melds.Count == 1
+            && state.Melds.Single().Type == MeldType.Pon
+            && state.Melds.Single().Tiles.Count == 3,
+            "An opponent added kong without a matching pon must not create an orphan meld.");
     }
 
     private static void TestRobKongDecisionPhase(RegressionRunner runner)
