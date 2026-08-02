@@ -3,6 +3,9 @@
     <ui:VisualElement name="Overlay" class="overlay">
         <ui:VisualElement name="Panel" class="result-panel">
             <ui:Label name="TitleLabel" text="荣  胡" class="title-text" />
+            <ui:VisualElement name="WinningHandSection" class="winning-hand-strip" picking-mode="Ignore">
+                <ui:VisualElement name="WinningHandRow" class="winning-hand-row" picking-mode="Ignore" />
+            </ui:VisualElement>
             <ui:ScrollView name="FanListContainer" class="fan-list" />
             <ui:Label name="TotalScoreLabel" text="合计：0 番" class="total-score" />
             <ui:Button name="BtnRestart" text="再来一局" class="restart-btn" />

@@ -21,6 +21,7 @@ namespace MahjongGame.UI
         private ScrollView _listContainer;
         private Label _totalLabel;
         private Button _btnRestart;
+        private WinningHandStripView _winningHandView;
 
         // 多局对战状态
         private GameSession _session;
@@ -36,6 +37,9 @@ namespace MahjongGame.UI
             _listContainer = root.Q<ScrollView>("FanListContainer");
             _totalLabel = root.Q<Label>("TotalScoreLabel");
             _btnRestart = root.Q<Button>("BtnRestart");
+            _winningHandView = new WinningHandStripView(
+                root.Q<VisualElement>("WinningHandSection"),
+                root.Q<VisualElement>("WinningHandRow"));
 
             _btnRestart.clicked += OnRestartClicked;
 
@@ -59,6 +63,7 @@ namespace MahjongGame.UI
             StopAllCoroutines();
             CancelInvoke();
             _isShowingFinalResult = false;
+            _winningHandView?.Hide();
             if (_overlay == null) return;
             _overlay.RemoveFromClassList("overlay--visible");
             _overlay.style.display = DisplayStyle.None;
@@ -84,8 +89,8 @@ namespace MahjongGame.UI
             if (result.winnerId < 0) return;
 
             var details = result.fanDetails?.ToList() ?? new List<string>();
-            if (IsLocalSeat(result.winnerId)) ShowWin(result.fanCount, details, result.isSelfDraw);
-            else ShowLose(result.winnerId, result.fanCount, details);
+            if (IsLocalSeat(result.winnerId)) ShowWin(result.fanCount, details, result.isSelfDraw, result.winningHand);
+            else ShowLose(result.winnerId, result.fanCount, details, result.winningHand);
         }
 
         private void UpdateButtonText()
@@ -106,6 +111,7 @@ namespace MahjongGame.UI
 
         public void ShowDraw(List<string> playerStatuses = null)
         {
+            _winningHandView?.Hide();
             _titleLabel.text = "流  局";
             _titleLabel.style.color = new StyleColor(new Color(0.7f, 0.7f, 0.7f));
 
@@ -135,8 +141,10 @@ namespace MahjongGame.UI
             Invoke(nameof(FadeIn), 0.05f);
         }
 
-        public void ShowLose(int aiId, int totalFan, List<string> fanDetails)
+        public void ShowLose(int aiId, int totalFan, List<string> fanDetails,
+            WinningHandSnapshot winningHand = null)
         {
+            _winningHandView?.Show(winningHand);
             _titleLabel.text = $"{GetPlayerDisplayName(aiId)} 胡牌";
             _titleLabel.style.color = new StyleColor(new Color(0.5f, 0.5f, 0.8f));
 
@@ -157,8 +165,10 @@ namespace MahjongGame.UI
             Invoke(nameof(FadeIn), 0.05f);
         }
 
-        public void ShowWin(int totalFan, List<string> fanDetails, bool isTsumo)
+        public void ShowWin(int totalFan, List<string> fanDetails, bool isTsumo,
+            WinningHandSnapshot winningHand = null)
         {
+            _winningHandView?.Show(winningHand);
             _titleLabel.text = isTsumo ? "自  摸" : "荣  胡";
             _titleLabel.style.color = new StyleColor(new Color(1f, 0.26f, 0.26f));
 
@@ -204,6 +214,7 @@ namespace MahjongGame.UI
         /// </summary>
         private void ShowSessionResult()
         {
+            _winningHandView?.Hide();
             _titleLabel.text = "对战结束";
             _titleLabel.style.color = new StyleColor(new Color(1f, 0.85f, 0.4f));
 
@@ -261,6 +272,133 @@ namespace MahjongGame.UI
         {
             public string FullText;
             public int Score;
+        }
+
+        private sealed class WinningHandStripView
+        {
+            private readonly VisualElement _section;
+            private readonly VisualElement _row;
+            private readonly List<VisualElement> _tileElements = new List<VisualElement>();
+            private int _groupCount;
+            private int _visibleTileCount;
+
+            public WinningHandStripView(VisualElement section, VisualElement row)
+            {
+                _section = section;
+                _row = row;
+                _row?.RegisterCallback<GeometryChangedEvent>(_ => ApplySizing());
+                Hide();
+            }
+
+            public void Show(WinningHandSnapshot hand)
+            {
+                if (_section == null || _row == null || hand?.winningTile == null || !hand.winningTile.isValid)
+                {
+                    Hide();
+                    return;
+                }
+
+                _row.Clear();
+                _tileElements.Clear();
+                _groupCount = 0;
+                _visibleTileCount = ResultHandLayoutPolicy.CountVisibleTiles(hand);
+
+                var concealedTiles = (hand.concealedTiles ?? System.Array.Empty<SimpleTileData>())
+                    .Where(tile => tile != null && tile.isValid)
+                    .OrderBy(tile => tile.suit)
+                    .ThenBy(tile => tile.value)
+                    .ToList();
+                AddGroup(concealedTiles, null, false);
+                AddGroup(new List<SimpleTileData> { hand.winningTile }, null, true);
+
+                foreach (var meld in hand.melds ?? System.Array.Empty<SnapshotMeld>())
+                {
+                    if (meld == null) continue;
+                    var tiles = (meld.tiles ?? System.Array.Empty<SimpleTileData>())
+                        .Where(tile => tile != null && tile.isValid)
+                        .ToList();
+                    AddGroup(tiles, (MeldType)meld.meldType, false);
+                }
+
+                if (_tileElements.Count == 0)
+                {
+                    Hide();
+                    return;
+                }
+
+                _section.style.display = DisplayStyle.Flex;
+                _row.schedule.Execute(ApplySizing);
+            }
+
+            public void Hide()
+            {
+                if (_row != null) _row.Clear();
+                _tileElements.Clear();
+                _groupCount = 0;
+                _visibleTileCount = 0;
+                if (_section != null) _section.style.display = DisplayStyle.None;
+            }
+
+            private void AddGroup(List<SimpleTileData> tiles, MeldType? meldType, bool isWinningTile)
+            {
+                if (tiles == null || tiles.Count == 0) return;
+
+                var group = new VisualElement { pickingMode = PickingMode.Ignore };
+                group.AddToClassList("winning-hand-group");
+                if (_groupCount > 0) group.AddToClassList("winning-hand-group--separated");
+
+                for (int index = 0; index < tiles.Count; index++)
+                {
+                    bool faceDown = meldType.HasValue
+                        && ResultHandLayoutPolicy.ShouldUseTileBack(meldType.Value, index, tiles.Count);
+                    group.Add(CreateTile(tiles[index], faceDown, isWinningTile));
+                }
+
+                _row.Add(group);
+                _groupCount++;
+            }
+
+            private VisualElement CreateTile(SimpleTileData tile, bool faceDown, bool isWinningTile)
+            {
+                var image = new VisualElement { pickingMode = PickingMode.Ignore };
+                image.AddToClassList("winning-hand-tile");
+                if (isWinningTile) image.AddToClassList("winning-hand-tile--winning");
+
+                string imagePath = faceDown
+                    ? TileImageHelper.GetTileBackImagePath()
+                    : TileImageHelper.GetTileImagePath((Suit)tile.suit, tile.value);
+                Sprite tileSprite = Resources.Load<Sprite>(imagePath);
+                if (tileSprite != null)
+                {
+                    image.style.backgroundImage = new StyleBackground(tileSprite);
+                }
+                else
+                {
+                    Debug.LogWarning($"[ResultPanel] Failed to load tile sprite at {imagePath}");
+                }
+
+                _tileElements.Add(image);
+                return image;
+            }
+
+            private void ApplySizing()
+            {
+                if (_section == null || _row == null || _section.style.display == DisplayStyle.None
+                    || _tileElements.Count == 0) return;
+
+                float availableWidth = _row.resolvedStyle.width;
+                if (float.IsNaN(availableWidth) || availableWidth <= 0f) return;
+
+                float tileWidth = ResultHandLayoutPolicy.CalculateTileWidth(
+                    availableWidth, _visibleTileCount, Mathf.Max(0, _groupCount - 1));
+                float tileHeight = tileWidth * ResultHandLayoutPolicy.TileAspectRatio;
+                foreach (var tile in _tileElements)
+                {
+                    tile.style.width = tileWidth;
+                    tile.style.height = tileHeight;
+                }
+                _row.style.height = tileHeight;
+            }
         }
 
         private IEnumerator RollScoreRoutine(List<string> fanDetails)
@@ -324,6 +462,7 @@ namespace MahjongGame.UI
             // 关键：先隐藏面板，避免在可见状态下修改内容触发字体图集异常
             _overlay.RemoveFromClassList("overlay--visible");
             _overlay.style.display = DisplayStyle.None;
+            _winningHandView?.Hide();
             StopAllCoroutines();
             CancelInvoke();
 

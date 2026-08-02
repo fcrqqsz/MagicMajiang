@@ -34,6 +34,8 @@
     <Compile Include="..\..\Assets\Scripts\Core\Network\NetworkDecisionClient.cs" Link="NetworkDecisionClient.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\NetworkActionSubmissionPolicy.cs" Link="NetworkActionSubmissionPolicy.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\RoomGameSnapshot.cs" Link="RoomGameSnapshot.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\Network\WinningHandSnapshotCodec.cs" Link="WinningHandSnapshotCodec.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\Network\WinResultNormalizer.cs" Link="WinResultNormalizer.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\ClientGameState.cs" Link="ClientGameState.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\ClientProjectionLineage.cs" Link="ClientProjectionLineage.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\RemotePlayerClient.cs" Link="RemotePlayerClient.cs" />
@@ -61,6 +63,7 @@
     <Compile Include="..\..\Assets\Scripts\Core\TileData.cs" Link="TileData.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Meld.cs" Link="Meld.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\MeldVisualPolicy.cs" Link="MeldVisualPolicy.cs" />
+    <Compile Include="..\..\Assets\UI\ResultHandLayoutPolicy.cs" Link="ResultHandLayoutPolicy.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\SelfTurnKongOptions.cs" Link="SelfTurnKongOptions.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\MahjongEnums.cs" Link="MahjongEnums.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\DeckConfig.cs" Link="DeckConfig.cs" />

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using MahjongGame.Core.Agents;
+using MahjongGame.Core.Network.Messages;
 
 namespace MahjongGame.Core.Network
 {
@@ -112,7 +113,9 @@ namespace MahjongGame.Core.Network
         }
 
         public void OnDrawGame() => _remote.OnDrawGame();
-        public void OnPlayerWin(int playerId, int totalFan, List<string> fanDetails, bool isSelfDraw) => _remote.OnPlayerWin(playerId, totalFan, fanDetails, isSelfDraw);
+        public void OnPlayerWin(int playerId, int totalFan, List<string> fanDetails, bool isSelfDraw,
+            WinKind winKind, int loserId, WinningHandSnapshot winningHand) =>
+            _remote.OnPlayerWin(playerId, totalFan, fanDetails, isSelfDraw, winKind, loserId, winningHand);
         public void OnRoundStart(int roundNumber, WindDirection prevalentWind, WindDirection seatWind, int dealerIndex)
         {
             _remote.OnRoundStart(roundNumber, prevalentWind, seatWind, dealerIndex);

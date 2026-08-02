@@ -120,9 +120,13 @@ namespace MahjongGame.Core.Network
                 case "PlayerWin":
                     var winMsg = MessageSerializer.DeserializePayload<PlayerWinMessage>(envelope.data);
                     if (winMsg == null) break;
+                    var winResult = WinResultNormalizer.Normalize(
+                        winMsg.winKind, winMsg.isSelfDraw, winMsg.loserId);
                     _activeDecisionId = 0;
                     SyncSessionAfterRound(winMsg.scores, winMsg.completedRounds);
-                    _localClient.OnPlayerWin(winMsg.winnerId, winMsg.totalFan, winMsg.fanDetails?.ToList(), winMsg.isSelfDraw);
+                    _localClient.OnPlayerWin(winMsg.winnerId, winMsg.totalFan, winMsg.fanDetails?.ToList(),
+                        winResult.IsSelfDraw, winResult.Kind, winResult.LoserId,
+                        WinningHandSnapshotCodec.Normalize(winMsg.winningHand));
                     break;
                 case "DrawGame":
                     var drawMsg = MessageSerializer.DeserializePayload<DrawGameMessage>(envelope.data);

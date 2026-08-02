@@ -573,7 +573,8 @@ namespace MahjongGame.Core.Agents
             ResultPanelController.Instance.ShowDraw(new List<string> { "流局" });
         }
 
-        public void OnPlayerWin(int winnerId, int totalFan, List<string> fanDetails, bool isSelfDraw)
+        public void OnPlayerWin(int winnerId, int totalFan, List<string> fanDetails, bool isSelfDraw,
+            WinKind winKind, int loserId, WinningHandSnapshot winningHand)
         {
             _isWaitingForUI = false;
             ActionPanelController.Instance?.Hide();
@@ -583,11 +584,11 @@ namespace MahjongGame.Core.Agents
 
             if (winnerId == PlayerId)
             {
-                ResultPanelController.Instance.ShowWin(totalFan, fanDetails, isSelfDraw);
+                ResultPanelController.Instance.ShowWin(totalFan, fanDetails, isSelfDraw, winningHand);
             }
             else
             {
-                ResultPanelController.Instance.ShowLose(winnerId, totalFan, fanDetails);
+                ResultPanelController.Instance.ShowLose(winnerId, totalFan, fanDetails, winningHand);
             }
         }
 

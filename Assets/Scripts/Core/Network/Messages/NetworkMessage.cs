@@ -298,12 +298,31 @@ namespace MahjongGame.Core.Network.Messages
     }
 
     [Serializable]
+    public sealed class WinningHandSnapshot
+    {
+        public SimpleTileData[] concealedTiles;
+        public SimpleTileData winningTile;
+        public SnapshotMeld[] melds;
+    }
+
+    public enum WinKind
+    {
+        Unknown = 0,
+        Discard = 1,
+        SelfDraw = 2,
+        RobKong = 3
+    }
+
+    [Serializable]
     public class PlayerWinMessage
     {
         public int winnerId;
         public int totalFan;
         public string[] fanDetails;
         public bool isSelfDraw;
+        public WinKind winKind;
+        public int loserId = -1;
+        public WinningHandSnapshot winningHand;
         public int[] scores;
         public int completedRounds;
     }

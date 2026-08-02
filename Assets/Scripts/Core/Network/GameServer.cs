@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using UnityEngine;
 using MahjongGame.Core.Agents;
 using MahjongGame.Core.Interfaces;
+using MahjongGame.Core.Network.Messages;
 using MahjongGame.Talents;
 using MahjongGame.Talents.Impl;
 
@@ -68,6 +69,8 @@ namespace MahjongGame.Core.Network
         public int WinFan { get; private set; }
         public List<string> WinFanDetails { get; private set; } = new List<string>();
         public bool WinIsSelfDraw { get; private set; }
+        public WinKind WinResultKind { get; private set; } = WinKind.Unknown;
+        public WinningHandSnapshot WinningHandSnapshot { get; private set; }
         public int LoserId { get; private set; } = -1; // 放炮者
         public bool IsDrawGame { get; private set; }
         public NetworkDecisionContext ActiveDecision => _decisionTracker?.Active;
@@ -140,6 +143,8 @@ namespace MahjongGame.Core.Network
             WinFan = 0;
             WinFanDetails = new List<string>();
             WinIsSelfDraw = false;
+            WinResultKind = WinKind.Unknown;
+            WinningHandSnapshot = null;
             LoserId = -1;
             IsDrawGame = false;
             _peekWallTiles.Clear();
@@ -1045,6 +1050,14 @@ namespace MahjongGame.Core.Network
             WinFan = serverFan;
             WinFanDetails = serverDetails?.ToList() ?? new List<string>();
             WinIsSelfDraw = isSelfDraw;
+            WinResultKind = isSelfDraw
+                ? WinKind.SelfDraw
+                : isRobKongWin ? WinKind.RobKong : WinKind.Discard;
+            WinningHandSnapshot = WinningHandSnapshotCodec.Create(hand, melds, winTile, isSelfDraw);
+            if (!WinningHandSnapshotCodec.TryValidate(WinningHandSnapshot, out string snapshotError))
+            {
+                Debug.LogWarning($"[GameServer] Winning-hand snapshot validation failed: {snapshotError}");
+            }
             LoserId = loserId;
 
             // 计分
@@ -1055,7 +1068,8 @@ namespace MahjongGame.Core.Network
 
             foreach (var client in _clients)
             {
-                client.OnPlayerWin(pid, serverFan, serverDetails, isSelfDraw);
+                client.OnPlayerWin(pid, serverFan, serverDetails, isSelfDraw,
+                    WinResultKind, loserId, WinningHandSnapshotCodec.Clone(WinningHandSnapshot));
             }
 
             OnRoundFinished?.Invoke();

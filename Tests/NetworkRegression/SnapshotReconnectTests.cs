@@ -2,6 +2,7 @@ using MahjongGame.Core;
 using MahjongGame.Core.Network;
 using MahjongGame.Core.Network.Messages;
 using MahjongGame.Core.Network.Transport;
+using MahjongGame.UI;
 
 internal static class SnapshotReconnectTests
 {
@@ -10,8 +11,13 @@ internal static class SnapshotReconnectTests
         TestAuthoritativeTableState(runner);
         TestDecisionTracker(runner);
         TestSnapshotPrivacyAndSerialization(runner);
+        TestWinningHandNormalization(runner);
+        TestWinningHandSnapshotCodec(runner);
+        TestWinningHandResultVisibility(runner);
+        TestResultHandLayoutPolicy(runner);
         TestCompletedEastOnlyProjection(runner);
         TestClientProjection(runner);
+        TestRemoteWinningHandNotification(runner);
         TestReconnectStream(runner);
         TestSeatLifecycleAndControl(runner);
         TestTicketAndRecoveryPolicies(runner);
@@ -239,6 +245,16 @@ internal static class SnapshotReconnectTests
                 seatIndex = 1,
                 concealedHand = new[] { Tile(Suit.Man, 2, 1) }
             },
+            result = new RoundResultSnapshot
+            {
+                winnerId = 1,
+                winningHand = new WinningHandSnapshot
+                {
+                    concealedTiles = new[] { Tile(Suit.Man, 2, 1) },
+                    winningTile = Tile(Suit.Man, 3, 1),
+                    melds = Array.Empty<SnapshotMeld>()
+                }
+            },
             rivers = EmptyRivers(),
             activeDecision = new SnapshotDecision
             {
@@ -252,7 +268,9 @@ internal static class SnapshotReconnectTests
         };
         runner.Check(state.ApplySnapshot(baseline, 10), "A valid snapshot must establish the client baseline.");
         baseline.privateSeat.concealedHand[0].value = 9;
+        baseline.result.winningHand.concealedTiles[0].value = 9;
         runner.Check(state.Snapshot.privateSeat.concealedHand[0].value == 2
+            && state.Snapshot.result.winningHand.concealedTiles[0].value == 2
             && state.LastSequence == 10,
             "ClientGameState must clone an applied snapshot.");
 
@@ -279,16 +297,40 @@ internal static class SnapshotReconnectTests
             {
                 winnerId = 1,
                 totalFan = 24,
-                isSelfDraw = true,
-                scores = new[] { 100, -20, -30, -50 }
+                isSelfDraw = false,
+                winKind = WinKind.RobKong,
+                loserId = 2,
+                scores = new[] { 100, -20, -30, -50 },
+                winningHand = new WinningHandSnapshot
+                {
+                    concealedTiles = new[] { Tile(Suit.Pin, 3, 1), Tile(Suit.Pin, 4, 1) },
+                    winningTile = Tile(Suit.Pin, 5, 1),
+                    melds = Array.Empty<SnapshotMeld>()
+                }
             })
         };
         runner.Check(state.ApplyEnvelope(win) == ClientSequenceDisposition.Accepted
             && state.Snapshot.result.winnerId == 1
             && state.Snapshot.result.fanCount == 24
+            && state.Snapshot.result.winKind == WinKind.RobKong
+            && state.Snapshot.result.loserId == 2
+            && !state.Snapshot.result.isSelfDraw
+            && state.Snapshot.result.winningHand.concealedTiles.Length == 2
+            && state.Snapshot.result.winningHand.winningTile.value == 5
             && state.Snapshot.scores.SequenceEqual(new[] { 100, -20, -30, -50 })
             && state.Snapshot.activeDecision == null,
             "Result envelopes must atomically update scores and close the decision.");
+
+        var legacyWin = new NetworkMessageEnvelope
+        {
+            type = "PlayerWin",
+            seq = 13,
+            data = "{\"winnerId\":2,\"totalFan\":8,\"isSelfDraw\":false,\"scores\":[100,-20,0,-80]}"
+        };
+        runner.Check(state.ApplyEnvelope(legacyWin) == ClientSequenceDisposition.Accepted
+            && state.Snapshot.result.winKind == WinKind.Discard
+            && state.Snapshot.result.loserId == -1,
+            "A legacy v2 win without explicit outcome metadata must not interpret JSON's zero default as seat zero.");
 
         state.Reset();
         runner.Check(state.Snapshot == null && state.LastSequence == 0 && !state.IsResyncRequired,
@@ -508,6 +550,224 @@ internal static class SnapshotReconnectTests
             && meld.tileCount == 4
             && meld.tiles.All(tile => tile.suit == (int)Suit.Pin && tile.value == 8),
             "Client projection must retain the public concealed-kan declaration.");
+    }
+
+    private static void TestRemoteWinningHandNotification(RegressionRunner runner)
+    {
+        var endpoint = new GameEndpoint();
+        var remote = new RemotePlayerClient(0, new SeatMessageStream(endpoint, 4));
+        var winningHand = new WinningHandSnapshot
+        {
+            concealedTiles = new[] { Tile(Suit.Sou, 6, 0), Tile(Suit.Sou, 7, 0) },
+            winningTile = Tile(Suit.Sou, 8, 0),
+            melds = Array.Empty<SnapshotMeld>()
+        };
+
+        remote.OnPlayerWin(0, 16, new List<string> { "清龙(16)" }, false,
+            WinKind.RobKong, 3, winningHand);
+        var envelope = MessageSerializer.DeserializeEnvelope(endpoint.SentMessages.Single());
+        var payload = MessageSerializer.DeserializePayload<PlayerWinMessage>(envelope.data);
+        runner.Check(envelope.type == "PlayerWin"
+            && payload.winKind == WinKind.RobKong
+            && payload.loserId == 3
+            && payload.winningHand.concealedTiles.Length == 2
+            && payload.winningHand.winningTile.value == 8,
+            "Remote win notifications must carry the authoritative winning-hand snapshot.");
+    }
+
+    private static void TestWinningHandNormalization(RegressionRunner runner)
+    {
+        var selfDrawWin = new TileData(Suit.Pin, 5, 1);
+        var selfDrawHand = new List<TileData>
+        {
+            new(Suit.Man, 1, 1),
+            new(Suit.Man, 2, 1),
+            new(Suit.Man, 3, 1),
+            new(Suit.Pin, 5, 1),
+            selfDrawWin
+        };
+        var melds = new List<Meld>
+        {
+            new(MeldType.Kan_Added,
+                Enumerable.Range(0, 4).Select(_ => new TileData(Suit.Dragon, 1, 1)).ToList(),
+                0)
+        };
+
+        var selfDraw = WinningHandSnapshotCodec.Create(
+            selfDrawHand, melds, selfDrawWin, true);
+        runner.Check(selfDraw.concealedTiles.Length == 4
+            && selfDraw.winningTile.suit == (int)Suit.Pin
+            && selfDraw.winningTile.value == 5
+            && selfDraw.concealedTiles.Count(tile => tile.suit == (int)Suit.Pin && tile.value == 5) == 1
+            && selfDraw.melds.Single().meldType == (int)MeldType.Kan_Added
+            && selfDraw.melds.Single().tiles.Length == 4,
+            "A self-draw result must separate exactly one winning tile and retain full meld data.");
+
+        var discardHand = new List<TileData>
+        {
+            new(Suit.Sou, 2, 2),
+            new(Suit.Sou, 3, 2),
+            new(Suit.Sou, 4, 2)
+        };
+        var discardWin = WinningHandSnapshotCodec.Create(
+            discardHand, new List<Meld>(), new TileData(Suit.Wind, 1, 0), false);
+        runner.Check(discardWin.concealedTiles.Length == 3
+            && discardWin.winningTile.suit == (int)Suit.Wind
+            && discardWin.winningTile.value == 1,
+            "A discard win must keep the concealed hand intact and expose the external winning tile separately.");
+    }
+
+    private static void TestWinningHandSnapshotCodec(RegressionRunner runner)
+    {
+        var malformed = new WinningHandSnapshot
+        {
+            concealedTiles = new[]
+            {
+                Tile(Suit.Man, 1, 0),
+                null,
+                new SimpleTileData { suit = 99, value = 99, ownerId = 0, isValid = true },
+                new SimpleTileData { suit = (int)Suit.Pin, value = 2, ownerId = 0, isValid = false }
+            },
+            winningTile = Tile(Suit.Man, 2, 0),
+            melds = new[]
+            {
+                new SnapshotMeld
+                {
+                    meldType = (int)MeldType.Kan_Concealed,
+                    sourceSeatIndex = 0,
+                    isConcealed = false,
+                    tileCount = 99,
+                    tiles = Enumerable.Range(0, 4).Select(_ => Tile(Suit.Pin, 8, 0)).ToArray()
+                },
+                new SnapshotMeld
+                {
+                    meldType = (int)MeldType.Pon,
+                    sourceSeatIndex = 1,
+                    tileCount = 3,
+                    tiles = new[]
+                    {
+                        Tile(Suit.Sou, 3, 0),
+                        Tile(Suit.Sou, 3, 0),
+                        new SimpleTileData { suit = (int)Suit.Sou, value = 10, isValid = true }
+                    }
+                }
+            }
+        };
+
+        runner.Check(!WinningHandSnapshotCodec.TryValidate(malformed, out _),
+            "Validation must reject invalid tiles and inconsistent derived meld fields.");
+
+        var normalized = WinningHandSnapshotCodec.Normalize(malformed);
+        runner.Check(WinningHandSnapshotCodec.TryValidate(normalized, out _)
+            && normalized.concealedTiles.Length == 1
+            && normalized.melds.Length == 1
+            && normalized.melds[0].tileCount == 4
+            && normalized.melds[0].isConcealed,
+            "Normalization must remove invalid tiles and recompute derived meld fields.");
+
+        malformed.concealedTiles[0].value = 9;
+        malformed.melds[0].tiles[0].value = 7;
+        runner.Check(normalized.concealedTiles[0].value == 1
+            && normalized.melds[0].tiles[0].value == 8,
+            "A normalized winning hand must be a deep copy of its input.");
+
+        var invalidWinningTile = WinningHandSnapshotCodec.Normalize(new WinningHandSnapshot
+        {
+            concealedTiles = Array.Empty<SimpleTileData>(),
+            winningTile = new SimpleTileData { suit = (int)Suit.Man, value = 10, isValid = true },
+            melds = Array.Empty<SnapshotMeld>()
+        });
+        runner.Check(!WinningHandSnapshotCodec.TryValidate(invalidWinningTile, out _),
+            "Validation must reject a snapshot without a valid winning tile.");
+    }
+
+    private static void TestWinningHandResultVisibility(RegressionRunner runner)
+    {
+        var winningHand = WinningHandSnapshotCodec.Create(
+            new List<TileData> { new(Suit.Man, 7, 1), new(Suit.Man, 8, 1), new(Suit.Man, 9, 1) },
+            new List<Meld>(),
+            new TileData(Suit.Dragon, 3, 0),
+            false);
+        var source = new RoomGameSnapshotSource
+        {
+            RoomId = "winning-hand-visibility",
+            RoomState = RoomState.InRound,
+            GameMode = GameMode.Single,
+            Session = new GameSession(GameMode.Single),
+            Seats = Enumerable.Range(0, 4).Select(index => new RoomSnapshotSeatSource
+            {
+                SeatIndex = index,
+                IsOccupied = true,
+                IsOnline = true,
+                Controller = "OnlineHuman"
+            }).ToArray(),
+            Hands = new[]
+            {
+                new List<TileData> { new(Suit.Man, 1, 0) },
+                new List<TileData> { new(Suit.Man, 7, 1), new(Suit.Man, 8, 1), new(Suit.Man, 9, 1) },
+                new List<TileData> { new(Suit.Pin, 1, 2) },
+                new List<TileData> { new(Suit.Sou, 1, 3) }
+            },
+            Melds = EmptyMeldLists(),
+            Rivers = EmptyTileLists(),
+            ScoringOptions = Enumerable.Range(0, 4).Select(_ => new ScoringOptions()).ToArray(),
+            PeekWallTiles = EmptyTileLists(),
+            WinnerId = -1,
+            WinningHand = winningHand
+        };
+
+        runner.Check(RoomGameSnapshotBuilder.Build(source, 0).result.winningHand == null,
+            "A live round must not expose a concealed winning-hand candidate.");
+
+        source.WinnerId = 1;
+        source.WinKind = WinKind.RobKong;
+        source.LoserId = 0;
+        var seatZero = RoomGameSnapshotBuilder.Build(source, 0);
+        var seatTwo = RoomGameSnapshotBuilder.Build(source, 2);
+        runner.Check(seatZero.result.winningHand.concealedTiles.Length == 3
+            && seatTwo.result.winningHand.concealedTiles.Length == 3
+            && seatZero.result.winningHand.winningTile.value == 3
+            && seatZero.result.winKind == WinKind.RobKong
+            && seatZero.result.loserId == 0
+            && seatTwo.result.winKind == WinKind.RobKong
+            && seatTwo.result.loserId == 0
+            && seatZero.seats[1].concealedTileCount == 3
+            && seatZero.privateSeat.concealedHand.All(tile => tile.ownerId == 0),
+            "After a win, every requesting seat must receive the same result hand without widening normal seat privacy.");
+    }
+
+    private static void TestResultHandLayoutPolicy(RegressionRunner runner)
+    {
+        var hand = new WinningHandSnapshot
+        {
+            concealedTiles = Enumerable.Range(1, 10).Select(value => Tile(Suit.Man, value, 0)).ToArray(),
+            winningTile = Tile(Suit.Pin, 5, 0),
+            melds = new[]
+            {
+                new SnapshotMeld
+                {
+                    meldType = (int)MeldType.Kan_Added,
+                    tiles = Enumerable.Range(0, 4).Select(_ => Tile(Suit.Dragon, 1, 0)).ToArray()
+                }
+            }
+        };
+
+        runner.Check(ResultHandLayoutPolicy.CountVisibleTiles(hand) == 15,
+            "Result layout must count every added-kong tile as a normal horizontal tile.");
+        runner.Check(ResultHandLayoutPolicy.ShouldUseTileBack(MeldType.Kan_Concealed, 0, 4)
+            && !ResultHandLayoutPolicy.ShouldUseTileBack(MeldType.Kan_Concealed, 1, 4)
+            && !ResultHandLayoutPolicy.ShouldUseTileBack(MeldType.Kan_Concealed, 2, 4)
+            && ResultHandLayoutPolicy.ShouldUseTileBack(MeldType.Kan_Concealed, 3, 4)
+            && !ResultHandLayoutPolicy.ShouldUseTileBack(MeldType.Kan_Added, 0, 4),
+            "Result concealed kongs must use backs only on the two outside tiles.");
+
+        float standardWidth = ResultHandLayoutPolicy.CalculateTileWidth(720f, 14, 1);
+        float crowdedWidth = ResultHandLayoutPolicy.CalculateTileWidth(720f, 18, 4);
+        float shortWidth = ResultHandLayoutPolicy.CalculateTileWidth(720f, 3, 0);
+        runner.Check(standardWidth >= 48f && standardWidth <= 52f
+            && crowdedWidth >= 32f && crowdedWidth < standardWidth
+            && shortWidth == 52f,
+            "Result tiles must shrink to fit crowded hands and cap their maximum thumbnail width.");
     }
 
     private static void TestConcealedKongVisualPolicy(RegressionRunner runner)

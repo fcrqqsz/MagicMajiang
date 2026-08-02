@@ -4,6 +4,11 @@ namespace MahjongGame.UI
 {
     public static class TileImageHelper
     {
+        public static string GetTileBackImagePath()
+        {
+            return "Art/FlatTile/flat_back";
+        }
+
         public static string GetTileImagePath(Suit suit, int value)
         {
             string prefix = "Art/FlatTile/f";

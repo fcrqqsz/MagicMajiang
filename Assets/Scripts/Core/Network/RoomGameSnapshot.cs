@@ -27,8 +27,10 @@ namespace MahjongGame.Core.Network
         public int WinFan;
         public string[] FanDetails;
         public bool WinIsSelfDraw;
+        public WinKind WinKind;
         public int LoserId = -1;
         public bool IsDrawGame;
+        public WinningHandSnapshot WinningHand;
     }
 
     public sealed class RoomSnapshotSeatSource
@@ -52,6 +54,9 @@ namespace MahjongGame.Core.Network
             var session = source.Session;
             bool isCompletedSession = session?.IsSessionOver() ?? false;
             int projectedDealerIndex = GetProjectedDealerIndex(session, isCompletedSession);
+            var winResult = source.WinnerId >= 0
+                ? WinResultNormalizer.Normalize(source.WinKind, source.WinIsSelfDraw, source.LoserId, true)
+                : new NormalizedWinResult(WinKind.Unknown, -1);
             var snapshot = new RoomGameSnapshot
             {
                 roomId = source.RoomId,
@@ -89,10 +94,14 @@ namespace MahjongGame.Core.Network
                     winnerId = source.WinnerId,
                     fanCount = source.WinFan,
                     fanDetails = source.FanDetails?.ToArray() ?? Array.Empty<string>(),
-                    isSelfDraw = source.WinIsSelfDraw,
-                    loserId = source.LoserId,
+                    isSelfDraw = winResult.IsSelfDraw,
+                    winKind = winResult.Kind,
+                    loserId = winResult.LoserId,
                     isDrawGame = source.IsDrawGame,
-                    isSessionOver = session?.IsSessionOver() ?? false
+                    isSessionOver = session?.IsSessionOver() ?? false,
+                    winningHand = source.WinnerId >= 0
+                        ? WinningHandSnapshotCodec.Normalize(source.WinningHand)
+                        : null
                 }
             };
 
@@ -302,8 +311,10 @@ namespace MahjongGame.Core.Network.Messages
         public int fanCount;
         public string[] fanDetails;
         public bool isSelfDraw;
-        public int loserId;
+        public WinKind winKind;
+        public int loserId = -1;
         public bool isDrawGame;
         public bool isSessionOver;
+        public WinningHandSnapshot winningHand;
     }
 }

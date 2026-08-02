@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using UnityEngine;
 using MahjongGame.Core.Network;
+using MahjongGame.Core.Network.Messages;
 using MahjongGame.Core;
 
 namespace MahjongGame.Core.Agents
@@ -234,7 +235,8 @@ namespace MahjongGame.Core.Agents
             Debug.Log($"[AI {PlayerId}] 收到流局广播");
         }
 
-        public void OnPlayerWin(int winnerId, int totalFan, List<string> fanDetails, bool isSelfDraw)
+        public void OnPlayerWin(int winnerId, int totalFan, List<string> fanDetails, bool isSelfDraw,
+            WinKind winKind, int loserId, WinningHandSnapshot winningHand)
         {
             Debug.Log($"[AI {PlayerId}] 确认玩家 {winnerId} 胡牌，番数：{totalFan}");
         }

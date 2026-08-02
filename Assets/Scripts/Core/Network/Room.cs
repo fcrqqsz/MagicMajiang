@@ -397,8 +397,12 @@ namespace MahjongGame.Core.Network
                 WinFan = GameServer?.WinFan ?? Session.LastFanCount,
                 FanDetails = GameServer?.WinFanDetails?.ToArray() ?? Array.Empty<string>(),
                 WinIsSelfDraw = GameServer?.WinIsSelfDraw ?? Session.LastIsSelfDraw,
+                WinKind = GameServer?.WinResultKind ?? (Session.LastWinnerId >= 0
+                    ? Session.LastIsSelfDraw ? WinKind.SelfDraw : WinKind.Discard
+                    : WinKind.Unknown),
                 LoserId = GameServer?.LoserId ?? Session.LastLoserId,
-                IsDrawGame = GameServer?.IsDrawGame ?? false
+                IsDrawGame = GameServer?.IsDrawGame ?? false,
+                WinningHand = GameServer?.WinningHandSnapshot
             };
 
             for (int i = 0; i < _seats.Length; i++)

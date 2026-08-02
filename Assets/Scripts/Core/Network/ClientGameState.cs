@@ -219,16 +219,20 @@ namespace MahjongGame.Core.Network
                 {
                     var message = MessageSerializer.DeserializePayload<PlayerWinMessage>(envelope.data);
                     if (message == null) return;
+                    var winResult = WinResultNormalizer.Normalize(
+                        message.winKind, message.isSelfDraw, message.loserId);
                     snapshot.scores = CloneInts(message.scores);
                     snapshot.result = new RoundResultSnapshot
                     {
                         winnerId = message.winnerId,
                         fanCount = message.totalFan,
                         fanDetails = message.fanDetails?.ToArray() ?? Array.Empty<string>(),
-                        isSelfDraw = message.isSelfDraw,
-                        loserId = -1,
+                        isSelfDraw = winResult.IsSelfDraw,
+                        winKind = winResult.Kind,
+                        loserId = winResult.LoserId,
                         isDrawGame = false,
-                        isSessionOver = false
+                        isSessionOver = false,
+                        winningHand = WinningHandSnapshotCodec.Normalize(message.winningHand)
                     };
                     snapshot.activeDecision = null;
                     snapshot.mainTurnDrawnTile = null;
@@ -598,15 +602,20 @@ namespace MahjongGame.Core.Network
         private static RoundResultSnapshot CloneResult(RoundResultSnapshot result)
         {
             if (result == null) return null;
+            var winResult = result.winnerId >= 0
+                ? WinResultNormalizer.Normalize(result.winKind, result.isSelfDraw, result.loserId, true)
+                : new NormalizedWinResult(WinKind.Unknown, -1);
             return new RoundResultSnapshot
             {
                 winnerId = result.winnerId,
                 fanCount = result.fanCount,
                 fanDetails = result.fanDetails?.ToArray() ?? Array.Empty<string>(),
-                isSelfDraw = result.isSelfDraw,
-                loserId = result.loserId,
+                isSelfDraw = winResult.IsSelfDraw,
+                winKind = winResult.Kind,
+                loserId = winResult.LoserId,
                 isDrawGame = result.isDrawGame,
-                isSessionOver = result.isSessionOver
+                isSessionOver = result.isSessionOver,
+                winningHand = WinningHandSnapshotCodec.Normalize(result.winningHand)
             };
         }
     }

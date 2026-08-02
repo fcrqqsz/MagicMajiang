@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Threading;
 using MahjongGame.Core;
+using MahjongGame.Core.Network.Messages;
 
 namespace MahjongGame.Core.Agents
 {
@@ -63,7 +64,8 @@ namespace MahjongGame.Core.Agents
         /// <summary>
         /// 广播：有人胡牌
         /// </summary>
-        void OnPlayerWin(int playerId, int totalFan, List<string> fanDetails, bool isSelfDraw);
+        void OnPlayerWin(int playerId, int totalFan, List<string> fanDetails, bool isSelfDraw,
+            WinKind winKind, int loserId, WinningHandSnapshot winningHand);
 
         /// <summary>
         /// 新一局开始时，服务端同步圈风/门风/东家信息

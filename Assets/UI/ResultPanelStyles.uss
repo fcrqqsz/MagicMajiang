@@ -80,3 +80,46 @@
 .unity-text-element {
     -unity-font-definition: url('project://database/Assets/Font/MSYH_UITK.asset');
 }
+
+/* 胡牌结算缩略牌型：暗手、胡牌张与各组副露保持单行展示 */
+.winning-hand-strip {
+    display: none;
+    width: 100%;
+    flex-shrink: 0;
+    padding: 10px;
+    margin-bottom: 18px;
+    background-color: rgba(255, 255, 255, 0.06);
+    border-radius: 10px;
+}
+
+.winning-hand-row {
+    width: 100%;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+}
+
+.winning-hand-group {
+    flex-direction: row;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.winning-hand-group--separated {
+    margin-left: 10px;
+}
+
+.winning-hand-tile {
+    flex-shrink: 0;
+    margin-right: 2px;
+    background-color: #f7f3e8;
+    border-width: 1px;
+    border-color: #8d887d;
+    border-radius: 4px;
+    -unity-background-scale-mode: scale-to-fit;
+}
+
+.winning-hand-tile--winning {
+    border-width: 3px;
+    border-color: #ffd700;
+}
