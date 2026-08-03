@@ -13,6 +13,7 @@ namespace UnityEngine
     public static class Mathf
     {
         public static int Min(int left, int right) => System.Math.Min(left, right);
+        public static int Max(int left, int right) => System.Math.Max(left, right);
         public static int Abs(int value) => System.Math.Abs(value);
     }
 
@@ -35,7 +36,6 @@ namespace UnityEngine
     }
 }
 
-namespace MahjongGame.Core.Fan { public sealed class FanContext { } }
 namespace MahjongGame.Talents { public sealed class TalentContext { } }
 namespace MahjongGame.Core.Network.Transport
 {

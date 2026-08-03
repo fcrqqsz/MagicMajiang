@@ -12,7 +12,18 @@
     <Compile Include="IdentityConnectionTests.cs" />
     <Compile Include="RoomSessionTests.cs" />
     <Compile Include="SnapshotReconnectTests.cs" />
+    <Compile Include="ActionValidationTests.cs" />
     <Compile Include="UnityEngineStubs.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\ActionValidator.cs" Link="ActionValidator.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\MahjongLogic.cs" Link="MahjongLogic.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\Fan\FanContext.cs" Link="FanContext.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\Fan\FanRule.cs" Link="FanRule.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\Fan\Rules\FanCalculator.cs" Link="FanCalculator.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\Fan\Rules\FanRuleAttribute.cs" Link="FanRuleAttribute.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\Fan\Rules\FanRuleRegistry.cs" Link="FanRuleRegistry.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\Fan\Rules\MCR\MCR_1to6.cs" Link="MCR_1to6.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\Fan\Rules\MCR\MCR_8to24.cs" Link="MCR_8to24.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\Fan\Rules\MCR\MCR_32Plus.cs" Link="MCR_32Plus.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\TurnActionPolicy.cs" Link="TurnActionPolicy.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\ConnectionLivenessPolicy.cs" Link="ConnectionLivenessPolicy.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\ServerBootstrapOptions.cs" Link="ServerBootstrapOptions.cs" />

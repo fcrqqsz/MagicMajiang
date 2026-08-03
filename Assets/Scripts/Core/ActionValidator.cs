@@ -47,20 +47,18 @@ namespace MahjongGame.Core
                 actions.CanMingGan = true;
             }
 
-            // 4. 检查吃 (只能吃上家的牌)
-            if (isNextPlayer && discardedTile.TileSuit != Suit.Wind && discardedTile.TileSuit != Suit.Dragon)
+            // 4. 检查吃 (只能吃上家的牌)。复用实际吃牌组合，避免频率数组跨花色相邻时误判。
+            if (isNextPlayer)
             {
-                // 左吃: target是3 (idx 2)，我有 1,2 (idx 0,1)
-                if (targetIdx >= 2 && handCounts[targetIdx - 1] > 0 && handCounts[targetIdx - 2] > 0)
-                    actions.CanChiLeft = true;
-
-                // 中吃: target是2 (idx 1)，我有 1,3 (idx 0,2)
-                if (targetIdx >= 1 && targetIdx <= 32 && handCounts[targetIdx - 1] > 0 && handCounts[targetIdx + 1] > 0)
-                    actions.CanChiMiddle = true;
-
-                // 右吃: target是1 (idx 0)，我有 2,3 (idx 1,2)
-                if (targetIdx <= 31 && handCounts[targetIdx + 1] > 0 && handCounts[targetIdx + 2] > 0)
-                    actions.CanChiRight = true;
+                foreach (var combination in GetChiCombinations(myHand, discardedTile))
+                {
+                    if (combination[1] < discardedTile.Value)
+                        actions.CanChiLeft = true;
+                    else if (combination[0] < discardedTile.Value)
+                        actions.CanChiMiddle = true;
+                    else
+                        actions.CanChiRight = true;
+                }
             }
 
             return actions;
