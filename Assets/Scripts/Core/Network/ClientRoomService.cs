@@ -43,13 +43,14 @@ namespace MahjongGame.Core.Network
         public GameMode GameMode => _roomState.GameMode;
         public RoomState RoomState => (RoomState)_roomState.RoomStateValue;
         public bool AiFillEnabled => _roomState.AiFillEnabled;
+        public AlienationPreset AlienationPreset => _roomState.AlienationPreset;
         public RoomSeatMessage[] Seats => _roomState.Seats;
         public bool HasRoom => _roomState.HasRoom;
         public bool IsSessionCompleted => _roomState.IsSessionCompleted;
         public bool HasResultSeatSnapshot => HasRoom || IsSessionCompleted;
         public int ResultSeatIndex => HasRoom ? SeatIndex : _roomState.ResultSeatIndex;
         public RoomSeatMessage[] ResultSeats => HasRoom ? Seats : _roomState.ResultSeats;
-        public int AcceptedTotalAlienation => _roomState.AcceptedTotalAlienation;
+        public int OwnTotalAlienation => _roomState.OwnTotalAlienation;
         public string LastRoomClosureReason { get; private set; }
         public bool IsResyncRequired => _sequenceGate.IsResyncRequired;
         public bool IsConnectionRecoveryRequired { get; private set; }
@@ -85,8 +86,14 @@ namespace MahjongGame.Core.Network
         {
             if (!CanStartNewRoomCommand()) return false;
             if (!TryBuildSelectedLoadout(out var loadout)) return false;
+            AlienationPreset alienationPreset = GetSelectedAlienationPreset();
             if (!BeginRoomCommand(nickname,
-                    () => Send("CreateRoom", new CreateRoomMessage { gameMode = (int)gameMode, loadout = loadout }),
+                    () => Send("CreateRoom", new CreateRoomMessage
+                    {
+                        gameMode = (int)gameMode,
+                        alienationPreset = (int)alienationPreset,
+                        loadout = loadout
+                    }),
                     address)) return false;
             ClearCompletedStateForNewRoom();
             return true;
@@ -237,7 +244,7 @@ namespace MahjongGame.Core.Network
                 case "RoomJoined":
                     var joined = MessageSerializer.DeserializePayload<RoomJoinedMessage>(envelope.data);
                     if (joined == null) return;
-                    _gameState.SetRoomIdentity(joined.roomId, joined.seatIndex);
+                    _gameState.ApplyRoomJoined(joined);
                     _projectionLineage.Bind(joined.roomId, joined.streamId);
                     _roomState.ApplyJoined(joined);
                     SaveReconnectTicket(joined);
@@ -331,6 +338,13 @@ namespace MahjongGame.Core.Network
             if (PlayerLoadoutCodec.TryCreateMessage(deckConfig, talentConfig, out loadout, out string errorCode)) return true;
             RoomError?.Invoke($"The selected local loadout is invalid ({errorCode}). Fix it before entering a room.");
             return false;
+        }
+
+        private static AlienationPreset GetSelectedAlienationPreset()
+        {
+            AlienationPreset preset = ProfileManager.Instance?.CurrentProfile?.Settings?.SelectedAlienationPreset
+                ?? AlienationPreset.Standard;
+            return AlienationBudgetPolicy.IsDefined(preset) ? preset : AlienationPreset.Standard;
         }
 
         private void HandleDisconnected(string reason)

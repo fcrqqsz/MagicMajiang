@@ -17,12 +17,22 @@ internal static class IdentityConnectionTests
 
     private static void TestProtocolAndIdentity(RegressionRunner runner)
     {
-        runner.Check(NetworkProtocol.IsSupported(2) && !NetworkProtocol.IsSupported(1),
-            "Protocol validation must accept v2 and reject v1.");
-        runner.Check(new HelloMessage().protocolVersion == 2
+        runner.Check(NetworkProtocol.IsSupported(3) && !NetworkProtocol.IsSupported(2),
+            "Talent loadout rollout must accept protocol v3 and reject v2.");
+        runner.Check(new HelloMessage().protocolVersion == 3
             && new HeartbeatAckMessage() != null
             && new PlayerLoadoutMessage() != null,
-            "Protocol v2 must expose Hello, heartbeat acknowledgement, and loadout DTOs.");
+            "Protocol v3 must expose Hello, heartbeat acknowledgement, and loadout DTOs.");
+
+        string publicSeatJson = UnityEngine.JsonUtility.ToJson(new RoomSeatMessage
+        {
+            seatIndex = 1,
+            isOccupied = true,
+            displayName = "Opponent"
+        });
+        runner.Check(!publicSeatJson.Contains("totalAlienation", StringComparison.OrdinalIgnoreCase)
+            && !publicSeatJson.Contains("TalentSlot", StringComparison.OrdinalIgnoreCase),
+            "Public room seat projections must not serialize exact alienation or hidden talent slots.");
 
         runner.Check(UsernameIdentityPolicy.TryNormalize("  Alice  ", out var displayName, out var playerId, out var errorCode)
             && displayName == "Alice"
@@ -47,8 +57,8 @@ internal static class IdentityConnectionTests
             "The development authenticator must expose the normalized identity.");
 
         var hello = ClientHelloProtocol.Create("Alice");
-        runner.Check(hello.protocolVersion == 2 && hello.username == "Alice",
-            "Client Hello must carry protocol v2 and the selected username.");
+        runner.Check(hello.protocolVersion == 3 && hello.username == "Alice",
+            "Client Hello must carry protocol v3 and the selected username.");
         runner.Check(RoomErrorPresentationPolicy.GetDisplayMessage(new RoomErrorMessage
             {
                 code = NetworkErrorCodes.IdentityInUse,

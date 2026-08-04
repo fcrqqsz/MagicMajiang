@@ -35,6 +35,25 @@ namespace MahjongGame.Core.Network
             if (_snapshot.privateSeat != null) _snapshot.privateSeat.seatIndex = requestingSeatIndex;
         }
 
+        /// <summary>Applies the room's public budget and this seat's exact total as one private projection update.</summary>
+        public bool ApplyRoomJoined(RoomJoinedMessage joined)
+        {
+            if (joined == null || string.IsNullOrWhiteSpace(joined.roomId)
+                || joined.seatIndex < 0 || joined.seatIndex >= 4) return false;
+
+            var next = CloneSnapshot(_snapshot) ?? CreateEmptySnapshot();
+            next.roomId = joined.roomId;
+            next.roomState = joined.roomState;
+            next.gameMode = joined.gameMode;
+            next.alienationPreset = joined.alienationPreset;
+            next.requestingSeatIndex = joined.seatIndex;
+            var privateSeat = EnsurePrivateSeat(next);
+            privateSeat.seatIndex = joined.seatIndex;
+            privateSeat.ownTotalAlienation = joined.ownTotalAlienation;
+            _snapshot = next;
+            return true;
+        }
+
         public bool ApplySnapshot(RoomGameSnapshot snapshot, int baselineSequence)
         {
             if (snapshot == null || baselineSequence < 0) return false;
@@ -512,6 +531,7 @@ namespace MahjongGame.Core.Network
                 roomId = snapshot.roomId,
                 roomState = snapshot.roomState,
                 gameMode = snapshot.gameMode,
+                alienationPreset = snapshot.alienationPreset,
                 requestingSeatIndex = snapshot.requestingSeatIndex,
                 seats = (snapshot.seats ?? Array.Empty<RoomSnapshotSeat>()).Select(CloneSeat).ToArray(),
                 roundNumber = snapshot.roundNumber,
@@ -559,6 +579,7 @@ namespace MahjongGame.Core.Network
             return new SnapshotPrivateSeat
             {
                 seatIndex = seat.seatIndex,
+                ownTotalAlienation = seat.ownTotalAlienation,
                 concealedHand = CloneTiles(seat.concealedHand),
                 melds = CloneMelds(seat.melds),
                 scoringOptions = seat.scoringOptions == null ? null : new SnapshotScoringOptions

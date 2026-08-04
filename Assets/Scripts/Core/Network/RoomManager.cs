@@ -97,7 +97,7 @@ namespace MahjongGame.Core.Network
         {
             if (hello == null || !NetworkProtocol.IsSupported(hello.protocolVersion))
             {
-                SendError(endpoint, NetworkErrorCodes.ProtocolMismatch, "This server requires protocol version 2.");
+                SendError(endpoint, NetworkErrorCodes.ProtocolMismatch, "This server requires protocol version 3.");
                 return;
             }
 
@@ -141,15 +141,17 @@ namespace MahjongGame.Core.Network
         private void HandleCreateRoom(string connectionId, GameEndpoint endpoint, CreateRoomMessage request)
         {
             if (!_connections.TryGet(connectionId, out var record) || !record.IsAuthenticated || !string.IsNullOrEmpty(record.RoomId)) { SendError(connectionId, endpoint, "AlreadyInRoom", "Leave the current room before creating another."); return; }
+            if (request == null || request.gameMode < (int)GameMode.Single || request.gameMode > (int)GameMode.FullGame) { SendError(connectionId, endpoint, "InvalidGameMode", "The requested game mode is invalid."); return; }
+            var alienationPreset = (AlienationPreset)request.alienationPreset;
+            if (!AlienationBudgetPolicy.IsDefined(alienationPreset)) { SendError(connectionId, endpoint, PlayerLoadoutErrorCodes.InvalidAlienationPreset, "The requested alienation preset is invalid."); return; }
+            if (!PlayerLoadoutCodec.TryDecode(request.loadout, alienationPreset, out var loadout, out var loadoutError)) { SendLoadoutError(connectionId, endpoint, request.loadout, alienationPreset, loadoutError); return; }
             ExpireOfflineSeats(DateTime.UtcNow);
             if (HasOfflineReservation(record.PlayerId)) { SendError(connectionId, endpoint, NetworkErrorCodes.ReconnectRequired, "Reconnect to the reserved room seat before creating a new room."); return; }
-            if (request == null || request.gameMode < (int)GameMode.Single || request.gameMode > (int)GameMode.FullGame) { SendError(connectionId, endpoint, "InvalidGameMode", "The requested game mode is invalid."); return; }
-            if (!PlayerLoadoutCodec.TryDecode(request.loadout, out var loadout, out var loadoutError)) { SendError(connectionId, endpoint, loadoutError, "The submitted player loadout is invalid."); return; }
             RemoveClosedRooms();
             if (_rooms.Count >= _maxRooms) { SendError(connectionId, endpoint, "RoomLimitReached", "The server has reached its room limit."); return; }
 
             string roomId = $"R{_nextRoomId++:D4}";
-            var room = new Room(roomId, (GameMode)request.gameMode, connectionId, _aiFill, _messageCacheSize);
+            var room = new Room(roomId, (GameMode)request.gameMode, alienationPreset, connectionId, _aiFill, _messageCacheSize);
             room.OnClosed += HandleRoomClosed;
             if (!room.TryAddHuman(connectionId, endpoint, record.PlayerId, record.DisplayName, loadout, out int seat))
             {
@@ -173,10 +175,11 @@ namespace MahjongGame.Core.Network
         private void HandleJoinRoom(string connectionId, GameEndpoint endpoint, JoinRoomMessage request)
         {
             if (!_connections.TryGet(connectionId, out var record) || !record.IsAuthenticated || !string.IsNullOrEmpty(record.RoomId)) { SendError(connectionId, endpoint, "AlreadyInRoom", "Leave the current room before joining another."); return; }
-            ExpireOfflineSeats(DateTime.UtcNow);
-            if (HasOfflineReservation(record.PlayerId)) { SendError(connectionId, endpoint, NetworkErrorCodes.ReconnectRequired, "Reconnect to the reserved room seat before joining another room."); return; }
             if (request == null || string.IsNullOrWhiteSpace(request.roomId) || !_rooms.TryGetValue(request.roomId.Trim(), out var room) || room.State == RoomState.Closed) { SendError(connectionId, endpoint, "RoomNotFound", "The requested room does not exist."); return; }
-            if (!PlayerLoadoutCodec.TryDecode(request.loadout, out var loadout, out var loadoutError)) { SendError(connectionId, endpoint, loadoutError, "The submitted player loadout is invalid."); return; }
+            if (!PlayerLoadoutCodec.TryDecode(request.loadout, room.AlienationPreset, out var loadout, out var loadoutError)) { SendLoadoutError(connectionId, endpoint, request.loadout, room.AlienationPreset, loadoutError); return; }
+            ExpireOfflineSeats(DateTime.UtcNow);
+            if (room.State == RoomState.Closed) { SendError(connectionId, endpoint, NetworkErrorCodes.RoomNotFound, "The requested room does not exist."); return; }
+            if (HasOfflineReservation(record.PlayerId)) { SendError(connectionId, endpoint, NetworkErrorCodes.ReconnectRequired, "Reconnect to the reserved room seat before joining another room."); return; }
             if (!room.TryAddHuman(connectionId, endpoint, record.PlayerId, record.DisplayName, loadout, out int seat)) { SendError(connectionId, endpoint, "RoomFullOrStarted", "The room is full or has already started."); return; }
             if (!_connections.BindRoomSeat(connectionId, room.RoomId, seat))
             {
@@ -342,30 +345,59 @@ namespace MahjongGame.Core.Network
                 roomId = room.RoomId,
                 seatIndex = seatIndex,
                 gameMode = (int)room.GameMode,
+                alienationPreset = (int)room.AlienationPreset,
                 roomState = (int)room.State,
                 isHost = isHost,
                 aiFillEnabled = room.AiFillEnabled,
                 acceptedSchemaVersion = loadout.SchemaVersion,
-                acceptedTotalAlienation = loadout.TotalAlienation,
+                ownTotalAlienation = loadout.TotalAlienation,
                 streamId = room.Seats[seatIndex]?.MessageStream?.StreamId,
                 seats = room.GetSeatSnapshot()
             });
         }
 
-        private void SendError(string connectionId, GameEndpoint endpoint, string code, string message)
+        private void SendLoadoutError(string connectionId, GameEndpoint endpoint, PlayerLoadoutMessage message,
+            AlienationPreset preset, string errorCode)
+        {
+            int actual = 0;
+            int limit = 0;
+            if (errorCode == PlayerLoadoutErrorCodes.AlienationLimitExceeded
+                && PlayerLoadoutCodec.TryDecode(message, out var unboundedLoadout, out _))
+            {
+                actual = unboundedLoadout.TotalAlienation;
+                limit = AlienationBudgetPolicy.GetLimit(preset);
+            }
+
+            SendError(connectionId, endpoint, errorCode, "The submitted player loadout is invalid.", actual, limit);
+        }
+
+        private void SendError(string connectionId, GameEndpoint endpoint, string code, string message, int actual = 0, int limit = 0)
         {
             if (_connections.TryGet(connectionId, out var record)
                 && record.IsAuthenticated
                 && !string.IsNullOrEmpty(record.RoomId)
                 && _rooms.TryGetValue(record.RoomId, out var room)
                 && room.State != RoomState.Closed
-                && room.TrySendToHumanSeat(record.SeatIndex, "RoomError", new RoomErrorMessage { code = code, message = message })) return;
+                && room.TrySendToHumanSeat(record.SeatIndex, "RoomError", new RoomErrorMessage
+                {
+                    code = code,
+                    message = message,
+                    actual = actual,
+                    limit = limit
+                })) return;
 
-            SendError(endpoint, code, message);
+            SendError(endpoint, code, message, actual, limit);
         }
 
         private static void Send(GameEndpoint endpoint, string type, object payload) => endpoint?.SendMessage(MessageSerializer.Serialize(type, 0, payload));
-        private static void SendError(GameEndpoint endpoint, string code, string message) => endpoint?.SendMessage(MessageSerializer.Serialize("RoomError", 0, new RoomErrorMessage { code = code, message = message }));
+        private static void SendError(GameEndpoint endpoint, string code, string message, int actual = 0, int limit = 0) =>
+            endpoint?.SendMessage(MessageSerializer.Serialize("RoomError", 0, new RoomErrorMessage
+            {
+                code = code,
+                message = message,
+                actual = actual,
+                limit = limit
+            }));
         private static void SendReconnectRejected(GameEndpoint endpoint, string code, string message) => endpoint?.SendMessage(MessageSerializer.Serialize("ReconnectRejected", 0, new ReconnectRejectedMessage { code = code, message = message }));
 
         private void RemoveClosedRooms()

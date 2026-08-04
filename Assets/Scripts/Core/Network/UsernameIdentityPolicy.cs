@@ -4,7 +4,7 @@ using System.Text;
 
 namespace MahjongGame.Core.Network
 {
-    /// <summary>Normalizes the insecure, development-only username credential used by protocol v2.</summary>
+    /// <summary>Normalizes the insecure, development-only username credential used by protocol v3.</summary>
     public static class UsernameIdentityPolicy
     {
         public const int MaximumUsernameLength = 32;

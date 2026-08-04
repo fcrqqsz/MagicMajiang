@@ -1,6 +1,7 @@
 using MahjongGame.Core;
 using MahjongGame.Core.Network;
 using MahjongGame.Core.Network.Messages;
+using MahjongGame.Core.Network.Transport;
 using MahjongGame.Core.Services;
 using MahjongGame.Systems;
 using MahjongGame.Talents;
@@ -10,10 +11,115 @@ internal static class RoomSessionTests
     public static void Run(RegressionRunner runner)
     {
         TestLoadoutValidation(runner);
+        TestRoomAlienationAdmission(runner);
         TestWallAndSessionTalent(runner);
         TestRoomReadyAndDeparture(runner);
         TestResponseAndTurnPolicies(runner);
         TestClientRoomAndScoreProjection(runner);
+    }
+
+    private static void TestRoomAlienationAdmission(RegressionRunner runner)
+    {
+        var constructor = typeof(Room).GetConstructor(new[]
+        {
+            typeof(string), typeof(GameMode), typeof(AlienationPreset), typeof(string), typeof(bool), typeof(int)
+        });
+        var presetProperty = typeof(Room).GetProperty("AlienationPreset");
+        Room directRoom = constructor?.Invoke(new object[]
+        {
+            "preset-room", GameMode.HalfGame, AlienationPreset.Standard, "host", true, 8
+        }) as Room;
+        runner.Check(directRoom != null
+            && presetProperty?.GetValue(directRoom) is AlienationPreset preset
+            && preset == AlienationPreset.Standard,
+            "A room must lock the alienation preset selected at creation.");
+        directRoom?.Dispose();
+
+        Room lowRoom = constructor?.Invoke(new object[]
+        {
+            "low-room", GameMode.Single, AlienationPreset.Low, "host", true, 8
+        }) as Room;
+        PlayerLoadoutCodec.TryDecode(BuildOverLowPresetLoadout(), out var overLowTrusted, out _);
+        bool addedOverBudget = lowRoom?.TryAddHuman(
+            "bypass", new GameEndpoint(), "dev:bypass", "Bypass", overLowTrusted, out _) ?? false;
+        runner.Check(!addedOverBudget && lowRoom?.Seats.All(seat => seat == null) == true,
+            "Room admission must reject an over-budget trusted loadout before assigning any seat.");
+        lowRoom?.Dispose();
+
+        var connections = new ConnectionRegistry();
+        using var manager = new RoomManager(2, true, connections, messageCacheSize: 8);
+        var host = new GameEndpoint();
+        var guest = new GameEndpoint();
+        host.Connect("host-connection", 1);
+        guest.Connect("guest-connection", 2);
+        host.Receive("host-connection", 1, MessageSerializer.Serialize("Hello", 0,
+            new HelloMessage { protocolVersion = NetworkProtocol.Version, username = "Host" }));
+        guest.Receive("guest-connection", 2, MessageSerializer.Serialize("Hello", 0,
+            new HelloMessage { protocolVersion = NetworkProtocol.Version, username = "Guest" }));
+
+        var createRequest = new CreateRoomMessage
+        {
+            gameMode = (int)GameMode.HalfGame,
+            loadout = PlayerLoadoutCodec.CreateMessage(DeckConfig.CreateStandard(), new TalentSlotConfig())
+        };
+        typeof(CreateRoomMessage).GetField("alienationPreset")?.SetValue(createRequest, (int)AlienationPreset.Low);
+        host.Receive("host-connection", 1, MessageSerializer.Serialize("CreateRoom", 0, createRequest));
+        var hostJoinedEnvelope = host.SentMessages.Select(MessageSerializer.DeserializeEnvelope)
+            .Single(envelope => envelope.type == "RoomJoined");
+        string hostJoinedJson = hostJoinedEnvelope.data;
+        var hostJoined = MessageSerializer.DeserializePayload<RoomJoinedMessage>(hostJoinedJson);
+        runner.Check(hostJoinedJson.Contains("\"alienationPreset\":40", StringComparison.Ordinal)
+            && hostJoinedJson.Contains("\"ownTotalAlienation\":0", StringComparison.Ordinal)
+            && hostJoined.seats.All(seat => !UnityEngine.JsonUtility.ToJson(seat)
+                .Contains("totalAlienation", StringComparison.OrdinalIgnoreCase)),
+            "RoomJoined must expose the public preset and only the owner's exact alienation total.");
+
+        int hostMessageCountBeforeRejectedJoin = host.SentMessages.Count;
+        guest.Receive("guest-connection", 2, MessageSerializer.Serialize("JoinRoom", 0, new JoinRoomMessage
+        {
+            roomId = hostJoined.roomId,
+            loadout = BuildOverLowPresetLoadout()
+        }));
+        var rejectedEnvelope = MessageSerializer.DeserializeEnvelope(guest.SentMessages.Last());
+        var rejected = rejectedEnvelope.type == "RoomError"
+            ? MessageSerializer.DeserializePayload<RoomErrorMessage>(rejectedEnvelope.data)
+            : null;
+        connections.TryGet("guest-connection", out var guestAfterRejection);
+        runner.Check(rejected?.code == PlayerLoadoutErrorCodes.AlienationLimitExceeded
+            && rejectedEnvelope.data.Contains("\"actual\":45", StringComparison.Ordinal)
+            && rejectedEnvelope.data.Contains("\"limit\":40", StringComparison.Ordinal)
+            && string.IsNullOrEmpty(guestAfterRejection?.RoomId)
+            && guestAfterRejection?.SeatIndex == -1
+            && host.SentMessages.Count == hostMessageCountBeforeRejectedJoin,
+            "An over-budget join must not allocate a seat, bind the connection, or advance another seat's stream.");
+
+        guest.Receive("guest-connection", 2, MessageSerializer.Serialize("JoinRoom", 0, new JoinRoomMessage
+        {
+            roomId = hostJoined.roomId,
+            loadout = PlayerLoadoutCodec.CreateMessage(DeckConfig.CreateStandard(), new TalentSlotConfig())
+        }));
+        var guestJoined = guest.SentMessages.Select(MessageSerializer.DeserializeEnvelope)
+            .Where(envelope => envelope.type == "RoomJoined")
+            .Select(envelope => MessageSerializer.DeserializePayload<RoomJoinedMessage>(envelope.data))
+            .Single();
+        runner.Check(guestJoined.seatIndex == 1,
+            "A valid retry after an over-budget join must receive the first still-vacant seat.");
+    }
+
+    private static PlayerLoadoutMessage BuildOverLowPresetLoadout()
+    {
+        var deck = DeckConfig.CreateStandard();
+        foreach (Suit suit in new[] { Suit.Man, Suit.Pin, Suit.Sou })
+        {
+            deck.SetCardCount(suit, 1, 6);
+            for (int value = 2; value <= 6; value++) deck.SetCardCount(suit, value, 0);
+        }
+        var talents = new TalentSlotConfig
+        {
+            SlotTalentIds = new[] { "midas_touch", null, null, null, null, null },
+            ReserveTalentIds = new string[TalentSlotConfig.ReserveSlotCount]
+        };
+        return PlayerLoadoutCodec.CreateMessage(deck, talents);
     }
 
     private static void TestLoadoutValidation(RegressionRunner runner)
@@ -172,22 +278,33 @@ internal static class RoomSessionTests
 
     private static void TestClientRoomAndScoreProjection(RegressionRunner runner)
     {
-        var room = new ClientRoomState();
-        room.ApplyJoined(new RoomJoinedMessage
+        var joined = new RoomJoinedMessage
         {
             roomId = "R0001",
             seatIndex = 1,
             gameMode = (int)GameMode.EastOnly,
+            alienationPreset = (int)AlienationPreset.Standard,
             roomState = (int)RoomState.WaitingForMatchReady,
             aiFillEnabled = true,
-            acceptedSchemaVersion = 1,
-            acceptedTotalAlienation = 17,
+            acceptedSchemaVersion = 2,
+            ownTotalAlienation = 17,
             seats = new[]
             {
                 new RoomSeatMessage { seatIndex = 0, isOccupied = true, displayName = "Host" },
                 new RoomSeatMessage { seatIndex = 1, isOccupied = true, displayName = "Guest" }
             }
-        });
+        };
+        var game = new ClientGameState();
+        var applyJoined = typeof(ClientGameState).GetMethod("ApplyRoomJoined");
+        bool gameJoinedApplied = applyJoined?.Invoke(game, new object[] { joined }) is true;
+        runner.Check(gameJoinedApplied
+            && game.Snapshot.roomId == "R0001"
+            && game.Snapshot.alienationPreset == (int)AlienationPreset.Standard
+            && game.Snapshot.privateSeat.ownTotalAlienation == 17,
+            "ClientGameState must atomically apply the public preset and private owner total from RoomJoined.");
+
+        var room = new ClientRoomState();
+        room.ApplyJoined(joined);
         runner.Check(room.ApplySeatUpdate(new RoomSeatMessage
             {
                 seatIndex = 1,

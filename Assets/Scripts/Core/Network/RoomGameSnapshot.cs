@@ -12,6 +12,8 @@ namespace MahjongGame.Core.Network
         public string RoomId;
         public RoomState RoomState;
         public GameMode GameMode;
+        public AlienationPreset AlienationPreset;
+        public int OwnTotalAlienation;
         public RoomSnapshotSeatSource[] Seats;
         public GameSession Session;
         public List<TileData>[] Hands;
@@ -62,6 +64,7 @@ namespace MahjongGame.Core.Network
                 roomId = source.RoomId,
                 roomState = (int)source.RoomState,
                 gameMode = (int)source.GameMode,
+                alienationPreset = (int)source.AlienationPreset,
                 requestingSeatIndex = requestingSeatIndex,
                 seats = BuildSeats(source, requestingSeatIndex),
                 roundNumber = GetProjectedRoundNumber(session, isCompletedSession),
@@ -72,6 +75,7 @@ namespace MahjongGame.Core.Network
                 privateSeat = new SnapshotPrivateSeat
                 {
                     seatIndex = requestingSeatIndex,
+                    ownTotalAlienation = source.OwnTotalAlienation,
                     concealedHand = ToSimpleTiles(GetAt(source.Hands, requestingSeatIndex)),
                     melds = ToMeldSnapshots(GetAt(source.Melds, requestingSeatIndex)),
                     scoringOptions = ToScoringOptions(GetAt(source.ScoringOptions, requestingSeatIndex)),
@@ -228,6 +232,7 @@ namespace MahjongGame.Core.Network.Messages
         public string roomId;
         public int roomState;
         public int gameMode;
+        public int alienationPreset;
         public int requestingSeatIndex;
         public RoomSnapshotSeat[] seats;
         public int roundNumber;
@@ -267,6 +272,7 @@ namespace MahjongGame.Core.Network.Messages
     public sealed class SnapshotPrivateSeat
     {
         public int seatIndex;
+        public int ownTotalAlienation;
         public SimpleTileData[] concealedHand;
         public SnapshotMeld[] melds;
         public SnapshotScoringOptions scoringOptions;

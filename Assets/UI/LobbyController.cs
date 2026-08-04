@@ -414,7 +414,7 @@ namespace MahjongGame.UI
             if (roomHumanCountLabel != null) roomHumanCountLabel.text = $"真人玩家：{humanCount}/4";
 
             if (roomLocalDeckLabel != null) roomLocalDeckLabel.text = $"牌库：{GetSelectedDeckName()}";
-            if (roomLocalAlienationLabel != null) roomLocalAlienationLabel.text = $"服务器确认异化值：{room.AcceptedTotalAlienation}";
+            if (roomLocalAlienationLabel != null) roomLocalAlienationLabel.text = $"服务器确认异化值：{room.OwnTotalAlienation}";
             if (roomLoadoutLockLabel != null) roomLoadoutLockLabel.text = "构筑已锁定（服务器已确认）";
 
             bool localReady = room.SeatIndex >= 0 && room.SeatIndex < room.Seats.Length && room.Seats[room.SeatIndex] != null && room.Seats[room.SeatIndex].isReady;
@@ -427,7 +427,7 @@ namespace MahjongGame.UI
             for (int index = 0; index < roomSeatRowViews.Count; index++)
             {
                 RoomSeatMessage seat = index < room.Seats.Length ? room.Seats[index] : null;
-                UpdateRoomSeatRow(roomSeatRowViews[index], index, seat, index == room.SeatIndex);
+                UpdateRoomSeatRow(roomSeatRowViews[index], index, seat, index == room.SeatIndex, room.AlienationPreset);
             }
         }
 
@@ -448,7 +448,8 @@ namespace MahjongGame.UI
             }
         }
 
-        private static void UpdateRoomSeatRow(RoomSeatRowView row, int seatIndex, RoomSeatMessage seat, bool isLocal)
+        private static void UpdateRoomSeatRow(RoomSeatRowView row, int seatIndex, RoomSeatMessage seat, bool isLocal,
+            AlienationPreset alienationPreset)
         {
             if (isLocal) row.Root.AddToClassList("room-seat-row-local");
             else row.Root.RemoveFromClassList("room-seat-row-local");
@@ -465,7 +466,7 @@ namespace MahjongGame.UI
 
             row.Name.text = string.IsNullOrWhiteSpace(seat.displayName) ? $"玩家 {seatIndex + 1}" : seat.displayName;
             row.Kind.text = seat.isAi ? "AI" : "真人";
-            row.Alienation.text = $"异化：{seat.totalAlienation}";
+            row.Alienation.text = $"异化档位：{(int)alienationPreset}";
             row.Ready.text = seat.isReady ? "已准备" : "未准备";
         }
 

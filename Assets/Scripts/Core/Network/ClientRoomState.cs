@@ -55,8 +55,9 @@ namespace MahjongGame.Core.Network
         public GameMode GameMode { get; private set; } = GameMode.Single;
         public int RoomStateValue { get; private set; }
         public bool AiFillEnabled { get; private set; }
+        public AlienationPreset AlienationPreset { get; private set; } = MahjongGame.Core.AlienationPreset.Standard;
         public int AcceptedSchemaVersion { get; private set; }
-        public int AcceptedTotalAlienation { get; private set; }
+        public int OwnTotalAlienation { get; private set; }
         public RoomSeatMessage[] Seats { get; private set; } = Array.Empty<RoomSeatMessage>();
         public bool HasRoom => !string.IsNullOrEmpty(RoomId) && SeatIndex >= 0;
 
@@ -75,8 +76,9 @@ namespace MahjongGame.Core.Network
             GameMode = (GameMode)joined.gameMode;
             RoomStateValue = joined.roomState;
             AiFillEnabled = joined.aiFillEnabled;
+            AlienationPreset = (AlienationPreset)joined.alienationPreset;
             AcceptedSchemaVersion = joined.acceptedSchemaVersion;
-            AcceptedTotalAlienation = joined.acceptedTotalAlienation;
+            OwnTotalAlienation = joined.ownTotalAlienation;
             Seats = CloneSeats(joined.seats);
         }
 
@@ -90,6 +92,8 @@ namespace MahjongGame.Core.Network
             SeatIndex = snapshot.requestingSeatIndex;
             GameMode = (GameMode)snapshot.gameMode;
             RoomStateValue = snapshot.roomState;
+            AlienationPreset = (AlienationPreset)snapshot.alienationPreset;
+            OwnTotalAlienation = snapshot.privateSeat?.ownTotalAlienation ?? 0;
             Seats = (snapshot.seats ?? Array.Empty<Messages.RoomSnapshotSeat>()).Select(seat => seat == null ? null : new RoomSeatMessage
             {
                 seatIndex = seat.seatIndex,
@@ -139,8 +143,9 @@ namespace MahjongGame.Core.Network
             GameMode = GameMode.Single;
             RoomStateValue = 0;
             AiFillEnabled = false;
+            AlienationPreset = MahjongGame.Core.AlienationPreset.Standard;
             AcceptedSchemaVersion = 0;
-            AcceptedTotalAlienation = 0;
+            OwnTotalAlienation = 0;
             Seats = Array.Empty<RoomSeatMessage>();
         }
 
@@ -170,8 +175,7 @@ namespace MahjongGame.Core.Network
                     isTemporarilyAiControlled = seat.isTemporarilyAiControlled,
                     controlState = seat.controlState,
                     isReady = seat.isReady,
-                    displayName = seat.displayName,
-                    totalAlienation = seat.totalAlienation
+                    displayName = seat.displayName
                 };
             }
             return clone;

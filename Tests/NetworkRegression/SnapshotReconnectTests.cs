@@ -11,6 +11,7 @@ internal static class SnapshotReconnectTests
         TestAuthoritativeTableState(runner);
         TestDecisionTracker(runner);
         TestSnapshotPrivacyAndSerialization(runner);
+        TestAlienationSnapshotPrivacy(runner);
         TestWinningHandNormalization(runner);
         TestWinningHandSnapshotCodec(runner);
         TestWinningHandResultVisibility(runner);
@@ -30,6 +31,47 @@ internal static class SnapshotReconnectTests
         TestRobKongDecisionPhase(runner);
         TestRobKongDeclarationProjection(runner);
         TestRobKongRemoteNotification(runner);
+    }
+
+    private static void TestAlienationSnapshotPrivacy(RegressionRunner runner)
+    {
+        var source = new RoomGameSnapshotSource
+        {
+            RoomId = "alienation-privacy",
+            RoomState = RoomState.InRound,
+            GameMode = GameMode.Single,
+            Session = new GameSession(GameMode.Single),
+            Seats = Enumerable.Range(0, 4).Select(index => new RoomSnapshotSeatSource
+            {
+                SeatIndex = index,
+                IsOccupied = true,
+                IsOnline = true,
+                DisplayName = $"Seat {index}"
+            }).ToArray(),
+            Hands = EmptyTileLists(),
+            Melds = EmptyMeldLists(),
+            Rivers = EmptyTileLists(),
+            ScoringOptions = Enumerable.Range(0, 4).Select(_ => new ScoringOptions()).ToArray(),
+            PeekWallTiles = EmptyTileLists()
+        };
+        typeof(RoomGameSnapshotSource).GetField("AlienationPreset")?.SetValue(source, AlienationPreset.Standard);
+        typeof(RoomGameSnapshotSource).GetField("OwnTotalAlienation")?.SetValue(source, 45);
+
+        RoomGameSnapshot snapshot = RoomGameSnapshotBuilder.Build(source, 0);
+        string json = UnityEngine.JsonUtility.ToJson(snapshot);
+        var presetField = typeof(RoomGameSnapshot).GetField("alienationPreset");
+        var privateTotalField = typeof(SnapshotPrivateSeat).GetField("ownTotalAlienation");
+        runner.Check(presetField?.GetValue(snapshot) is int preset && preset == (int)AlienationPreset.Standard
+            && privateTotalField?.GetValue(snapshot.privateSeat) is int ownTotal && ownTotal == 45
+            && snapshot.seats.All(seat => !UnityEngine.JsonUtility.ToJson(seat)
+                .Contains("totalAlienation", StringComparison.OrdinalIgnoreCase)),
+            "Recovery snapshots must restore the public preset and owner total without exposing opponent totals.");
+
+        var client = new ClientGameState();
+        runner.Check(client.ApplySnapshot(snapshot, 7)
+            && presetField?.GetValue(client.Snapshot) is int appliedPreset && appliedPreset == (int)AlienationPreset.Standard
+            && privateTotalField?.GetValue(client.Snapshot.privateSeat) is int appliedTotal && appliedTotal == 45,
+            "ClientGameState must atomically apply the room preset and private owner total from a snapshot.");
     }
 
     private static void TestAuthoritativeTableState(RegressionRunner runner)

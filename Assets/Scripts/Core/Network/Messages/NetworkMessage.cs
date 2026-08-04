@@ -25,7 +25,7 @@ namespace MahjongGame.Core.Network.Messages
         public int protocolVersion = NetworkProtocol.Version;
         public string username;
 
-        // Kept while pre-v2 clients are still accepted by the room layer.
+        // Retained only for serialized legacy data; protocol v3 authenticates with username.
         public string nickname;
     }
 
@@ -90,6 +90,7 @@ namespace MahjongGame.Core.Network.Messages
     public class CreateRoomMessage
     {
         public int gameMode;
+        public int alienationPreset;
         public PlayerLoadoutMessage loadout;
     }
 
@@ -123,7 +124,6 @@ namespace MahjongGame.Core.Network.Messages
         public string controlState;
         public bool isReady;
         public string displayName;
-        public int totalAlienation;
     }
 
     [Serializable]
@@ -133,11 +133,12 @@ namespace MahjongGame.Core.Network.Messages
         public string streamId;
         public int seatIndex;
         public int gameMode;
+        public int alienationPreset;
         public int roomState;
         public bool isHost;
         public bool aiFillEnabled;
         public int acceptedSchemaVersion;
-        public int acceptedTotalAlienation;
+        public int ownTotalAlienation;
         public RoomSeatMessage[] seats;
     }
 
@@ -167,7 +168,13 @@ namespace MahjongGame.Core.Network.Messages
     [Serializable]
     public class RoomReadyMessage { public string roomId; }
     [Serializable]
-    public class RoomErrorMessage { public string code; public string message; }
+    public class RoomErrorMessage
+    {
+        public string code;
+        public string message;
+        public int actual;
+        public int limit;
+    }
 
     [Serializable]
     public class RoomClosedMessage { public string roomId; public string reason; }

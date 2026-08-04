@@ -47,6 +47,8 @@
     <Compile Include="..\..\Assets\Scripts\Core\Network\NetworkDecisionClient.cs" Link="NetworkDecisionClient.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\NetworkActionSubmissionPolicy.cs" Link="NetworkActionSubmissionPolicy.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\RoomGameSnapshot.cs" Link="RoomGameSnapshot.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\Network\Room.cs" Link="Room.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\Network\RoomManager.cs" Link="RoomManager.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\WinningHandSnapshotCodec.cs" Link="WinningHandSnapshotCodec.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\WinResultNormalizer.cs" Link="WinResultNormalizer.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\ClientGameState.cs" Link="ClientGameState.cs" />

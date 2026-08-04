@@ -44,6 +44,7 @@ namespace MahjongGame.Core.Network
 
         public string RoomId { get; }
         public GameMode GameMode { get; }
+        public AlienationPreset AlienationPreset { get; }
         public GameSession Session { get; }
         public GameServer GameServer { get; private set; }
         public RoomState State { get; private set; } = RoomState.WaitingForPlayers;
@@ -55,10 +56,14 @@ namespace MahjongGame.Core.Network
             && RoomLifecyclePolicy.ShouldCountAsOnlineHuman(s.IsAi, s.IsOnline));
         public event Action<Room> OnClosed;
 
-        public Room(string roomId, GameMode gameMode, string hostConnectionId, bool aiFill, int messageCacheSize = SeatMessageStream.DefaultCacheCapacity)
+        public Room(string roomId, GameMode gameMode, AlienationPreset alienationPreset, string hostConnectionId, bool aiFill,
+            int messageCacheSize = SeatMessageStream.DefaultCacheCapacity)
         {
             RoomId = roomId;
             GameMode = gameMode;
+            AlienationPreset = AlienationBudgetPolicy.IsDefined(alienationPreset)
+                ? alienationPreset
+                : throw new ArgumentOutOfRangeException(nameof(alienationPreset));
             HostConnectionId = hostConnectionId;
             _aiFill = aiFill;
             _messageCacheSize = Math.Max(1, messageCacheSize);
@@ -69,6 +74,7 @@ namespace MahjongGame.Core.Network
         {
             seatIndex = -1;
             if (loadout == null || string.IsNullOrWhiteSpace(playerId)
+                || loadout.TotalAlienation > AlienationBudgetPolicy.GetLimit(AlienationPreset)
                 || (State != RoomState.WaitingForPlayers && State != RoomState.WaitingForMatchReady)) return false;
             if (RoomMembershipPolicy.RequiresReconnect(
                     _seats.Where(seat => seat != null && !seat.IsAi).Select(seat => seat.PlayerId), playerId)) return false;
@@ -367,8 +373,7 @@ namespace MahjongGame.Core.Network
                 isTemporarilyAiControlled = seat?.ControlState == RoomSeatControlState.AiControlled,
                 controlState = seat?.ControlState.ToString() ?? RoomSeatControlState.Vacant.ToString(),
                 isReady = seat != null && (seat.MatchReady || seat.SceneReady),
-                displayName = seat?.DisplayName,
-                totalAlienation = seat?.Loadout?.TotalAlienation ?? 0
+                displayName = seat?.DisplayName
             };
         }
 
@@ -383,6 +388,8 @@ namespace MahjongGame.Core.Network
                 RoomId = RoomId,
                 RoomState = State,
                 GameMode = GameMode,
+                AlienationPreset = AlienationPreset,
+                OwnTotalAlienation = _seats[requestingSeatIndex]?.Loadout?.TotalAlienation ?? 0,
                 Session = Session,
                 Seats = new RoomSnapshotSeatSource[4],
                 Hands = new List<TileData>[4],
