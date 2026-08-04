@@ -479,7 +479,6 @@ namespace MahjongGame.UI
             else
             {
                 // 单局模式 或 多局对战已结束 → 显示总结算
-                GameManager.Instance.EndSession();
                 ShowSessionResult();
             }
         }

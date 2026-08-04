@@ -1,3 +1,6 @@
+using System;
+using System.IO;
+using System.Linq;
 using MahjongGame.Core;
 using MahjongGame.Core.Network;
 using MahjongGame.Systems;
@@ -7,6 +10,7 @@ internal static class NetworkAuthorityBoundaryTests
     public static void Run(RegressionRunner runner)
     {
         TestGameSceneEntry(runner);
+        TestGameManagerHasNoAuthority(runner);
         TestSingleHumanAiFill(runner);
         TestGameModeLengths(runner);
     }
@@ -48,5 +52,49 @@ internal static class NetworkAuthorityBoundaryTests
             "HalfGame remains eight rounds.");
         runner.Check(new GameSession(GameMode.FullGame).GetTotalRounds() == 16,
             "FullGame remains sixteen rounds.");
+    }
+
+    private static void TestGameManagerHasNoAuthority(RegressionRunner runner)
+    {
+        string source = ReadRepoFile("Assets", "Scripts", "Core", "GameManager.cs");
+        string[] forbidden =
+        {
+            "new GameServer(",
+            "new SimpleAIClient(",
+            "Session.AdvanceRound(",
+            "starting_capital",
+            "BuildTalentConfigs(",
+            "StartGameWithConfig(",
+            "StartSession("
+        };
+
+        foreach (string fragment in forbidden)
+            runner.Check(!source.Contains(fragment, StringComparison.Ordinal),
+                $"GameManager must not contain authority fragment: {fragment}");
+
+        string roomSource = ReadRepoFile("Assets", "Scripts", "Core", "Network", "Room.cs");
+        runner.Check(Count(roomSource, "Session.AdvanceRound(") == 1,
+            "Room owns the single authoritative round advance call.");
+    }
+
+    private static string ReadRepoFile(params string[] segments)
+    {
+        DirectoryInfo directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory != null && !File.Exists(Path.Combine(directory.FullName, "ProjectSettings", "ProjectVersion.txt")))
+            directory = directory.Parent;
+        if (directory == null) throw new InvalidOperationException("Repository root not found.");
+        return File.ReadAllText(Path.Combine(new[] { directory.FullName }.Concat(segments).ToArray()));
+    }
+
+    private static int Count(string source, string value)
+    {
+        int count = 0;
+        int offset = 0;
+        while ((offset = source.IndexOf(value, offset, StringComparison.Ordinal)) >= 0)
+        {
+            count++;
+            offset += value.Length;
+        }
+        return count;
     }
 }

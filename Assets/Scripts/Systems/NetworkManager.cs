@@ -188,6 +188,17 @@ namespace MahjongGame.Systems
                 await LoadSceneAndUnloadCurrentAsync(SceneNames.MainLobby, SceneNames.Game);
         }
 
+        public async Task ReturnToPersistentFlowAsync()
+        {
+            if (!SceneManager.GetSceneByName(SceneNames.Persistent).isLoaded)
+            {
+                SceneManager.LoadScene(SceneNames.Persistent, LoadSceneMode.Single);
+                return;
+            }
+
+            await EnsureRecoverySceneAsync(SceneNames.Login);
+        }
+
         public async Task LoadSceneAdditiveAsync(string sceneName)
         {
             try
