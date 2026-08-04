@@ -119,7 +119,7 @@ internal static class NetworkAuthorityBoundaryTests
         string policyMeta = File.ReadAllText(policyMetaPath);
         runner.Check(policyMeta.Contains("fileFormatVersion: 2", StringComparison.Ordinal),
             "NetworkGameSceneEntryPolicy meta must use fileFormatVersion 2.");
-        runner.Check(Regex.IsMatch(policyMeta, @"(?m)^guid: [0-9a-f]{32}$"),
+        runner.Check(Regex.IsMatch(policyMeta, @"(?m)^guid: [0-9a-f]{32}\r?$"),
             "NetworkGameSceneEntryPolicy meta must contain a 32-character hexadecimal guid.");
     }
 
