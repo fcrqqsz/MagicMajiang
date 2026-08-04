@@ -181,16 +181,10 @@ namespace MahjongGame.Core
         /// </summary>
         public static int CalculateTotalAlienation(DeckConfig config, TalentSlotConfig talents)
         {
-            config.CalculateAlienationScore();
-            int talentCost = 0;
-            if (talents != null)
-            {
-                foreach (var id in talents.GetAllEquippedIds())
-                {
-                    talentCost += TalentRegistry.Instance.GetCost(id);
-                }
-            }
-            return config.AlienationScore + talentCost;
+            return AlienationBudgetPolicy.Calculate(
+                config,
+                talents?.GetMainIds(),
+                TalentRegistry.Instance);
         }
 
         /// <summary>

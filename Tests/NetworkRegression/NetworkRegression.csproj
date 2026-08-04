@@ -67,6 +67,7 @@
     <Compile Include="..\..\Assets\Scripts\Core\Network\DevelopmentAccountAuthenticator.cs" Link="DevelopmentAccountAuthenticator.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\UsernameIdentityPolicy.cs" Link="UsernameIdentityPolicy.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\PlayerLoadoutCodec.cs" Link="PlayerLoadoutCodec.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\Network\PlayerLoadoutErrorCodes.cs" Link="PlayerLoadoutErrorCodes.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\SessionTalentPolicy.cs" Link="SessionTalentPolicy.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\SessionScorePolicy.cs" Link="SessionScorePolicy.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\GameSession.cs" Link="GameSession.cs" />
@@ -82,6 +83,7 @@
     <Compile Include="..\..\Assets\Scripts\Core\SelfTurnKongOptions.cs" Link="SelfTurnKongOptions.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\MahjongEnums.cs" Link="MahjongEnums.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\DeckConfig.cs" Link="DeckConfig.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\AlienationPreset.cs" Link="AlienationPreset.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\ScoringOptions.cs" Link="ScoringOptions.cs" />
     <Compile Include="..\..\Assets\Scripts\Talent\TalentSlotConfig.cs" Link="TalentSlotConfig.cs" />
     <Compile Include="..\..\Assets\Scripts\Talent\TalentMetadata.cs" Link="TalentMetadata.cs" />

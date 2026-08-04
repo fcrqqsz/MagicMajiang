@@ -22,7 +22,8 @@ internal static class RoomSessionTests
         var emptyTalents = new TalentSlotConfig();
         runner.Check(PlayerLoadoutCodec.TryCreateMessage(standardDeck, emptyTalents, out var message, out _)
             && message.deckEntries.Length == 34
-            && message.talentSlotIds.Length == 6,
+            && message.mainTalentSlotIds.Length == 6
+            && message.reserveTalentSlotIds.Length == 3,
             "A valid loadout must contain 34 tile entries and six talent slots.");
         runner.Check(PlayerLoadoutCodec.TryDecode(message, out var decoded, out _)
             && decoded.DeckConfig.GetCardCount(Suit.Man, 1) == 1
@@ -60,14 +61,14 @@ internal static class RoomSessionTests
             "Duplicate tile entries must be rejected.");
 
         var duplicateTalent = PlayerLoadoutCodec.CreateMessage(standardDeck, emptyTalents);
-        duplicateTalent.talentSlotIds[3] = "network_test_small";
-        duplicateTalent.talentSlotIds[4] = "network_test_small";
+        duplicateTalent.mainTalentSlotIds[3] = "network_test_small";
+        duplicateTalent.mainTalentSlotIds[4] = "network_test_small";
         runner.Check(!PlayerLoadoutCodec.TryDecode(duplicateTalent, out _, out var talentError)
             && talentError == "InvalidTalent",
             "Duplicate equipped talents must be rejected.");
 
         var tierMismatch = PlayerLoadoutCodec.CreateMessage(standardDeck, emptyTalents);
-        tierMismatch.talentSlotIds[3] = "network_test_medium";
+        tierMismatch.mainTalentSlotIds[3] = "network_test_medium";
         runner.Check(!PlayerLoadoutCodec.TryDecode(tierMismatch, out _, out var tierError)
             && tierError == "InvalidTalent",
             "Talent slot tier limits must be enforced.");
@@ -219,7 +220,7 @@ internal static class RoomSessionTests
     }
 }
 
-[TalentRule("network_test_small", "Network Test Small", "Regression-only small talent.", TalentTier.Small, 1)]
+[TalentRule("network_test_small", "Network Test Small", "Regression-only small talent.", TalentTier.Small, 8)]
 internal sealed class NetworkTestSmallTalent : TalentRule { }
 
 [TalentRule("network_test_medium", "Network Test Medium", "Regression-only medium talent.", TalentTier.Medium, 1)]

@@ -82,7 +82,8 @@ namespace MahjongGame.Core.Network.Messages
     {
         public int schemaVersion;
         public DeckTileCountMessage[] deckEntries;
-        public string[] talentSlotIds;
+        public string[] mainTalentSlotIds;
+        public string[] reserveTalentSlotIds;
     }
 
     [Serializable]

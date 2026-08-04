@@ -8,7 +8,7 @@ namespace MahjongGame.Core.Network
     /// <summary>Server-owned reconstruction of an accepted player loadout.</summary>
     public sealed class TrustedPlayerLoadout
     {
-        public const int CurrentSchemaVersion = 1;
+        public const int CurrentSchemaVersion = 2;
 
         public int SchemaVersion { get; }
         public DeckConfig DeckConfig { get; }
@@ -28,7 +28,6 @@ namespace MahjongGame.Core.Network
     public static class PlayerLoadoutCodec
     {
         private const int DeckEntryCount = 34;
-        private const int TalentSlotCount = 6;
 
         public static PlayerLoadoutMessage CreateMessage(DeckConfig deckConfig, TalentSlotConfig talentConfig)
         {
@@ -44,18 +43,12 @@ namespace MahjongGame.Core.Network
                 };
             }
 
-            var slotIds = new string[TalentSlotCount];
-            if (talentConfig?.SlotTalentIds != null)
-            {
-                int count = Math.Min(talentConfig.SlotTalentIds.Length, TalentSlotCount);
-                Array.Copy(talentConfig.SlotTalentIds, slotIds, count);
-            }
-
             return new PlayerLoadoutMessage
             {
                 schemaVersion = TrustedPlayerLoadout.CurrentSchemaVersion,
                 deckEntries = entries,
-                talentSlotIds = slotIds
+                mainTalentSlotIds = CopySlotIds(talentConfig?.SlotTalentIds, TalentSlotConfig.MainSlotCount),
+                reserveTalentSlotIds = CopySlotIds(talentConfig?.ReserveTalentIds, TalentSlotConfig.ReserveSlotCount)
             };
         }
 
@@ -67,71 +60,99 @@ namespace MahjongGame.Core.Network
                 TrustedPlayerLoadout.CurrentSchemaVersion,
                 deckConfig,
                 talentConfig,
-                DeckConfig.CalculateTotalAlienation(deckConfig, talentConfig));
+                AlienationBudgetPolicy.Calculate(deckConfig, talentConfig.GetMainIds(), TalentRegistry.Instance));
         }
 
         public static bool TryCreateMessage(DeckConfig deckConfig, TalentSlotConfig talentConfig, out PlayerLoadoutMessage message, out string errorCode)
         {
-            if (deckConfig == null)
-            {
-                message = null;
-                errorCode = "InvalidDeck";
-                return false;
-            }
-
-            if (talentConfig != null && (talentConfig.SlotTalentIds == null || talentConfig.SlotTalentIds.Length != TalentSlotCount))
-            {
-                message = null;
-                errorCode = "InvalidTalent";
-                return false;
-            }
-
             message = CreateMessage(deckConfig, talentConfig);
-            return TryDecode(message, out _, out errorCode);
+            if (!TryBuildDeck(message.deckEntries, out _))
+            {
+                message = null;
+                errorCode = PlayerLoadoutErrorCodes.InvalidDeck;
+                return false;
+            }
+            if (!TryBuildTalents(message.mainTalentSlotIds, message.reserveTalentSlotIds, out _))
+            {
+                message = null;
+                errorCode = PlayerLoadoutErrorCodes.InvalidTalent;
+                return false;
+            }
+
+            errorCode = null;
+            return true;
         }
 
-        public static bool TryDecode(PlayerLoadoutMessage message, out TrustedPlayerLoadout loadout, out string errorCode)
+        // Transitional compatibility for callers that validate a local loadout before room admission.
+        public static bool TryDecode(PlayerLoadoutMessage message, out TrustedPlayerLoadout loadout, out string errorCode) =>
+            TryDecodeInternal(message, null, out loadout, out errorCode);
+
+        public static bool TryDecode(
+            PlayerLoadoutMessage message,
+            AlienationPreset preset,
+            out TrustedPlayerLoadout loadout,
+            out string errorCode)
+        {
+            return TryDecodeInternal(message, preset, out loadout, out errorCode);
+        }
+
+        private static bool TryDecodeInternal(
+            PlayerLoadoutMessage message,
+            AlienationPreset? preset,
+            out TrustedPlayerLoadout loadout,
+            out string errorCode)
         {
             loadout = null;
             errorCode = null;
-
+            if (preset.HasValue && !AlienationBudgetPolicy.IsDefined(preset.Value))
+            {
+                errorCode = PlayerLoadoutErrorCodes.InvalidAlienationPreset;
+                return false;
+            }
             if (message == null)
             {
-                errorCode = "MissingLoadout";
+                errorCode = PlayerLoadoutErrorCodes.MissingLoadout;
                 return false;
             }
-
             if (message.schemaVersion != TrustedPlayerLoadout.CurrentSchemaVersion)
             {
-                errorCode = "UnsupportedLoadoutVersion";
+                errorCode = PlayerLoadoutErrorCodes.UnsupportedLoadoutVersion;
                 return false;
             }
-
-            if (!TryBuildDeck(message.deckEntries, out var deckConfig))
+            if (!TryBuildDeck(message.deckEntries, out DeckConfig deck))
             {
-                errorCode = "InvalidDeck";
+                errorCode = PlayerLoadoutErrorCodes.InvalidDeck;
                 return false;
             }
-
-            if (!TryBuildTalents(message.talentSlotIds, out var talentConfig))
+            if (!TryBuildTalents(message.mainTalentSlotIds, message.reserveTalentSlotIds, out TalentSlotConfig talents))
             {
-                errorCode = "InvalidTalent";
+                errorCode = PlayerLoadoutErrorCodes.InvalidTalent;
                 return false;
             }
 
-            loadout = new TrustedPlayerLoadout(
-                message.schemaVersion,
-                deckConfig,
-                talentConfig,
-                DeckConfig.CalculateTotalAlienation(deckConfig, talentConfig));
+            int total = AlienationBudgetPolicy.Calculate(deck, talents.GetMainIds(), TalentRegistry.Instance);
+            if (preset.HasValue && total > AlienationBudgetPolicy.GetLimit(preset.Value))
+            {
+                errorCode = PlayerLoadoutErrorCodes.AlienationLimitExceeded;
+                return false;
+            }
+
+            loadout = new TrustedPlayerLoadout(message.schemaVersion, deck, talents, total);
             return true;
         }
 
         public static TrustedPlayerLoadout CloneTrustedLoadout(TrustedPlayerLoadout loadout)
         {
             if (loadout == null) return null;
-            var message = CreateMessage(loadout.DeckConfig, loadout.TalentConfig);
-            return TryDecode(message, out var clone, out _) ? clone : null;
+            PlayerLoadoutMessage message = CreateMessage(loadout.DeckConfig, loadout.TalentConfig);
+            return TryBuildDeck(message.deckEntries, out DeckConfig deck)
+                   && TryBuildTalents(message.mainTalentSlotIds, message.reserveTalentSlotIds, out TalentSlotConfig talents)
+                ? new TrustedPlayerLoadout(
+                    TrustedPlayerLoadout.CurrentSchemaVersion,
+                    deck,
+                    talents,
+                    AlienationBudgetPolicy.Calculate(deck, talents.GetMainIds(), TalentRegistry.Instance))
+                : null;
         }
 
         private static bool TryBuildDeck(DeckTileCountMessage[] entries, out DeckConfig deckConfig)
@@ -141,16 +162,15 @@ namespace MahjongGame.Core.Network
 
             var counts = new Dictionary<int, int>(DeckEntryCount);
             long totalCount = 0;
-            foreach (var entry in entries)
+            foreach (DeckTileCountMessage entry in entries)
             {
-                if (entry == null || !TryGetLegalTileType(entry.suit, entry.value, out var suit) || entry.count < 0)
+                if (entry == null || !TryGetLegalTileType(entry.suit, entry.value, out Suit suit) || entry.count < 0)
                     return false;
 
                 int key = GetTileKey(suit, entry.value);
                 if (!counts.TryAdd(key, entry.count)) return false;
                 totalCount += entry.count;
             }
-
             if (counts.Count != DeckEntryCount || totalCount != DeckEntryCount) return false;
 
             var rebuilt = new DeckConfig();
@@ -166,30 +186,61 @@ namespace MahjongGame.Core.Network
             return true;
         }
 
-        private static bool TryBuildTalents(string[] slotIds, out TalentSlotConfig talentConfig)
+        private static bool TryBuildTalents(
+            string[] mainTalentSlotIds,
+            string[] reserveTalentSlotIds,
+            out TalentSlotConfig talentConfig)
         {
             talentConfig = null;
-            if (slotIds == null || slotIds.Length != TalentSlotCount) return false;
-
-            var rebuilt = new TalentSlotConfig();
-            var seenTalentIds = new HashSet<string>(StringComparer.Ordinal);
-            for (int slotIndex = 0; slotIndex < TalentSlotCount; slotIndex++)
+            if (mainTalentSlotIds == null || mainTalentSlotIds.Length != TalentSlotConfig.MainSlotCount
+                || reserveTalentSlotIds == null || reserveTalentSlotIds.Length != TalentSlotConfig.ReserveSlotCount)
             {
-                string talentId = string.IsNullOrWhiteSpace(slotIds[slotIndex]) ? null : slotIds[slotIndex].Trim();
-                if (string.IsNullOrEmpty(talentId)) continue;
+                return false;
+            }
 
+            var rebuilt = new TalentSlotConfig
+            {
+                SlotTalentIds = NormalizeSlotIds(mainTalentSlotIds),
+                ReserveTalentIds = NormalizeSlotIds(reserveTalentSlotIds)
+            };
+            if (rebuilt.HasDuplicateCarriedIds()) return false;
+
+            for (int slotIndex = 0; slotIndex < TalentSlotConfig.MainSlotCount; slotIndex++)
+            {
+                string talentId = rebuilt.SlotTalentIds[slotIndex];
+                if (string.IsNullOrEmpty(talentId)) continue;
                 if (!TalentRegistry.Instance.HasTalent(talentId)
-                    || !seenTalentIds.Add(talentId)
-                    || !rebuilt.CanEquip(slotIndex, TalentRegistry.Instance.GetTier(talentId)))
+                    || !rebuilt.CanEquip(slotIndex, TalentRegistry.Instance.GetTier(talentId))) return false;
+            }
+            for (int slotIndex = 0; slotIndex < TalentSlotConfig.ReserveSlotCount; slotIndex++)
+            {
+                string talentId = rebuilt.ReserveTalentIds[slotIndex];
+                if (string.IsNullOrEmpty(talentId)) continue;
+                if (!TalentRegistry.Instance.HasTalent(talentId)
+                    || !rebuilt.CanEquipReserve(slotIndex, TalentRegistry.Instance.GetTier(talentId))
+                    || TalentRegistry.Instance.GetMetadata(talentId).SideboardPolicy != TalentSideboardPolicy.Flexible)
                 {
                     return false;
                 }
-
-                rebuilt.SlotTalentIds[slotIndex] = talentId;
             }
 
             talentConfig = rebuilt;
             return true;
+        }
+
+        private static string[] CopySlotIds(string[] source, int length)
+        {
+            string[] copy = new string[length];
+            if (source != null) Array.Copy(source, copy, Math.Min(source.Length, length));
+            return copy;
+        }
+
+        private static string[] NormalizeSlotIds(string[] source)
+        {
+            string[] normalized = new string[source.Length];
+            for (int i = 0; i < source.Length; i++)
+                normalized[i] = string.IsNullOrWhiteSpace(source[i]) ? null : source[i].Trim();
+            return normalized;
         }
 
         private static IEnumerable<(Suit Suit, int Value)> EnumerateLegalTileTypes()

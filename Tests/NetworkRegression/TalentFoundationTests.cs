@@ -1,7 +1,9 @@
 using System;
 using System.Linq;
 using MahjongGame.Core;
+using MahjongGame.Core.Network;
 using MahjongGame.Core.Network.Data;
+using MahjongGame.Core.Network.Messages;
 using MahjongGame.Talents;
 
 internal static class TalentFoundationTests
@@ -15,6 +17,8 @@ internal static class TalentFoundationTests
         ProfileNormalizationRepairsLegacyDeckTalentSchema(runner);
         MetadataPreservesDefaultsAndExplicitPolicies(runner);
         ExistingTalentsRemainRegistrable(runner);
+        LoadoutDecodingEnforcesRoomAlienationPresets(runner);
+        ProfileSettingsNormalizeUnknownAlienationPreset(runner);
     }
 
     private static void LegacySlotsNormalizeWithoutDiscardingMainLoadout(RegressionRunner runner)
@@ -141,5 +145,78 @@ internal static class TalentFoundationTests
             "all existing talent ids remain available through registry reflection");
         runner.Check(existingIds.All(id => TalentRegistry.Instance.CreateInstance(id, 2)?.Id == id),
             "all existing talent ids still create their matching rule instances");
+    }
+
+    private static void LoadoutDecodingEnforcesRoomAlienationPresets(RegressionRunner runner)
+    {
+        PlayerLoadoutMessage message = new PlayerLoadoutMessage
+        {
+            schemaVersion = TrustedPlayerLoadout.CurrentSchemaVersion,
+            deckEntries = BuildValidDeckEntries(deckAlienation: 30),
+            mainTalentSlotIds = new[] { "midas_touch", null, null, null, null, null },
+            reserveTalentSlotIds = new[] { null, "network_test_small", null }
+        };
+
+        bool lowAccepted = PlayerLoadoutCodec.TryDecode(
+            message, AlienationPreset.Low, out _, out string lowError);
+        runner.Check(!lowAccepted && lowError == PlayerLoadoutErrorCodes.AlienationLimitExceeded,
+            "low preset rejects 30 deck + 15 active talent");
+
+        bool standardAccepted = PlayerLoadoutCodec.TryDecode(
+            message, AlienationPreset.Standard, out TrustedPlayerLoadout standard, out _);
+        runner.Check(standardAccepted && standard.TotalAlienation == 45,
+            "inactive reserve cost is excluded from room-entry alienation");
+        runner.Check(TrustedPlayerLoadout.CurrentSchemaVersion == 2,
+            "carried-loadout wire schema is v2");
+
+        message.schemaVersion = 1;
+        runner.Check(!PlayerLoadoutCodec.TryDecode(message, AlienationPreset.Standard, out _, out string legacyError)
+                     && legacyError == PlayerLoadoutErrorCodes.UnsupportedLoadoutVersion,
+            "legacy v1 loadouts are explicitly rejected instead of being guessed");
+    }
+
+    private static void ProfileSettingsNormalizeUnknownAlienationPreset(RegressionRunner runner)
+    {
+        PlayerProfile profile = new PlayerProfile
+        {
+            Settings = new ProfileSettings
+            {
+                SelectedAlienationPreset = (AlienationPreset)999
+            }
+        };
+
+        profile.Normalize();
+
+        runner.Check(profile.Settings.SelectedAlienationPreset == AlienationPreset.Standard,
+            "profile normalization restores an unknown alienation preview preset to Standard");
+    }
+
+    private static DeckTileCountMessage[] BuildValidDeckEntries(int deckAlienation)
+    {
+        if (deckAlienation != 30)
+            throw new ArgumentOutOfRangeException(nameof(deckAlienation));
+
+        DeckConfig deck = DeckConfig.CreateStandard();
+        foreach (Suit suit in new[] { Suit.Man, Suit.Pin, Suit.Sou })
+        {
+            deck.SetCardCount(suit, 1, 6);
+            for (int value = 2; value <= 6; value++) deck.SetCardCount(suit, value, 0);
+        }
+
+        var entries = new System.Collections.Generic.List<DeckTileCountMessage>(34);
+        foreach (Suit suit in new[] { Suit.Man, Suit.Pin, Suit.Sou, Suit.Wind, Suit.Dragon })
+        {
+            int maximum = suit is Suit.Man or Suit.Pin or Suit.Sou ? 9 : suit == Suit.Wind ? 4 : 3;
+            for (int value = 1; value <= maximum; value++)
+            {
+                entries.Add(new DeckTileCountMessage
+                {
+                    suit = (int)suit,
+                    value = value,
+                    count = deck.GetCardCount(suit, value)
+                });
+            }
+        }
+        return entries.ToArray();
     }
 }
