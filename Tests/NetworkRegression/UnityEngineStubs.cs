@@ -36,13 +36,6 @@ namespace UnityEngine
     }
 }
 
-namespace MahjongGame.Talents
-{
-    public sealed class TalentContext
-    {
-        public bool IsOwnersTurn { get; set; }
-    }
-}
 namespace MahjongGame.Core.Network.Transport
 {
     public class GameEndpoint

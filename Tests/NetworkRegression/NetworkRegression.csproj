@@ -89,6 +89,10 @@
     <Compile Include="..\..\Assets\Scripts\Core\ScoringOptions.cs" Link="ScoringOptions.cs" />
     <Compile Include="..\..\Assets\Scripts\Talent\TalentSlotConfig.cs" Link="TalentSlotConfig.cs" />
     <Compile Include="..\..\Assets\Scripts\Talent\TalentMetadata.cs" Link="TalentMetadata.cs" />
+    <Compile Include="..\..\Assets\Scripts\Talent\TalentRuntimeState.cs" Link="TalentRuntimeState.cs" />
+    <Compile Include="..\..\Assets\Scripts\Talent\TalentRuntimeEvent.cs" Link="TalentRuntimeEvent.cs" />
+    <Compile Include="..\..\Assets\Scripts\Talent\TalentContext.cs" Link="TalentContext.cs" />
+    <Compile Include="..\..\Assets\Scripts\Talent\TalentMatchRuntime.cs" Link="TalentMatchRuntime.cs" />
     <Compile Include="..\..\Assets\Scripts\Talent\TalentRule.cs" Link="TalentRule.cs" />
     <Compile Include="..\..\Assets\Scripts\Talent\TalentRuleAttribute.cs" Link="TalentRuleAttribute.cs" />
     <Compile Include="..\..\Assets\Scripts\Talent\TalentRegistry.cs" Link="TalentRegistry.cs" />

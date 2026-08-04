@@ -88,7 +88,7 @@ namespace MahjongGame.Talents
 
             foreach (var rule in pipeline)
             {
-                if (rule.Scope == TalentScope.Self && rule.OwnerPlayerId != playerId)
+                if (rule.Scope == TalentScope.Self && rule.OwnerSeatIndex != playerId)
                     continue;
 
                 var ctx = CreateContext(rule, playerId, gameState, session, deckConfigs);
@@ -104,7 +104,7 @@ namespace MahjongGame.Talents
 
             foreach (var rule in pipeline)
             {
-                if (rule.Scope == TalentScope.Self && rule.OwnerPlayerId != playerId)
+                if (rule.Scope == TalentScope.Self && rule.OwnerSeatIndex != playerId)
                     continue;
 
                 var ctx = CreateContext(rule, playerId, gameState, session, deckConfigs);
@@ -120,7 +120,7 @@ namespace MahjongGame.Talents
 
             foreach (var rule in pipeline)
             {
-                if (rule.Scope == TalentScope.Self && rule.OwnerPlayerId != playerId)
+                if (rule.Scope == TalentScope.Self && rule.OwnerSeatIndex != playerId)
                     continue;
 
                 var ctx = CreateContext(rule, playerId, gameState, session, deckConfigs);
@@ -137,7 +137,7 @@ namespace MahjongGame.Talents
 
             foreach (var rule in pipeline)
             {
-                if (rule.Scope == TalentScope.Self && rule.OwnerPlayerId != playerId)
+                if (rule.Scope == TalentScope.Self && rule.OwnerSeatIndex != playerId)
                     continue;
 
                 var ctx = CreateContext(rule, playerId, gameState, session, deckConfigs);
@@ -149,11 +149,11 @@ namespace MahjongGame.Talents
         {
             return new TalentContext
             {
-                CurrentPlayerId = currentPlayerId,
-                TalentOwnerId = rule.OwnerPlayerId,
+                CurrentSeatIndex = currentPlayerId,
+                OwnerSeatIndex = rule.OwnerSeatIndex,
                 GameState = gameState,
                 Session = session,
-                OwnerDeckConfig = deckConfigs != null && deckConfigs.TryGetValue(rule.OwnerPlayerId, out var cfg) ? cfg : null
+                OwnerDeckConfig = deckConfigs != null && deckConfigs.TryGetValue(rule.OwnerSeatIndex, out var cfg) ? cfg : null
             };
         }
     }

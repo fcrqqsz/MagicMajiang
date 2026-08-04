@@ -68,14 +68,14 @@ namespace MahjongGame.Talents
             Debug.Log($"[TalentRegistry] 天赋加载完毕，共 {_talentTypes.Count} 个天赋。");
         }
 
-        public TalentRule CreateInstance(string id, int ownerPlayerId)
+        public TalentRule CreateInstance(string id, int ownerSeatIndex)
         {
             if (!_talentTypes.TryGetValue(id, out var type)) return null;
             var entry = _entries[id];
 
             var rule = (TalentRule)Activator.CreateInstance(type);
             rule.Initialize(id, entry.Tier, entry.Cost, entry.Phases);
-            rule.OwnerPlayerId = ownerPlayerId;
+            rule.OwnerSeatIndex = ownerSeatIndex;
             return rule;
         }
 

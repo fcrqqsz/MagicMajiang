@@ -12,7 +12,7 @@ namespace MahjongGame.Talents
         public TalentPhase[] Phases { get; set; }
         public virtual TalentScope Scope => TalentScope.Self;
         public virtual int Priority => 0;
-        public int OwnerPlayerId { get; set; }
+        public int OwnerSeatIndex { get; internal set; }
 
         public void Initialize(string id, TalentTier tier, int cost, TalentPhase[] phases)
         {
@@ -28,5 +28,12 @@ namespace MahjongGame.Talents
         public virtual TileData OnDiscard(TalentContext ctx, TileData tile) => tile;
         public virtual bool OnActionValidation(TalentContext ctx, ClientActionType actionType, TileData targetTile) => true;
         public virtual void OnScoring(TalentContext ctx, FanContext fanCtx) { }
+
+        public virtual void InitializeMatchState(TalentMatchContext context) { }
+        public virtual int GetMatchStartScoreDelta(TalentMatchContext context) => 0;
+        public virtual void OnRoundStarted(TalentRoundContext context) { }
+        public virtual void OnRoundEnded(TalentRoundContext context, TalentRoundOutcome outcome) { }
+        public virtual int GetRoundStartPeekCount(TalentRoundContext context) => 0;
+        public virtual void ConfigureScoring(TalentScoringContext context, ScoringOptions options) { }
     }
 }

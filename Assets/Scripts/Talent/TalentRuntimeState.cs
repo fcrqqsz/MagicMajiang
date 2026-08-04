@@ -1,0 +1,74 @@
+using System;
+using System.Collections.Generic;
+
+namespace MahjongGame.Talents
+{
+    public sealed class TalentRuntimeState
+    {
+        private readonly Dictionary<string, int> _matchCounters = new Dictionary<string, int>();
+        private readonly Dictionary<string, int> _roundCounters = new Dictionary<string, int>();
+        private readonly HashSet<string> _matchFlags = new HashSet<string>();
+        private readonly HashSet<string> _roundFlags = new HashSet<string>();
+
+        public bool IsActive { get; internal set; }
+        public bool IsRevealed { get; internal set; }
+
+        public int GetCounter(string key, TalentStateScope scope)
+        {
+            Dictionary<string, int> counters = GetCounters(scope);
+            return counters.TryGetValue(key, out int value) ? value : 0;
+        }
+
+        public void SetCounter(string key, int value, TalentStateScope scope)
+        {
+            GetCounters(scope)[key] = value;
+        }
+
+        public int IncrementCounter(string key, TalentStateScope scope, int amount = 1)
+        {
+            int value = GetCounter(key, scope) + amount;
+            SetCounter(key, value, scope);
+            return value;
+        }
+
+        public bool GetFlag(string key, TalentStateScope scope)
+        {
+            return GetFlags(scope).Contains(key);
+        }
+
+        public void SetFlag(string key, bool value, TalentStateScope scope)
+        {
+            HashSet<string> flags = GetFlags(scope);
+            if (value)
+                flags.Add(key);
+            else
+                flags.Remove(key);
+        }
+
+        internal void ResetRoundState()
+        {
+            _roundCounters.Clear();
+            _roundFlags.Clear();
+        }
+
+        private Dictionary<string, int> GetCounters(TalentStateScope scope)
+        {
+            return scope switch
+            {
+                TalentStateScope.Match => _matchCounters,
+                TalentStateScope.Round => _roundCounters,
+                _ => throw new ArgumentOutOfRangeException(nameof(scope), scope, null)
+            };
+        }
+
+        private HashSet<string> GetFlags(TalentStateScope scope)
+        {
+            return scope switch
+            {
+                TalentStateScope.Match => _matchFlags,
+                TalentStateScope.Round => _roundFlags,
+                _ => throw new ArgumentOutOfRangeException(nameof(scope), scope, null)
+            };
+        }
+    }
+}
