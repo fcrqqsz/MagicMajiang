@@ -11,6 +11,7 @@ internal static class NetworkAuthorityBoundaryTests
     {
         TestGameSceneEntry(runner);
         TestGameManagerHasNoAuthority(runner);
+        TestGameSceneHasNoLocalModeFields(runner);
         TestPresentationHasNoLocalAuthority(runner);
         TestSingleHumanAiFill(runner);
         TestGameModeLengths(runner);
@@ -95,6 +96,29 @@ internal static class NetworkAuthorityBoundaryTests
             "Only the final summary view exits to the lobby.");
         runner.Check(Count(result, "ShowSessionResult();") == 2,
             "Completed matches show the final summary before leaving the room.");
+    }
+
+    private static void TestGameSceneHasNoLocalModeFields(RegressionRunner runner)
+    {
+        string scene = ReadRepoFile("Assets", "Scenes", "03_Game.unity");
+        string[] forbidden =
+        {
+            "  gameMode:",
+            "  useDebugHand:",
+            "  debugHand:",
+            "  forceAIDiscard:",
+            "  aiCheatDiscards:",
+            "  isNetworkMode:",
+            "  isServer:",
+            "  serverAddress:"
+        };
+        foreach (string fragment in forbidden)
+            runner.Check(!scene.Contains(fragment, StringComparison.Ordinal),
+                $"Game scene must not serialize removed mode field: {fragment.Trim()}");
+
+        runner.Check(scene.Contains("  actionTimeout: 30", StringComparison.Ordinal)
+            && scene.Contains("  responseTimeout: 10", StringComparison.Ordinal),
+            "Client presentation timer fallbacks remain serialized.");
     }
 
     private static string ReadRepoFile(params string[] segments)

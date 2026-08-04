@@ -21,6 +21,24 @@ git diff --check
 
 NetworkRegression 只覆盖可脱离 Unity 运行的协议、策略、快照和生命周期行为。真实 WebSocket、Unity 场景、3D 牌桌和 UI Toolkit 恢复必须执行后续人工矩阵。
 
+## Room-only 一人 AI 补位
+
+先在项目根目录执行以下自动检查：
+
+```powershell
+pwsh -NoLogo -NoProfile -Command "dotnet run --project Tests/NetworkRegression/NetworkRegression.csproj --no-restore"
+```
+
+预期 `Network regression tests passed.`。该命令仅验证可脱离 Unity 的边界和场景序列化守卫；以下矩阵必须在 Unity Editor、Dedicated Server 和客户端中人工执行并逐项记录结果：
+
+1. 使用默认 `--aiFill=true` 启动 Dedicated Server。
+2. 启动一个普通客户端，登录后创建 `Single` 房间并点击 Ready，确认 1–3 号席位为 AI。
+3. 完成该小局，查看最终结算，返回大厅后再创建一个房间。
+4. 使用 `HalfGame` 重复，至少验证两次局间推进。
+5. 在主回合决策期间断线，使用 username 和 room ticket 重连，确认快照恢复，并在下一个决策边界由 AI 交还真人控制。
+6. 停止 Dedicated Server 后尝试创建房间，确认客户端停留在大厅。
+7. 分别在 Editor 和 development build 中直接运行 `03_Game`，确认记录 `MissingNetworkRoomForGameScene` 并返回 Persistent。
+
 ## 2. 构建 Dedicated Server
 
 1. 在 Unity 中执行 `Tools > Build > Dedicated Server (Windows)`。
