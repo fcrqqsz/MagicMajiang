@@ -1,18 +1,18 @@
 # Talent UI, AI, and Feedback Implementation Plan
 
-> **状态：待按 Room 唯一权威设计修订，暂不得执行。** 前置设计见 `docs/superpowers/specs/2026-08-04-room-authority-remove-local-mode-design.md`。
-
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 让玩家能清楚构筑 6 主 + 3 备选、理解异化值档位、在牌桌上看见自身技能和已知对手天赋、完成中场换装，并通过结算拆分与 AI 策略持续验证“做大牌、克制、攒大招”的玩法闭环。
 
-**Architecture:** 所有 UI 都只消费 `ClientRoomState`/`ClientGameState` 的权威投影和纯 C# presentation policy，不直接读取 `Room`、`GameServer` 或其他玩家私有数据。普通麻将按钮与补充天赋按钮共享当前 decision 视图但拥有独立回调。AI 使用同一 `TalentActionOption` 和服务端校验路径，策略只看公开/本席可见信息。结构化 telemetry 记录玩法节奏和天赋贡献，作为后续平衡依据。
+**Architecture:** 所有 UI 都只消费 `ClientRoomState`/`ClientGameState` 的权威投影和纯 C# presentation policy，不直接读取 `Room`、`GameServer` 或其他玩家私有数据。普通麻将按钮与补充天赋按钮共享当前 decision 视图但拥有独立回调。AI 只在 Dedicated Server 的房间席位运行，使用与真人相同的 `TalentActionOption` 和服务端校验路径，策略只看公开/本席可见信息。结构化 telemetry 记录玩法节奏和天赋贡献，作为后续平衡依据。
 
 **Tech Stack:** Unity UI Toolkit（UXML/USS/C#，禁止 Canvas/UGUI）、TextCore `Assets/Font/MSYH_UITK.asset`、DOTween Pro（动态对象动画必须 `.SetLink(gameObject)`）、纯 C# presentation policies、`Tests/NetworkRegression`、Unity Play Mode 手工视觉验证。
 
 ## Global Constraints
 
-- 开始前必须完成前两份计划的 Completion Gate。
+- 开始前必须完成 `docs/superpowers/plans/2026-08-04-room-authority-remove-local-mode.md` 的 Completion Gate。
+- 开始前必须完成 `docs/superpowers/plans/2026-08-04-talent-foundation-and-alienation.md` 与 `docs/superpowers/plans/2026-08-04-talent-actions-and-sideboard.md` 的 Completion Gate。
+- 不新增客户端本地 AI、离线构筑或第二套天赋决策路径；一真人测试统一使用 `Room` 的 AI 补位席位。
 - 采用已确认 UI 方向：牌桌上对手天赋靠近席位，本家天赋条靠近手牌，主动按钮并入现有 `ActionPanel`；中场是全屏战术页；牌库编辑器只显示当前 40/80/120 预览档位的一根异化值条。
 - 所有界面使用 UI Toolkit；USS 字体只引用 `Assets/Font/MSYH_UITK.asset`，共用 `PanelSettings` 保持绑定 `SuperMajiangTextSettings.asset`。
 - 客户端不推导权威分数、轮次、天赋 active 状态或可用技能；只展示服务端消息/快照。
@@ -714,7 +714,7 @@ Expected: 测试与构建成功；placeholder 扫描只允许引用历史文档�
 - [ ] **Step 6: Run Unity and Dedicated Server verification**
 
 1. Unity 打开项目，无 C#、UXML、USS import 错误。
-2. 本地 Single：现有六天赋、三新天赋各走至少一次关键效果。
+2. AI 补位在线房间 Single：现有六天赋、三新天赋各走至少一次关键效果。
 3. Dedicated Server HalfGame：四席不同构筑，第 4 局中场，含断线/重连、超时、AI 托管。
 4. 主回合打开截流 picker 后断线：恢复待出牌，不恢复 picker。
 5. Peek 私有牌、exact alienation、未揭示天赋不串席。
@@ -733,6 +733,7 @@ pwsh -NoLogo -NoProfile -Command "git add Assets/Scripts/Talent Assets/Scripts/C
 
 ## Plan 3 Completion Gate
 
+- [ ] 一真人加三 AI 的 Single 与 HalfGame 都只通过 Dedicated Server `Room` 运行，不存在客户端本地天赋路径。
 - [ ] 牌库编辑器完整显示 6 主 + 3 备选，并用单根 gauge 预览 40/80/120 当前档位。
 - [ ] 超预算构筑可保存但有明确警告，服务器仍拒绝超限进房。
 - [ ] 本家天赋条显示 active，其他席只显示已知天赋和最后公开值。

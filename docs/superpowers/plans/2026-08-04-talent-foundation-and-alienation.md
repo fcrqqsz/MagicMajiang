@@ -1,17 +1,16 @@
 # Talent Foundation and Alienation Implementation Plan
 
-> **状态：待按 Room 唯一权威设计修订，暂不得执行。** 前置设计见 `docs/superpowers/specs/2026-08-04-room-authority-remove-local-mode-design.md`。
-
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 建立跨小局持久的天赋运行时、40/80/120 异化值房间预算和 v2 构筑数据，并把现有六个天赋迁入统一多态生命周期，不再由 `Room`/`GameServer` 按天赋 ID 执行效果。
 
-**Architecture:** `Room`（本地模式由 `GameManager`）持有一场比赛唯一的 `TalentMatchRuntime`，每个新 `GameServer` 只借用它执行本小局钩子。`TalentRegistry` 继续以稳定 ID 负责注册、存档、网络和实例创建；效果本身由 `TalentRule` 虚方法执行。房间创建时锁定异化值档位，服务端按当前激活的六个主槽重新计算总异化值，客户端只收到档位和自己的精确总值。
+**Architecture:** Dedicated Server 的 `Room` 持有一场比赛唯一的 `TalentMatchRuntime`，每个新 `GameServer` 只借用它执行本小局钩子；客户端 `GameManager` 只展示服务端投影，不持有运行时。`TalentRegistry` 继续以稳定 ID 负责注册、存档、网络和实例创建；效果本身由 `TalentRule` 虚方法执行。房间创建时锁定异化值档位，服务端按当前激活的六个主槽重新计算总异化值，客户端只收到档位和自己的精确总值。
 
 **Tech Stack:** Unity 2022.3.61t9 / Tuanjie 1.6.8、C#、纯 C# 天赋管道、WebSocket 协议 v3、UI Toolkit（本计划只增加设置字段，不实现界面）、`Tests/NetworkRegression` 控制台回归。
 
 ## Global Constraints
 
+- 开始前必须完成 `docs/superpowers/plans/2026-08-04-room-authority-remove-local-mode.md` 的 Completion Gate。
 - 设计真源为 `docs/superpowers/specs/2026-08-04-talent-vertical-slice-design.md`；发生歧义时先回到该文档。
 - ID 可以用于注册、存档、网络、日志、UI、测试和实例查找；禁止在 `Room`、`GameServer` 中用 `if/switch(talentId)` 执行效果。
 - 本计划只完成基础设施与现有六天赋迁移，不提前实现 `藏锋`、`截流`、`定心`、主动天赋动作或中场备牌切换。
@@ -54,7 +53,6 @@
 - `Assets/Scripts/Core/Network/ClientRoomService.cs`
 - `Assets/Scripts/Core/Network/GameServer.cs`
 - `Assets/Scripts/Core/Network/GameSession.cs`
-- `Assets/Scripts/Core/GameManager.cs`
 - `Assets/Scripts/Talent/Impl/MidasTouchTalent.cs`
 - `Assets/Scripts/Talent/Impl/PeekTalent.cs`
 - `Assets/Scripts/Talent/Impl/DragonAscentTalent.cs`
@@ -762,7 +760,7 @@ pwsh -NoLogo -NoProfile -Command "git add Assets/Scripts/Talent Tests/NetworkReg
 
 ---
 
-### Task 5: Migrate the existing six talents and both match owners
+### Task 5: Migrate the existing six talents into the sole Room-owned runtime
 
 **Files:**
 
@@ -774,7 +772,6 @@ pwsh -NoLogo -NoProfile -Command "git add Assets/Scripts/Talent Tests/NetworkReg
 - Modify: `Assets/Scripts/Talent/Impl/StartingCapitalTalent.cs`
 - Modify: `Assets/Scripts/Core/Network/GameServer.cs`
 - Modify: `Assets/Scripts/Core/Network/Room.cs`
-- Modify: `Assets/Scripts/Core/GameManager.cs`
 - Delete: `Assets/Scripts/Talent/TalentManager.cs`
 - Delete: `Assets/Scripts/Core/Network/SessionTalentPolicy.cs`
 - Test: `Tests/NetworkRegression/TalentFoundationTests.cs`
@@ -806,7 +803,7 @@ runner.Check(transformedTile.Suit == Suit.Dragon && transformedTile.Value == 2,
 
 - [ ] **Step 2: Run regression and confirm RED**
 
-Expected: runtime 尚未由 Room/GameManager 持有，现有硬编码策略仍使跨局次数或源码守卫失败。
+Expected: runtime 尚未由 `Room` 持有，现有硬编码策略仍使跨局次数或源码守卫失败。
 
 - [ ] **Step 3: Move each effect into its rule override**
 
@@ -857,16 +854,12 @@ BroadcastTalentEventsAtSafeBoundary();
 
 1. runtime `EndRound(outcome, Session)`；
 2. 向各席发送过滤后的事件和分数变化；
-3. `Session.AdvanceRound(...)`；
+3. `Session.AdvanceRound()`；
 4. 决定进入下一小局或整场结束。
 
 这样 `DrawReward` 使用的是刚结束小局的结果，而 `StartingCapital` 不会因重建 `GameServer` 再触发。
 
-- [ ] **Step 5: Give local play the same lifetime semantics**
-
-`GameManager` 在开始一场 `GameSession` 时创建一次 `_talentRuntime`，在全部小局结束或退出比赛时清空。不要从 `GameServer` 反向读取全局单例。构造 `GameServer` 时显式传入 runtime，使本地和联机走同一效果代码。
-
-- [ ] **Step 6: Replace `GameServer` hardcoding with runtime calls**
+- [ ] **Step 5: Replace `GameServer` hardcoding with runtime calls**
 
 删除 `GameServer.StartGame` 中对 `HeadStart`、`DragonAscent`、`Peek` 的 ID 查询，改为：
 
@@ -883,9 +876,9 @@ ScoringOptions options = _talentRuntime.BuildScoringOptions(scoringContext);
 
 胡牌被服务端正式接受后，调用 `ResolveAcceptedWinVisibility`。`TalentAcceptedWinContext` 提供最终结果以及“排除某一 rule 后重建 options 并重算”的只读委托；runtime 只对 active、尚未揭示的 scoring rules 做反事实重算。排除后合法性或最终番数发生变化才揭示该规则，因此 `DragonAscent` 不会因为普通清龙误揭示，`HeadStart` 的 +2 会在实际胡牌时揭示。候选胡牌检查、听牌提示和恢复快照不得触发 reveal。
 
-流局结算不再检查 `DrawReward` ID；统一由 Room/GameManager 调用 `EndRound`。`GameServer` 仍负责权威发牌、动作校验和算番，不拥有 runtime 生命周期。
+流局结算不再检查 `DrawReward` ID；统一由 `Room` 调用 `EndRound`。`GameServer` 仍负责权威发牌、动作校验和算番，不拥有 runtime 生命周期。客户端只消费 `TalentRuntimeEvent`、分数和快照，不调用任何 runtime 生命周期方法。
 
-- [ ] **Step 7: Remove obsolete managers and update explicit project includes**
+- [ ] **Step 6: Remove obsolete managers and update explicit project includes**
 
 确认所有调用点迁移后删除 `TalentManager.cs`、`SessionTalentPolicy.cs` 及 `.meta`，从 `NetworkRegression.csproj` 移除旧 `<Compile Include>`，加入新 runtime 文件。运行：
 
@@ -895,7 +888,7 @@ pwsh -NoLogo -NoProfile -Command "rg -n 'TalentManager|SessionTalentPolicy|head_
 
 Expected: 不出现旧类型；稳定 ID 不出现在 `Room.cs` 或 `GameServer.cs`。`GameManager` 也不应包含效果型 ID 分支。
 
-- [ ] **Step 8: Run full verification and commit**
+- [ ] **Step 7: Run full verification and commit**
 
 Run:
 
@@ -922,8 +915,8 @@ pwsh -NoLogo -NoProfile -Command "git add Assets/Scripts Tests/NetworkRegression
 - [ ] 协议版本为 v3，构筑网络 schema 为 v2。
 - [ ] 40/80/120 三档预算由服务端统一校验，备选槽未激活时不计成本。
 - [ ] 公共房间消息不包含其他玩家精确总异化值。
-- [ ] `Room` 和 `GameManager` 各自只创建一次整场 `TalentMatchRuntime`。
+- [ ] `Room` 每场只创建一次 `TalentMatchRuntime`，`GameManager` 不创建、不持有也不调用 runtime。
 - [ ] 六个现有天赋在跨两小局回归中保持设计次数。
 - [ ] `Room.cs`、`GameServer.cs` 无六天赋 ID 效果分支。
 - [ ] 网络回归、构建和 `git diff --check` 全部通过。
-- [ ] `git status --short` 只显示预期文件，且不存在 `TODO`、`TBD`、`FIXME` 或占位实现。
+- [ ] `git status --short` 只显示预期文件，且不存在占位注释、未实现异常、空方法或假成功返回。

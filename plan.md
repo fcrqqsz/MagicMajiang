@@ -5,6 +5,11 @@
 ## 1. 当前开发任务 (Active Backlog)
 
 ### High Priority (高优先级 - 游戏性反馈与 UX)
+*   **天赋玩法垂直切片（当前主线，按顺序实施）**:
+    *   [ ] 前置：完成 [`Room` 唯一权威与移除隐式本地模式](docs/superpowers/plans/2026-08-04-room-authority-remove-local-mode.md)，一人游玩统一使用在线房间 AI 补位。
+    *   [ ] 第一阶段：完成[天赋运行时、异化预算与现有六天赋迁移](docs/superpowers/plans/2026-08-04-talent-foundation-and-alienation.md)。
+    *   [ ] 第二阶段：完成[主动天赋、三项锚点天赋与中场备牌](docs/superpowers/plans/2026-08-04-talent-actions-and-sideboard.md)。
+    *   [ ] 第三阶段：完成[天赋 UI、AI、反馈与玩法测试](docs/superpowers/plans/2026-08-04-talent-ui-ai-feedback.md)。
 *   **异化牌视觉反馈**:
     *   [ ] 根据 `TileData` 的异化状态（天赋修改），通过 `TileVisual` 改变牌背颜色或增加发光特效。
 

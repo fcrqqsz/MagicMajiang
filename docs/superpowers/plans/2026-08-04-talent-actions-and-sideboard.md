@@ -1,18 +1,18 @@
 # Talent Actions and Sideboard Implementation Plan
 
-> **状态：待按 Room 唯一权威设计修订，暂不得执行。** 前置设计见 `docs/superpowers/specs/2026-08-04-room-authority-remove-local-mode-design.md`。
-
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 在现有主回合决策上增加不关闭基本动作的天赋补充动作，实现 `藏锋`、`截流`、`定心` 三项锚点天赋，并在半庄/全庄第 4 小局后加入一次 45 秒并行中场备牌。
 
-**Architecture:** 普通麻将动作继续由 `NetworkDecisionTracker` 控制，天赋请求先以同一 `decisionId` 做只读资格校验，再由 `TalentMatchRuntime` 用 `talentId` 找到实例并调用多态激活方法；成功后不写入 `SubmittedSeats`、不关闭主回合。负面效果经过 runtime 的统一防御链，`定心` 可拦截 `截流`，但拦截不返还使用次数。中场备牌由房间级 `SideboardDecisionTracker` 独立管理，收到选择后原子替换该席的生效集合；断线或超时立即锁回进入中场时的生效集合。
+**Architecture:** Dedicated Server 的 `Room` 是唯一比赛权威并持有整场 `TalentMatchRuntime`。普通麻将动作继续由 `NetworkDecisionTracker` 控制，天赋请求先以同一 `decisionId` 做只读资格校验，再由 runtime 用 `talentId` 找到实例并调用多态激活方法；成功后不写入 `SubmittedSeats`、不关闭主回合。负面效果经过统一防御链；中场备牌由同一 `Room` 持有的 `SideboardDecisionTracker` 管理，收到选择后原子替换该席生效集合，断线或超时立即锁回原集合。
 
 **Tech Stack:** Unity/Tuanjie、C#、`TalentMatchRuntime`、WebSocket 协议 v3、UI Toolkit 消息模型（具体视觉在第三份计划）、`Tests/NetworkRegression`。
 
 ## Global Constraints
 
+- 开始前必须完成 `docs/superpowers/plans/2026-08-04-room-authority-remove-local-mode.md` 的 Completion Gate。
 - 开始前必须完成 `docs/superpowers/plans/2026-08-04-talent-foundation-and-alienation.md` 的 Completion Gate。
+- `Room` 持有 runtime、sideboard tracker 和跨局状态；客户端与 `GameManager` 只提交请求、消费按席投影，不设置天赋生效集合。
 - `talentId` 只负责在玩家已携带的 runtime entry 中定位实例；`GameServer`/`Room` 不得根据 ID 解释、分支或执行效果。
 - 天赋补充动作只复用当前决策的身份与时限，不占用普通动作提交位，也不延长原决策 deadline。
 - 首批主动天赋仅允许主回合窗口；响应窗口接口保留枚举能力，但本计划不开放响应型天赋。
@@ -853,6 +853,7 @@ pwsh -NoLogo -NoProfile -Command "git add Assets/Scripts/Core/Network Assets/Scr
 
 ## Plan 2 Completion Gate
 
+- [ ] `Room` 是 runtime、sideboard tracker 和跨局天赋状态的唯一 owner，客户端不直接修改生效集合。
 - [ ] 补充天赋动作成功后，当前基本主回合仍可正常出牌，deadline 不变。
 - [ ] 断线恢复不会恢复任何未提交的蓄力/截流选择框。
 - [ ] `藏锋` 严格按未获胜小局充能、首主回合武装、基础合法后 +16。
@@ -862,4 +863,4 @@ pwsh -NoLogo -NoProfile -Command "git add Assets/Scripts/Core/Network Assets/Scr
 - [ ] 中场断线/超时锁回原激活方案，重连不能重新选择。
 - [ ] 对手快照不泄露 active 状态、精确异化值或未揭示天赋。
 - [ ] 全部网络回归、构建、源码分支守卫和 `git diff --check` 通过。
-- [ ] 不存在 `TODO`、`TBD`、`FIXME`、空方法或假成功返回。
+- [ ] 不存在占位注释、未实现异常、空方法或假成功返回。
