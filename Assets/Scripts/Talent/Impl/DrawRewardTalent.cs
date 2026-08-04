@@ -7,5 +7,11 @@ namespace MahjongGame.Talents.Impl
     public class DrawRewardTalent : TalentRule
     {
         public const int DrawBonus = 5;
+
+        public override void OnRoundEnded(TalentRoundContext context, TalentRoundOutcome outcome)
+        {
+            if (outcome.IsDraw)
+                context.ApplyScoreDelta(DrawBonus, "draw_reward");
+        }
     }
 }

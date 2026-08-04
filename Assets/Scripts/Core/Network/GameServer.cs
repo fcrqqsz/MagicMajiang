@@ -8,7 +8,6 @@ using MahjongGame.Core.Agents;
 using MahjongGame.Core.Interfaces;
 using MahjongGame.Core.Network.Messages;
 using MahjongGame.Talents;
-using MahjongGame.Talents.Impl;
 
 namespace MahjongGame.Core.Network
 {
@@ -31,16 +30,23 @@ namespace MahjongGame.Core.Network
     public class GameServer : IServer
     {
         private readonly IWallService _wallService;
+        private readonly TalentMatchRuntime _talentRuntime;
         private GameServerOptions _options;
         private NetworkDecisionTracker _decisionTracker;
 
-        public GameServer(IWallService wallService) : this(wallService, null)
+        public GameServer(
+            IWallService wallService,
+            TalentMatchRuntime talentRuntime) : this(wallService, talentRuntime, null)
         {
         }
 
-        public GameServer(IWallService wallService, GameServerOptions options)
+        public GameServer(
+            IWallService wallService,
+            TalentMatchRuntime talentRuntime,
+            GameServerOptions options)
         {
             _wallService = wallService ?? throw new ArgumentNullException(nameof(wallService));
+            _talentRuntime = talentRuntime ?? throw new ArgumentNullException(nameof(talentRuntime));
             Configure(options);
         }
 
@@ -90,18 +96,18 @@ namespace MahjongGame.Core.Network
         private ServerGameState _gameState;
         private CancellationTokenSource _turnCts;
 
-        // 天赋系统
-        private TalentManager _talentManager;
         private Dictionary<int, DeckConfig> _deckConfigs;
 
         // 服务端验证用
         private Dictionary<int, ScoringOptions> _scoringOptions = new Dictionary<int, ScoringOptions>();
-        private readonly Dictionary<int, List<TileData>> _peekWallTiles = new Dictionary<int, List<TileData>>();
+        private readonly Dictionary<int, List<TileData>> _privateWallPreviewTiles =
+            new Dictionary<int, List<TileData>>();
         private TileData _lastDiscardedTile; // 响应阶段：被打出的那张牌
         private TileData _pendingRobKongTile; // 加杠声明阶段：尚未落副露、可被抢胡的牌
 
         // 局结束事件，GameManager 监听此事件驱动多局循环
         public event System.Action OnRoundFinished;
+        public event System.Action OnTalentEventsAvailable;
 
         // 回合切换事件 (供 HUD 倒计时使用)
         public event System.Action<int, float> OnTurnStarted;  // (playerIndex, timeoutSeconds)
@@ -125,14 +131,19 @@ namespace MahjongGame.Core.Network
 
         public List<TileData> GetPeekWallSnapshot(int seatIndex)
         {
-            return _peekWallTiles.TryGetValue(seatIndex, out var tiles)
+            return _privateWallPreviewTiles.TryGetValue(seatIndex, out var tiles)
                 ? CloneTiles(tiles)
                 : new List<TileData>();
         }
 
-        public async void StartGame(List<IPlayerClient> clients, List<DeckConfig> configs,
-            GameSession session = null, Dictionary<int, TalentSlotConfig> talentConfigs = null)
+        public async void StartGame(
+            List<IPlayerClient> clients,
+            List<DeckConfig> configs,
+            GameSession session)
         {
+            if (clients == null) throw new ArgumentNullException(nameof(clients));
+            if (configs == null) throw new ArgumentNullException(nameof(configs));
+            if (session == null) throw new ArgumentNullException(nameof(session));
             _clients = clients;
             _session = session;
             _currentPlayerIndex = session != null ? session.DealerIndex : 0;
@@ -147,7 +158,7 @@ namespace MahjongGame.Core.Network
             WinningHandSnapshot = null;
             LoserId = -1;
             IsDrawGame = false;
-            _peekWallTiles.Clear();
+            _privateWallPreviewTiles.Clear();
 
             // 缓存牌库配置
             _deckConfigs = new Dictionary<int, DeckConfig>();
@@ -157,18 +168,23 @@ namespace MahjongGame.Core.Network
             // 初始化服务端场面快照
             _gameState = new ServerGameState(clients.Count);
 
-            // 初始化天赋系统
-            _talentManager = new TalentManager();
-            _talentManager.Initialize(talentConfigs);
+            _talentRuntime.BeginRound(new TalentRoundContext(_session));
 
             // 构建牌山（不洗牌）
             _wallService.BuildWall(configs);
 
             // 天赋: 牌山构建阶段
-            _talentManager.ExecuteWallBuilding(_wallService.GetWallTiles(), _gameState, _session, _deckConfigs);
+            _talentRuntime.ApplyWallBuilding(new TalentWallContext(
+                _session,
+                _wallService.GetWallTiles(),
+                _gameState,
+                _deckConfigs));
 
             // 洗牌
             _wallService.ShuffleWall();
+            _talentRuntime.ResolvePostShuffle(new TalentPostShuffleContext(
+                _session,
+                _wallService.GetWallTiles()));
 
             // 广播圈风/门风信息
             if (_session != null)
@@ -188,11 +204,8 @@ namespace MahjongGame.Core.Network
             _scoringOptions.Clear();
             for (int i = 0; i < _clients.Count; i++)
             {
-                var options = new ScoringOptions();
-                if (_talentManager.PlayerHasTalent(i, "head_start"))
-                    options.BonusFan = HeadStartTalent.BonusFanValue;
-                if (_talentManager.PlayerHasTalent(i, "dragon_ascent"))
-                    options.RelaxedPureStraight = true;
+                ScoringOptions options = _talentRuntime.BuildScoringOptions(
+                    new TalentScoringContext(_session, i));
                 _scoringOptions[i] = options;
                 _clients[i].OnTalentInfo(options);
             }
@@ -201,16 +214,7 @@ namespace MahjongGame.Core.Network
             DealStartingHands();
             BroadcastWallCount();
 
-            // 窥探天赋：发牌后通知装备者牌山顶部牌
-            for (int i = 0; i < _clients.Count; i++)
-            {
-                if (_talentManager.PlayerHasTalent(i, "peek"))
-                {
-                    var topTiles = _wallService.PeekTopTiles(PeekTalent.PeekCount);
-                    _peekWallTiles[i] = CloneTiles(topTiles);
-                    _clients[i].OnPeekWallTiles(topTiles);
-                }
-            }
+            SendPrivatePeekResults();
 
             _isGameActive = true;
 
@@ -335,7 +339,9 @@ namespace MahjongGame.Core.Network
                 {
                     _lastDrawnTile = _wallService.DrawTile();
                     BroadcastWallCount();
-                    _lastDrawnTile = _talentManager.ExecuteOnDraw(_currentPlayerIndex, _lastDrawnTile, _gameState, _session, _deckConfigs);
+                    _lastDrawnTile = _talentRuntime.ApplyDraw(
+                        new TalentDrawContext(_session, _currentPlayerIndex, _gameState, _deckConfigs),
+                        _lastDrawnTile);
                     _gameState.AddTile(_currentPlayerIndex, _lastDrawnTile);
 
                     // 创建 CTS 并设置到当前玩家（在 OnTileDrawn 之前，让客户端拿到 token）
@@ -404,7 +410,7 @@ namespace MahjongGame.Core.Network
                 else if (action.ActionType == ClientActionType.JiaGang)
                 {
                     // 加杠先公开声明，但在抢杠窗口关闭前不能修改权威副露。
-                    ClientAction robKongWin = await CollectRobKongResponses(action.TargetTile);
+                    ClientAction robKongWin = await CollectRobKongResponses(action);
                     if (robKongWin != null && robKongWin.ActionType == ClientActionType.Hu)
                     {
                         HandlePlayerWin(robKongWin, false, _currentPlayerIndex, action.TargetTile, true);
@@ -418,9 +424,13 @@ namespace MahjongGame.Core.Network
                 }
                 else if (action.ActionType == ClientActionType.Discard)
                 {
-                    TileData discardedTile = action.TargetTile;
-                    discardedTile = _talentManager.ExecuteOnDiscard(action.PlayerId, discardedTile, _gameState, _session, _deckConfigs);
+                    TileData discardedTile = _gameState.GetHand(action.PlayerId)
+                        .FirstOrDefault(tile => tile.TileSuit == action.TargetTile.TileSuit
+                                                && tile.Value == action.TargetTile.Value);
                     _gameState.RemoveTile(action.PlayerId, discardedTile);
+                    discardedTile = _talentRuntime.ApplyDiscard(
+                        new TalentDiscardContext(_session, action.PlayerId),
+                        discardedTile);
                     _gameState.RecordDiscard(action.PlayerId, discardedTile);
 
                     // 3. 广播他人打牌，并收集响应
@@ -451,6 +461,7 @@ namespace MahjongGame.Core.Network
                     {
                         _clients[i].OnOtherPlayerDiscarded(_currentPlayerIndex, discardedTile);
                     }
+                    NotifyTileBecamePublic(_currentPlayerIndex, discardedTile);
 
                     // 等待所有其他3家回复（带超时）
                     await AwaitWithTimeout(
@@ -486,6 +497,8 @@ namespace MahjongGame.Core.Network
                         }
                         else
                         {
+                            List<TileData> handTilesBecomingPublic =
+                                GetHandTilesBecomingPublic(resolvedAction, _lastDiscardedTile);
                             // 执行碰/杠/吃，更新快照
                             if (!_gameState.TryClaimDiscard(_currentPlayerIndex, _lastDiscardedTile))
                             {
@@ -497,6 +510,9 @@ namespace MahjongGame.Core.Network
                             resolvedAction = new ClientAction(resolvedAction.PlayerId, resolvedAction.ActionType,
                                 _lastDiscardedTile, resolvedAction.ChiCombinations);
                             BroadcastAction(resolvedAction);
+                            NotifyTilesBecamePublic(
+                                resolvedAction.PlayerId,
+                                handTilesBecomingPublic);
 
                             // 跳转回合
                             _currentPlayerIndex = resolvedAction.PlayerId;
@@ -534,8 +550,11 @@ namespace MahjongGame.Core.Network
                 _clients.Count);
         }
 
-        private async Task<ClientAction> CollectRobKongResponses(TileData targetTile)
+        private async Task<ClientAction> CollectRobKongResponses(ClientAction declaration)
         {
+            TileData targetTile = declaration.TargetTile;
+            List<TileData> handTilesBecomingPublic =
+                GetHandTilesBecomingPublic(declaration, targetTile);
             _pendingRobKongTile = targetTile;
             _pendingResponses.Clear();
             _responsesTcs = new TaskCompletionSource<bool>();
@@ -561,6 +580,7 @@ namespace MahjongGame.Core.Network
             {
                 _clients[i].OnAddedKongDeclared(_currentPlayerIndex, targetTile);
             }
+            NotifyTilesBecamePublic(_currentPlayerIndex, handTilesBecomingPublic);
 
             try
             {
@@ -958,6 +978,73 @@ namespace MahjongGame.Core.Network
             }
         }
 
+        private void SendPrivatePeekResults()
+        {
+            for (int seatIndex = 0; seatIndex < _clients.Count; seatIndex++)
+            {
+                IReadOnlyList<TileData> privateTiles = _talentRuntime.GetPrivatePeekTiles(seatIndex);
+                if (privateTiles.Count == 0) continue;
+
+                List<TileData> snapshot = CloneTiles(privateTiles);
+                _privateWallPreviewTiles[seatIndex] = snapshot;
+                _clients[seatIndex].OnPeekWallTiles(CloneTiles(snapshot));
+            }
+        }
+
+        private List<TileData> GetHandTilesBecomingPublic(ClientAction action, TileData targetTile)
+        {
+            List<TileData> hand = _gameState.GetHand(action.PlayerId);
+            var selected = new List<TileData>();
+            if (targetTile == null) return selected;
+
+            if (action.ActionType == ClientActionType.Chi)
+            {
+                foreach (int value in action.ChiCombinations ?? Array.Empty<int>())
+                {
+                    int index = hand.FindIndex(tile => tile.TileSuit == targetTile.TileSuit
+                                                      && tile.Value == value);
+                    if (index < 0) continue;
+                    selected.Add(hand[index]);
+                    hand.RemoveAt(index);
+                }
+                return selected;
+            }
+
+            int count = action.ActionType switch
+            {
+                ClientActionType.Pon => 2,
+                ClientActionType.MingGan => 3,
+                ClientActionType.JiaGang => 1,
+                _ => 0
+            };
+            for (int index = hand.Count - 1; index >= 0 && selected.Count < count; index--)
+            {
+                TileData tile = hand[index];
+                if (tile.TileSuit == targetTile.TileSuit && tile.Value == targetTile.Value)
+                    selected.Add(tile);
+            }
+            return selected;
+        }
+
+        private void NotifyTileBecamePublic(int ownerSeatIndex, TileData tile)
+        {
+            _talentRuntime.NotifyTileBecamePublic(
+                new TalentPublicTileContext(_session, ownerSeatIndex),
+                tile);
+            OnTalentEventsAvailable?.Invoke();
+        }
+
+        private void NotifyTilesBecamePublic(int ownerSeatIndex, IEnumerable<TileData> tiles)
+        {
+            foreach (TileData tile in tiles ?? Enumerable.Empty<TileData>())
+            {
+                _talentRuntime.NotifyTileBecamePublic(
+                    new TalentPublicTileContext(_session, ownerSeatIndex),
+                    tile);
+            }
+            OnTalentEventsAvailable?.Invoke();
+        }
+
         private static long GetDeadlineUnixMilliseconds(int timeoutMilliseconds)
         {
             return DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() + Math.Max(0, timeoutMilliseconds);
@@ -1025,10 +1112,46 @@ namespace MahjongGame.Core.Network
             // 服务端权威重算番数
             int serverFan = 0;
             List<string> serverDetails = null;
+            bool acceptedLegal = false;
             if (winTile != null)
             {
-                MahjongLogic.CheckWinWithFan(hand, melds, winTile, isSelfDraw, out serverFan, out serverDetails, roundWind, seatWind, options, isRobKongWin);
+                acceptedLegal = MahjongLogic.CheckWinWithFan(
+                    hand,
+                    melds,
+                    winTile,
+                    isSelfDraw,
+                    out serverFan,
+                    out serverDetails,
+                    roundWind,
+                    seatWind,
+                    options,
+                    isRobKongWin);
             }
+
+            TalentWinEvaluation acceptedEvaluation = new TalentWinEvaluation(
+                isLegal: acceptedLegal,
+                finalFan: serverFan);
+            _talentRuntime.ResolveAcceptedWinVisibility(new TalentAcceptedWinContext(
+                _session,
+                pid,
+                acceptedEvaluation,
+                counterfactualOptions =>
+                {
+                    int counterfactualFan = 0;
+                    bool isLegal = winTile != null && MahjongLogic.CheckWinWithFan(
+                        hand,
+                        melds,
+                        winTile,
+                        isSelfDraw,
+                        out counterfactualFan,
+                        out _,
+                        roundWind,
+                        seatWind,
+                        counterfactualOptions,
+                        isRobKongWin);
+                    return new TalentWinEvaluation(isLegal, counterfactualFan);
+                }));
+            OnTalentEventsAvailable?.Invoke();
 
             // 断言比对：记录客户端与服务端计算差异（Phase 0 验证用）
             if (winAction.TotalFan != serverFan)
@@ -1081,19 +1204,6 @@ namespace MahjongGame.Core.Network
             CloseActiveDecision();
             OnTurnEnded?.Invoke();
             IsDrawGame = true;
-
-            // 厚积天赋：流局时加分
-            if (_session != null)
-            {
-                for (int i = 0; i < _clients.Count; i++)
-                {
-                    if (_talentManager.PlayerHasTalent(i, "draw_reward"))
-                    {
-                        _session.Scores[i] += DrawRewardTalent.DrawBonus;
-                        Debug.Log($"<color=yellow>[天赋触发] 厚积: 玩家{i} 流局获得+{DrawRewardTalent.DrawBonus}分</color>");
-                    }
-                }
-            }
 
             foreach (var client in _clients)
             {

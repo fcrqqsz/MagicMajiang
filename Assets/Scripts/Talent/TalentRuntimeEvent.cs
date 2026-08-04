@@ -14,6 +14,7 @@ namespace MahjongGame.Talents
         public string EventType { get; set; }
         public TalentEventVisibility Visibility { get; set; }
         public int Value { get; set; }
+        public bool IsScoreDelta { get; set; }
 
         internal TalentRuntimeEvent Copy()
         {
@@ -24,7 +25,8 @@ namespace MahjongGame.Talents
                 TalentId = TalentId,
                 EventType = EventType,
                 Visibility = Visibility,
-                Value = Value
+                Value = Value,
+                IsScoreDelta = IsScoreDelta
             };
         }
     }

@@ -37,10 +37,9 @@ namespace MahjongGame.Core.Network
         private readonly int _messageCacheSize;
         private readonly RoomSeat[] _seats = new RoomSeat[4];
         private readonly List<DeckConfig> _deckConfigs = new List<DeckConfig>();
-        private readonly Dictionary<int, TalentSlotConfig> _talentConfigs = new Dictionary<int, TalentSlotConfig>();
         private readonly NetworkDecisionTracker _decisionTracker = new NetworkDecisionTracker();
         private readonly HashSet<string> _expiredPlayerIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        private bool _startingCapitalApplied;
+        private TalentMatchRuntime _talentRuntime;
 
         public string RoomId { get; }
         public GameMode GameMode { get; }
@@ -457,6 +456,7 @@ namespace MahjongGame.Core.Network
             if (GameServer != null)
             {
                 GameServer.OnRoundFinished -= OnRoundFinished;
+                GameServer.OnTalentEventsAvailable -= BroadcastTalentEventsAtSafeBoundary;
                 GameServer.StopGame();
                 GameServer = null;
             }
@@ -490,7 +490,21 @@ namespace MahjongGame.Core.Network
             if (!TryLockSeatLoadouts()) return false;
             State = RoomState.LoadingGameScene;
             Broadcast("RoomReady", new RoomReadyMessage { roomId = RoomId });
+            InitializeTalentRuntime();
             return true;
+        }
+
+        private void InitializeTalentRuntime()
+        {
+            if (_talentRuntime != null) return;
+
+            var loadouts = new Dictionary<int, TalentSlotConfig>(4);
+            for (int seatIndex = 0; seatIndex < _seats.Length; seatIndex++)
+                loadouts[seatIndex] = _seats[seatIndex].Loadout.TalentConfig;
+
+            _talentRuntime = new TalentMatchRuntime(loadouts, TalentRegistry.Instance);
+            _talentRuntime.BeginMatch(Session);
+            BroadcastTalentEventsAtSafeBoundary();
         }
 
         private bool TryLockSeatLoadouts()
@@ -520,18 +534,22 @@ namespace MahjongGame.Core.Network
             if (GameServer != null)
             {
                 GameServer.OnRoundFinished -= OnRoundFinished;
+                GameServer.OnTalentEventsAvailable -= BroadcastTalentEventsAtSafeBoundary;
                 GameServer.StopGame();
             }
 
-            if (_seats.Any(s => s == null || !s.IsLoadoutLocked || s.Loadout == null)) { State = RoomState.WaitingForMatchReady; return; }
+            if (_seats.Any(s => s == null || !s.IsLoadoutLocked || s.Loadout == null)
+                || _talentRuntime == null)
+            {
+                State = RoomState.WaitingForMatchReady;
+                return;
+            }
 
             _deckConfigs.Clear();
-            _talentConfigs.Clear();
             var clients = new List<IPlayerClient>(4);
             for (int i = 0; i < 4; i++)
             {
                 _deckConfigs.Add(_seats[i].Loadout.DeckConfig);
-                _talentConfigs[i] = _seats[i].Loadout.TalentConfig;
                 if (_seats[i].IsAi)
                 {
                     _seats[i].Controller = null;
@@ -548,22 +566,40 @@ namespace MahjongGame.Core.Network
                 }
             }
 
-            SessionTalentPolicy.ApplyStartingCapitalOnce(Session, _talentConfigs, ref _startingCapitalApplied);
-
-            GameServer = new GameServer(new WallService(), new GameServerOptions
+            GameServer = new GameServer(new WallService(), _talentRuntime, new GameServerOptions
             {
                 DecisionTracker = _decisionTracker
             });
             foreach (var client in clients.OfType<SimpleAIClient>()) client.SetServer(GameServer);
             foreach (var seat in _seats.Where(seat => seat?.Controller != null)) seat.Controller.SetServer(GameServer);
             GameServer.OnRoundFinished += OnRoundFinished;
+            GameServer.OnTalentEventsAvailable += BroadcastTalentEventsAtSafeBoundary;
             State = RoomState.InRound;
-            GameServer.StartGame(clients, _deckConfigs, Session, _talentConfigs);
+            GameServer.StartGame(clients, _deckConfigs, Session);
         }
 
         private void OnRoundFinished()
         {
-            if (GameServer != null) GameServer.OnRoundFinished -= OnRoundFinished;
+            GameServer finishedServer = GameServer;
+            if (finishedServer != null)
+            {
+                finishedServer.OnRoundFinished -= OnRoundFinished;
+                finishedServer.OnTalentEventsAvailable -= BroadcastTalentEventsAtSafeBoundary;
+            }
+
+            _talentRuntime.EndRound(new TalentRoundOutcome
+            {
+                WinnerSeatIndex = finishedServer != null && finishedServer.WinnerId >= 0
+                    ? finishedServer.WinnerId
+                    : null,
+                DiscarderSeatIndex = finishedServer != null
+                                     && !finishedServer.WinIsSelfDraw
+                                     && finishedServer.LoserId >= 0
+                    ? finishedServer.LoserId
+                    : null,
+                FinalFan = finishedServer?.WinFan ?? 0
+            }, Session);
+            BroadcastTalentEventsAtSafeBoundary();
             Session.AdvanceRound();
             if (Session.IsSessionOver())
             {
@@ -576,6 +612,28 @@ namespace MahjongGame.Core.Network
             foreach (var seat in _seats.Where(s => s != null && !s.IsAi))
                 seat.MatchReady = RoomLifecyclePolicy.ShouldAutoReadyNextRoundSeat(seat.IsOnline);
             State = RoomState.WaitingForNextRound;
+        }
+
+        private void BroadcastTalentEventsAtSafeBoundary()
+        {
+            if (_talentRuntime == null) return;
+
+            foreach (RoomSeat seat in _seats.Where(candidate => candidate != null && !candidate.IsAi))
+            {
+                foreach (TalentRuntimeEvent runtimeEvent in _talentRuntime.DrainEventsForSeat(seat.SeatIndex))
+                {
+                    seat.MessageStream.Send("TalentRuntimeEvent", new TalentRuntimeEventMessage
+                    {
+                        eventId = runtimeEvent.EventId,
+                        ownerSeatIndex = runtimeEvent.OwnerSeatIndex,
+                        talentId = runtimeEvent.TalentId,
+                        eventType = runtimeEvent.EventType,
+                        visibility = (int)runtimeEvent.Visibility,
+                        value = runtimeEvent.Value,
+                        isScoreDelta = runtimeEvent.IsScoreDelta
+                    });
+                }
+            }
         }
 
         private RoomSeat FindHumanSeat(string playerId, string connectionId)

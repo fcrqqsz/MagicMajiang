@@ -115,18 +115,36 @@ namespace MahjongGame.Core.Network
 
     public sealed class GameServer
     {
-        public GameServer(MahjongGame.Core.Interfaces.IWallService wallService, GameServerOptions options) { }
-        public event System.Action OnRoundFinished { add { } remove { } }
+        public static readonly System.Collections.Generic.List<MahjongGame.Talents.TalentMatchRuntime>
+            ReceivedTalentRuntimes = new();
+
+        public GameServer(MahjongGame.Core.Interfaces.IWallService wallService, GameServerOptions options)
+        {
+            ReceivedTalentRuntimes.Add(null);
+        }
+
+        public GameServer(
+            MahjongGame.Core.Interfaces.IWallService wallService,
+            MahjongGame.Talents.TalentMatchRuntime talentRuntime,
+            GameServerOptions options)
+        {
+            TalentRuntime = talentRuntime;
+            ReceivedTalentRuntimes.Add(talentRuntime);
+        }
+
+        public event System.Action OnRoundFinished;
+        public event System.Action OnTalentEventsAvailable;
+        public MahjongGame.Talents.TalentMatchRuntime TalentRuntime { get; }
         public NetworkDecisionContext ActiveDecision => null;
         public int RemainingWallCount => 0;
         public MahjongGame.Core.TileData LastDrawnTile => null;
-        public int WinnerId => -1;
-        public int WinFan => 0;
+        public int WinnerId { get; private set; } = -1;
+        public int WinFan { get; private set; }
         public System.Collections.Generic.List<string> WinFanDetails => new();
-        public bool WinIsSelfDraw => false;
-        public WinKind WinResultKind => WinKind.Unknown;
-        public int LoserId => -1;
-        public bool IsDrawGame => false;
+        public bool WinIsSelfDraw { get; private set; }
+        public WinKind WinResultKind { get; private set; } = WinKind.Unknown;
+        public int LoserId { get; private set; } = -1;
+        public bool IsDrawGame { get; private set; }
         public WinningHandSnapshot WinningHandSnapshot => null;
 
         public bool SubmitNetworkAction(int seatIndex, long decisionId, ClientAction action, out string errorCode)
@@ -138,12 +156,50 @@ namespace MahjongGame.Core.Network
         public System.Collections.Generic.List<MahjongGame.Core.TileData> GetHandSnapshot(int seatIndex) => new();
         public System.Collections.Generic.List<MahjongGame.Core.Meld> GetMeldSnapshot(int seatIndex) => new();
         public System.Collections.Generic.List<MahjongGame.Core.TileData> GetRiverSnapshot(int seatIndex) => new();
-        public MahjongGame.Core.ScoringOptions GetScoringOptionsSnapshot(int seatIndex) => new();
-        public System.Collections.Generic.List<MahjongGame.Core.TileData> GetPeekWallSnapshot(int seatIndex) => new();
+        public MahjongGame.Core.ScoringOptions GetScoringOptionsSnapshot(int seatIndex) =>
+            TalentRuntime?.BuildScoringOptions(new MahjongGame.Talents.TalentScoringContext(_session, seatIndex))
+            ?? new MahjongGame.Core.ScoringOptions();
+        public System.Collections.Generic.List<MahjongGame.Core.TileData> GetPeekWallSnapshot(int seatIndex) =>
+            TalentRuntime?.GetPrivatePeekTiles(seatIndex).ToList()
+            ?? new System.Collections.Generic.List<MahjongGame.Core.TileData>();
         public void StartGame(System.Collections.Generic.List<IPlayerClient> clients,
             System.Collections.Generic.List<MahjongGame.Core.DeckConfig> deckConfigs,
             GameSession session,
-            System.Collections.Generic.Dictionary<int, MahjongGame.Talents.TalentSlotConfig> talentConfigs) { }
+            System.Collections.Generic.Dictionary<int, MahjongGame.Talents.TalentSlotConfig> talentConfigs) =>
+            BeginReadyRound(session);
+        public void StartGame(System.Collections.Generic.List<IPlayerClient> clients,
+            System.Collections.Generic.List<MahjongGame.Core.DeckConfig> deckConfigs,
+            GameSession session) => BeginReadyRound(session);
         public void StopGame() { }
+
+        public void CompleteDrawRound()
+        {
+            IsDrawGame = true;
+            WinnerId = -1;
+            OnRoundFinished?.Invoke();
+        }
+
+        public static void ResetObservations() => ReceivedTalentRuntimes.Clear();
+
+        private GameSession _session;
+
+        private void BeginReadyRound(GameSession session)
+        {
+            _session = session;
+            if (TalentRuntime == null) return;
+
+            var wall = new System.Collections.Generic.List<MahjongGame.Core.TileData>
+            {
+                new(MahjongGame.Core.Suit.Man, 1, 0),
+                new(MahjongGame.Core.Suit.Pin, 2, 1),
+                new(MahjongGame.Core.Suit.Sou, 3, 2),
+                new(MahjongGame.Core.Suit.Wind, 4, 3),
+                new(MahjongGame.Core.Suit.Dragon, 1, 0)
+            };
+            TalentRuntime.BeginRound(new MahjongGame.Talents.TalentRoundContext(session));
+            TalentRuntime.ApplyWallBuilding(new MahjongGame.Talents.TalentWallContext(session, wall));
+            TalentRuntime.ResolvePostShuffle(new MahjongGame.Talents.TalentPostShuffleContext(session, wall));
+            OnTalentEventsAvailable?.Invoke();
+        }
     }
 }

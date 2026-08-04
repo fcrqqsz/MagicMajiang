@@ -8,5 +8,7 @@ namespace MahjongGame.Talents.Impl
     public class PeekTalent : TalentRule
     {
         public const int PeekCount = 4;
+
+        public override int GetRoundStartPeekCount(TalentRoundContext context) => PeekCount;
     }
 }

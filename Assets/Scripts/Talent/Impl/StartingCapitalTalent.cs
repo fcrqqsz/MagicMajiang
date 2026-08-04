@@ -10,5 +10,7 @@ namespace MahjongGame.Talents.Impl
     public class StartingCapitalTalent : TalentRule
     {
         public const int BonusScore = 30;
+
+        public override int GetMatchStartScoreDelta(TalentMatchContext context) => BonusScore;
     }
 }

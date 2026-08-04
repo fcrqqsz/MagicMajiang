@@ -129,7 +129,7 @@ namespace MahjongGame.Talents
                         EventType = RevealEventType,
                         Visibility = TalentEventVisibility.Public,
                         Value = scoreDelta
-                    });
+                    }, isAuthoritativeScoreDelta: scoreDelta != 0);
                 }
             }
         }
@@ -238,12 +238,22 @@ namespace MahjongGame.Talents
             if (context == null) throw new ArgumentNullException(nameof(context));
             EnsureReadyRound(context, nameof(BuildScoringOptions));
 
+            return BuildScoringOptions(context, excludedEntry: null);
+        }
+
+        private ScoringOptions BuildScoringOptions(
+            TalentScoringContext context,
+            RuntimeEntry excludedEntry)
+        {
             ScoringOptions options = new ScoringOptions();
             foreach (RuntimeEntry entry in GetActiveEntriesForSeat(context.CurrentSeatIndex))
+            {
+                if (ReferenceEquals(entry, excludedEntry)) continue;
                 entry.Rule.ConfigureScoring(context.BindScoring(
                     entry.OwnerSeatIndex,
                     entry.State,
                     runtimeEvent => EmitEvent(entry, runtimeEvent)), options);
+            }
             return options;
         }
 
@@ -278,6 +288,37 @@ namespace MahjongGame.Talents
         {
             if (context == null) throw new ArgumentNullException(nameof(context));
             EnsureReadyRound(context, nameof(ResolveAcceptedWinVisibility));
+
+            TalentScoringContext scoringContext = new TalentScoringContext(
+                _session,
+                context.CurrentSeatIndex);
+            ScoringOptions acceptedOptions = BuildScoringOptions(scoringContext, excludedEntry: null);
+            foreach (RuntimeEntry entry in GetActiveEntriesForSeat(context.CurrentSeatIndex))
+            {
+                if (entry.State.IsRevealed
+                    || entry.Metadata.RevealPolicy == TalentRevealPolicy.OwnerOnly)
+                {
+                    continue;
+                }
+
+                ScoringOptions withoutEntry = BuildScoringOptions(scoringContext, entry);
+                if (HaveEqualValues(acceptedOptions, withoutEntry)) continue;
+
+                TalentWinEvaluation counterfactual = context.EvaluateWithOptions(withoutEntry);
+                if (counterfactual != null
+                    && counterfactual.IsLegal == context.AcceptedResult.IsLegal
+                    && counterfactual.FinalFan == context.AcceptedResult.FinalFan)
+                {
+                    continue;
+                }
+
+                entry.State.IsRevealed = true;
+                EmitEvent(entry, new TalentRuntimeEvent
+                {
+                    EventType = RevealEventType,
+                    Visibility = TalentEventVisibility.Public
+                });
+            }
         }
 
         public IReadOnlyList<TileData> GetPrivatePeekTiles(int seatIndex)
@@ -299,7 +340,21 @@ namespace MahjongGame.Talents
 
             TalentRoundContext context = new TalentRoundContext(session);
             foreach (RuntimeEntry entry in GetAllActiveEntries())
-                entry.Rule.OnRoundEnded(BindRoundContext(context, entry), outcome);
+            {
+                entry.Rule.OnRoundEnded(BindRoundContext(
+                    context,
+                    entry,
+                    (delta, reason) =>
+                    {
+                        session.Scores[entry.OwnerSeatIndex] += delta;
+                        EmitEvent(entry, new TalentRuntimeEvent
+                        {
+                            EventType = reason,
+                            Visibility = TalentEventVisibility.Public,
+                            Value = delta
+                        }, isAuthoritativeScoreDelta: true);
+                    }), outcome);
+            }
             _phase = RuntimePhase.BetweenRounds;
         }
 
@@ -362,12 +417,22 @@ namespace MahjongGame.Talents
             return new TalentMatchContext(session, entry.OwnerSeatIndex, entry.State, eventSink);
         }
 
-        private TalentRoundContext BindRoundContext(TalentRoundContext context, RuntimeEntry entry)
+        private TalentRoundContext BindRoundContext(
+            TalentRoundContext context,
+            RuntimeEntry entry,
+            Action<int, string> scoreDeltaSink = null)
         {
             return context.BindRound(
                 entry.OwnerSeatIndex,
                 entry.State,
-                runtimeEvent => EmitEvent(entry, runtimeEvent));
+                runtimeEvent => EmitEvent(entry, runtimeEvent),
+                scoreDeltaSink);
+        }
+
+        private static bool HaveEqualValues(ScoringOptions left, ScoringOptions right)
+        {
+            return left.BonusFan == right.BonusFan
+                   && left.RelaxedPureStraight == right.RelaxedPureStraight;
         }
 
         private TalentContext BindContext(TalentContext context, RuntimeEntry entry)
@@ -386,7 +451,10 @@ namespace MahjongGame.Talents
                 runtimeEvent => EmitEvent(entry, runtimeEvent));
         }
 
-        private void EmitEvent(RuntimeEntry entry, TalentRuntimeEvent source)
+        private void EmitEvent(
+            RuntimeEntry entry,
+            TalentRuntimeEvent source,
+            bool isAuthoritativeScoreDelta = false)
         {
             if (source == null) throw new ArgumentNullException(nameof(source));
 
@@ -397,7 +465,8 @@ namespace MahjongGame.Talents
                 TalentId = entry.Rule.Id,
                 EventType = source.EventType,
                 Visibility = source.Visibility,
-                Value = source.Value
+                Value = source.Value,
+                IsScoreDelta = isAuthoritativeScoreDelta
             };
             _events.Add(runtimeEvent);
 

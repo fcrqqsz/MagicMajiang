@@ -144,7 +144,18 @@ namespace MahjongGame.Talents
 
     public sealed class TalentRoundContext : TalentContext
     {
+        private Action<int, string> _scoreDeltaSink;
+
         public TalentRoundContext(GameSession session) : base(session) { }
+
+        public void ApplyScoreDelta(int delta, string reason)
+        {
+            if (_scoreDeltaSink == null)
+                throw new InvalidOperationException("Score deltas are only available during round-end resolution.");
+            if (string.IsNullOrWhiteSpace(reason))
+                throw new ArgumentException("A score-delta reason is required.", nameof(reason));
+            _scoreDeltaSink(delta, reason);
+        }
 
         internal TalentRoundContext(
             TalentSessionSnapshot session,
@@ -157,13 +168,15 @@ namespace MahjongGame.Talents
         internal TalentRoundContext BindRound(
             int ownerSeatIndex,
             TalentRuntimeState state,
-            Action<TalentRuntimeEvent> eventSink)
+            Action<TalentRuntimeEvent> eventSink,
+            Action<int, string> scoreDeltaSink = null)
         {
             TalentRoundContext context = new TalentRoundContext(
                 Session,
                 GameState,
                 DeckSnapshots);
             context.ConfigureEntry(ownerSeatIndex, state, eventSink);
+            context._scoreDeltaSink = scoreDeltaSink;
             return context;
         }
     }
@@ -307,10 +320,30 @@ namespace MahjongGame.Talents
     public sealed class TalentAcceptedWinContext : TalentContext
     {
         public new int CurrentSeatIndex => base.CurrentSeatIndex.Value;
+        public TalentWinEvaluation AcceptedResult { get; }
+        public Func<ScoringOptions, TalentWinEvaluation> EvaluateWithOptions { get; }
 
-        public TalentAcceptedWinContext(GameSession session, int currentSeatIndex)
+        public TalentAcceptedWinContext(
+            GameSession session,
+            int currentSeatIndex,
+            TalentWinEvaluation acceptedResult,
+            Func<ScoringOptions, TalentWinEvaluation> evaluateWithOptions)
             : base(session, ValidateSeatIndex(currentSeatIndex))
         {
+            AcceptedResult = acceptedResult ?? throw new ArgumentNullException(nameof(acceptedResult));
+            EvaluateWithOptions = evaluateWithOptions ?? throw new ArgumentNullException(nameof(evaluateWithOptions));
+        }
+    }
+
+    public sealed class TalentWinEvaluation
+    {
+        public bool IsLegal { get; }
+        public int FinalFan { get; }
+
+        public TalentWinEvaluation(bool isLegal, int finalFan)
+        {
+            IsLegal = isLegal;
+            FinalFan = finalFan;
         }
     }
 

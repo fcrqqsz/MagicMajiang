@@ -14,6 +14,7 @@ internal static class RoomSessionTests
         TestRoomAlienationAdmission(runner);
         TestRoomRevalidatesClonedLoadout(runner);
         TestWallAndSessionTalent(runner);
+        TestRoomOwnsOneTalentRuntimeAcrossRounds(runner);
         TestRoomReadyAndDeparture(runner);
         TestResponseAndTurnPolicies(runner);
         TestClientRoomAndScoreProjection(runner);
@@ -264,13 +265,94 @@ internal static class RoomSessionTests
             [2] = new() { SlotTalentIds = new[] { null, null, null, null, null, "starting_capital" } },
             [3] = new() { SlotTalentIds = new string[6] }
         };
-        var applied = false;
-        runner.Check(SessionTalentPolicy.ApplyStartingCapitalOnce(session, talentConfigs, ref applied)
-            && session.Scores.SequenceEqual(new[] { 30, 0, 30, 0 }),
+        var talentRuntime = new TalentMatchRuntime(talentConfigs, TalentRegistry.Instance);
+        talentRuntime.BeginMatch(session);
+        runner.Check(session.Scores.SequenceEqual(new[] { 30, 0, 30, 0 }),
             "Session-start talents must apply to every equipped seat.");
-        runner.Check(!SessionTalentPolicy.ApplyStartingCapitalOnce(session, talentConfigs, ref applied)
-            && session.Scores.SequenceEqual(new[] { 30, 0, 30, 0 }),
-            "Session-start talents must not repeat in later rounds.");
+    }
+
+    private static void TestRoomOwnsOneTalentRuntimeAcrossRounds(RegressionRunner runner)
+    {
+        GameServer.ResetObservations();
+        TalentSlotConfig sixTalents = new TalentSlotConfig
+        {
+            SlotTalentIds = new[]
+            {
+                "midas_touch", "dragon_ascent", "head_start",
+                "draw_reward", "peek", "starting_capital"
+            }
+        };
+        PlayerLoadoutCodec.TryDecode(
+            PlayerLoadoutCodec.CreateMessage(DeckConfig.CreateStandard(), sixTalents),
+            AlienationPreset.Standard,
+            out TrustedPlayerLoadout hostLoadout,
+            out _);
+        PlayerLoadoutCodec.TryDecode(
+            PlayerLoadoutCodec.CreateMessage(DeckConfig.CreateStandard(), new TalentSlotConfig()),
+            AlienationPreset.Standard,
+            out TrustedPlayerLoadout guestLoadout,
+            out _);
+
+        var hostEndpoint = new GameEndpoint();
+        var guestEndpoint = new GameEndpoint();
+        using var room = new Room(
+            "runtime-room", GameMode.EastOnly, AlienationPreset.Standard, "host", true, 16);
+        bool hostAdded = room.TryAddHuman(
+            "host", hostEndpoint, "dev:host", "Host", hostLoadout, out int hostSeat);
+        bool guestAdded = room.TryAddHuman(
+            "guest", guestEndpoint, "dev:guest", "Guest", guestLoadout, out int guestSeat);
+        bool matchReady = room.SetReady("host", ReadyPhase.MatchStart, out _)
+                          && room.SetReady("guest", ReadyPhase.MatchStart, out _);
+
+        runner.Check(hostAdded && guestAdded && hostSeat == 0 && guestSeat == 1 && matchReady,
+            "two locked human loadouts establish the Room-owned runtime test match");
+        runner.Check(room.Session.Scores.SequenceEqual(new[] { 30, 0, 0, 0 }),
+            "Room begins the talent match once after all four loadouts are locked");
+        runner.Check(CountRuntimeEvents(hostEndpoint) == 1
+                     && CountRuntimeEvents(guestEndpoint) == 1,
+            "public match-start talent events enter every human seat stream independently");
+
+        bool sceneReady = room.SetReady("host", ReadyPhase.GameSceneLoaded, out _)
+                          && room.SetReady("guest", ReadyPhase.GameSceneLoaded, out _);
+        TalentMatchRuntime firstRuntime = room.GameServer?.TalentRuntime;
+        RoomGameSnapshot hostSnapshot = room.BuildSnapshot(hostSeat);
+        RoomGameSnapshot guestSnapshot = room.BuildSnapshot(guestSeat);
+        runner.Check(sceneReady
+                     && firstRuntime != null
+                     && hostSnapshot.privateSeat.peekWallTiles.Length == 4
+                     && guestSnapshot.privateSeat.peekWallTiles.Length == 0,
+            "each GameServer receives the Room runtime while peek stays in its owner's snapshot");
+
+        room.GameServer?.CompleteDrawRound();
+        runner.Check(room.Session.TotalRoundsPlayed == 1
+                     && room.Session.Scores.SequenceEqual(new[] { 35, 0, 0, 0 })
+                     && CountRuntimeEvents(hostEndpoint) == 2
+                     && CountRuntimeEvents(guestEndpoint) == 2,
+            "Room ends a drawn round through the runtime before advancing the session");
+
+        bool nextReady = room.SetReady("host", ReadyPhase.NextRound, out _)
+                         && room.SetReady("guest", ReadyPhase.NextRound, out _);
+        TalentMatchRuntime secondRuntime = room.GameServer?.TalentRuntime;
+        runner.Check(nextReady
+                     && ReferenceEquals(firstRuntime, secondRuntime)
+                     && GameServer.ReceivedTalentRuntimes.Count == 2
+                     && GameServer.ReceivedTalentRuntimes.All(runtime => ReferenceEquals(runtime, firstRuntime))
+                     && room.Session.Scores.SequenceEqual(new[] { 35, 0, 0, 0 }),
+            "the second GameServer reuses the match runtime without repeating match-start effects");
+
+        room.GameServer?.CompleteDrawRound();
+        runner.Check(room.Session.TotalRoundsPlayed == 2
+                     && room.Session.Scores.SequenceEqual(new[] { 40, 0, 0, 0 })
+                     && CountRuntimeEvents(hostEndpoint) == 3
+                     && CountRuntimeEvents(guestEndpoint) == 3,
+            "draw rewards execute exactly once in each of two Room rounds and remain seat-stream ordered");
+    }
+
+    private static int CountRuntimeEvents(GameEndpoint endpoint)
+    {
+        return endpoint.SentMessages
+            .Select(MessageSerializer.DeserializeEnvelope)
+            .Count(envelope => envelope?.type == "TalentRuntimeEvent");
     }
 
     private static void TestRoomReadyAndDeparture(RegressionRunner runner)

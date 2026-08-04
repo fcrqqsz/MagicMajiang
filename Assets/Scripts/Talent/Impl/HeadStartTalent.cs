@@ -7,5 +7,10 @@ namespace MahjongGame.Talents.Impl
     public class HeadStartTalent : TalentRule
     {
         public const int BonusFanValue = 2;
+
+        public override void ConfigureScoring(TalentScoringContext context, ScoringOptions options)
+        {
+            options.BonusFan += BonusFanValue;
+        }
     }
 }

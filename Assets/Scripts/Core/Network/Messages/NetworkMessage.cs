@@ -214,6 +214,18 @@ namespace MahjongGame.Core.Network.Messages
     }
 
     [Serializable]
+    public class TalentRuntimeEventMessage
+    {
+        public long eventId;
+        public int ownerSeatIndex;
+        public string talentId;
+        public string eventType;
+        public int visibility;
+        public int value;
+        public bool isScoreDelta;
+    }
+
+    [Serializable]
     public class SimpleTileData
     {
         public int suit;

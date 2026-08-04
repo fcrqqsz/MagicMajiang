@@ -18,6 +18,7 @@ internal static class SnapshotReconnectTests
         TestResultHandLayoutPolicy(runner);
         TestCompletedEastOnlyProjection(runner);
         TestClientProjection(runner);
+        TestTalentRuntimeEventProjection(runner);
         TestRemoteWinningHandNotification(runner);
         TestReconnectStream(runner);
         TestSeatLifecycleAndControl(runner);
@@ -594,6 +595,55 @@ internal static class SnapshotReconnectTests
             && meld.tileCount == 4
             && meld.tiles.All(tile => tile.suit == (int)Suit.Pin && tile.value == 8),
             "Client projection must retain the public concealed-kan declaration.");
+    }
+
+    private static void TestTalentRuntimeEventProjection(RegressionRunner runner)
+    {
+        var state = new ClientGameState();
+        state.ApplySnapshot(new RoomGameSnapshot
+        {
+            requestingSeatIndex = 0,
+            scores = new[] { 0, 0, 0, 0 },
+            seats = Enumerable.Range(0, 4)
+                .Select(seatIndex => new RoomSnapshotSeat { seatIndex = seatIndex })
+                .ToArray(),
+            privateSeat = new SnapshotPrivateSeat { seatIndex = 0 },
+            rivers = EmptyRivers()
+        }, 0);
+
+        ClientSequenceDisposition scoreDisposition = state.ApplyEnvelope(
+            MessageSerializer.DeserializeEnvelope(MessageSerializer.Serialize(
+                "TalentRuntimeEvent",
+                1,
+                new TalentRuntimeEventMessage
+                {
+                    eventId = 10,
+                    ownerSeatIndex = 2,
+                    talentId = "network_test_score_effect",
+                    eventType = "score_effect",
+                    visibility = 1,
+                    value = 5,
+                    isScoreDelta = true
+                })));
+        ClientSequenceDisposition revealDisposition = state.ApplyEnvelope(
+            MessageSerializer.DeserializeEnvelope(MessageSerializer.Serialize(
+                "TalentRuntimeEvent",
+                2,
+                new TalentRuntimeEventMessage
+                {
+                    eventId = 11,
+                    ownerSeatIndex = 2,
+                    talentId = "network_test_reveal_only",
+                    eventType = "talent_revealed",
+                    visibility = 1,
+                    value = 99,
+                    isScoreDelta = false
+                })));
+
+        runner.Check(scoreDisposition == ClientSequenceDisposition.Accepted
+                     && revealDisposition == ClientSequenceDisposition.Accepted
+                     && state.Snapshot.scores.SequenceEqual(new[] { 0, 0, 5, 0 }),
+            "client projection applies typed runtime score deltas without treating reveal values as scores");
     }
 
     private static void TestRemoteWinningHandNotification(RegressionRunner runner)

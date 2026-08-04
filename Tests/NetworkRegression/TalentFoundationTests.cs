@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using MahjongGame.Core;
 using MahjongGame.Core.Network;
@@ -29,6 +30,9 @@ internal static class TalentFoundationTests
         PostShufflePeekIsPrivateAndUsesShuffledOrder(runner);
         DrawAndDiscardPipelinesKeepStablePriorityOrder(runner);
         ScoringOptionsAreFreshForEveryEvaluation(runner);
+        ExistingSixTalentsExecuteAcrossTwoRounds(runner);
+        ModifiedTileAndAcceptedWinRevealOnlyAtPublicBoundaries(runner);
+        NetworkRuntimeIntegrationHasNoStableTalentIdLiterals(runner);
         LoadoutDecodingEnforcesRoomAlienationPresets(runner);
         ProfileSettingsNormalizeUnknownAlienationPreset(runner);
     }
@@ -298,7 +302,7 @@ internal static class TalentFoundationTests
                          new TalentPublicTileContext(foreignSession, 0),
                          new TileData(Suit.Man, 1, 0)))
                      && Throws<InvalidOperationException>(() => runtime.ResolveAcceptedWinVisibility(
-                         new TalentAcceptedWinContext(foreignSession, 0))),
+                         CreateAcceptedWinContext(foreignSession, 0))),
             "ready-round draw, action, scoring, public, and win hooks reject foreign sessions");
         runner.Check(Throws<InvalidOperationException>(() => runtime.EndRound(
                          new TalentRoundOutcome { WinnerSeatIndex = 0 },
@@ -327,9 +331,9 @@ internal static class TalentFoundationTests
                          && Throws<ArgumentOutOfRangeException>(() => new TalentDiscardContext(session, invalidSeat))
                          && Throws<ArgumentOutOfRangeException>(() => new TalentActionContext(
                              session, invalidSeat, ClientActionType.Discard, null))
-                         && Throws<ArgumentOutOfRangeException>(() => new TalentScoringContext(session, invalidSeat))
-                         && Throws<ArgumentOutOfRangeException>(() => new TalentPublicTileContext(session, invalidSeat))
-                         && Throws<ArgumentOutOfRangeException>(() => new TalentAcceptedWinContext(session, invalidSeat)),
+                          && Throws<ArgumentOutOfRangeException>(() => new TalentScoringContext(session, invalidSeat))
+                          && Throws<ArgumentOutOfRangeException>(() => new TalentPublicTileContext(session, invalidSeat))
+                          && Throws<ArgumentOutOfRangeException>(() => CreateAcceptedWinContext(session, invalidSeat)),
                 $"all seat-scoped contexts reject seat {invalidSeat}");
         }
     }
@@ -474,8 +478,9 @@ internal static class TalentFoundationTests
         runner.Check(ownerEvents.Count == 1
                      && ownerEvents[0].Visibility == TalentEventVisibility.OwnerOnly
                      && ownerEvents[0].OwnerSeatIndex == 0
-                     && ownerEvents[0].Value == 1,
-            "an owner-only lifecycle event is visible to its owning seat");
+                     && ownerEvents[0].Value == 1
+                     && !ownerEvents[0].IsScoreDelta,
+            "an owner-only lifecycle event is visible to its owning seat without spoofing a score delta");
         runner.Check(otherEvents.All(events => events.Count == 0),
             "owner-only events never enter another seat's event stream");
         runner.Check(ownerEvents[0].EventId > publicReads[0][0].EventId,
@@ -543,6 +548,168 @@ internal static class TalentFoundationTests
             "each scoring evaluation builds an independent mutable options object");
     }
 
+    private static void ExistingSixTalentsExecuteAcrossTwoRounds(RegressionRunner runner)
+    {
+        GameSession session = new GameSession(GameMode.EastOnly);
+        TalentMatchRuntime runtime = CreateRuntime(mainIds: new[]
+        {
+            "midas_touch",
+            "peek",
+            "dragon_ascent",
+            "draw_reward",
+            "head_start",
+            "starting_capital"
+        });
+        int initialScore = session.Scores[0];
+
+        runtime.BeginMatch(session);
+        int scoreAfterMatchStart = session.Scores[0];
+        var peekNotificationsByRound = new List<int>();
+        var scoringOptionsByRound = new List<ScoringOptions>();
+        var transformedTilesByRound = new List<TileData>();
+        var drawRewardDeltas = new List<int>();
+        bool peekStayedPrivateAcrossRounds = true;
+
+        for (int round = 0; round < 2; round++)
+        {
+            List<TileData> wall = new List<TileData>
+            {
+                new TileData(Suit.Man, round + 1, 1),
+                new TileData(Suit.Pin, 2, 2),
+                new TileData(Suit.Sou, 3, 3),
+                new TileData(Suit.Wind, 4, 0),
+                new TileData(Suit.Dragon, 1, 1)
+            };
+            BeginReadyRound(runtime, session, wall);
+            peekNotificationsByRound.Add(runtime.GetPrivatePeekTiles(0).Count);
+            peekStayedPrivateAcrossRounds &= Enumerable.Range(1, 3)
+                .All(seatIndex => runtime.GetPrivatePeekTiles(seatIndex).Count == 0);
+            scoringOptionsByRound.Add(runtime.BuildScoringOptions(new TalentScoringContext(session, 0)));
+            transformedTilesByRound.Add(runtime.ApplyDraw(
+                new TalentDrawContext(session, 0),
+                new TileData(Suit.Wind, 1, 0)));
+
+            int scoreBeforeDrawEnd = session.Scores[0];
+            runtime.EndRound(new TalentRoundOutcome(), session);
+            drawRewardDeltas.Add(session.Scores[0] - scoreBeforeDrawEnd);
+            session.AdvanceRound();
+        }
+
+        runner.Check(scoreAfterMatchStart == initialScore + 30,
+            "starting capital applies exactly once per match");
+        runner.Check(peekNotificationsByRound.SequenceEqual(new[] { 4, 4 }),
+            "peek refreshes privately at each round start");
+        runner.Check(peekStayedPrivateAcrossRounds,
+            "peek never enters another seat's private projection");
+        runner.Check(drawRewardDeltas.SequenceEqual(new[] { 5, 5 }),
+            "draw reward applies at each drawn round");
+        runner.Check(scoringOptionsByRound.All(options => options.BonusFan == 2),
+            "head start configures scoring every round");
+        runner.Check(scoringOptionsByRound.All(options => options.RelaxedPureStraight),
+            "dragon ascent configures relaxed pure straight polymorphically");
+        runner.Check(transformedTilesByRound.All(tile => tile.TileSuit == Suit.Dragon
+                                                         && tile.Value == 2
+                                                         && tile.IsModified),
+            "midas touch remains in the draw pipeline across rounds");
+        runner.Check(session.Scores[0] == initialScore + 40,
+            "match-start and round-end score effects keep their distinct lifetimes");
+    }
+
+    private static void ModifiedTileAndAcceptedWinRevealOnlyAtPublicBoundaries(RegressionRunner runner)
+    {
+        GameSession midasSession = new GameSession(GameMode.Single);
+        TalentMatchRuntime midasRuntime = CreateRuntime(mainIds: new[] { "midas_touch" });
+        midasRuntime.BeginMatch(midasSession);
+        BeginReadyRound(midasRuntime, midasSession);
+
+        TileData concealedModifiedTile = midasRuntime.ApplyDraw(
+            new TalentDrawContext(midasSession, 0),
+            new TileData(Suit.Wind, 2, 0));
+        runner.Check(Enumerable.Range(0, 4)
+                .All(seatIndex => midasRuntime.DrainEventsForSeat(seatIndex).Count == 0),
+            "a Midas-modified tile does not reveal its talent while it remains concealed");
+
+        midasRuntime.NotifyTileBecamePublic(
+            new TalentPublicTileContext(midasSession, 0),
+            concealedModifiedTile);
+        IReadOnlyList<TalentRuntimeEvent>[] publicTileEvents = Enumerable.Range(0, 4)
+            .Select(midasRuntime.DrainEventsForSeat)
+            .ToArray();
+        runner.Check(publicTileEvents.All(events => events.Count == 1
+                                                    && events[0].TalentId == "midas_touch"
+                                                    && events[0].Visibility == TalentEventVisibility.Public),
+            "a Midas-modified tile reveals its source only after entering a public zone");
+        midasRuntime.NotifyTileBecamePublic(
+            new TalentPublicTileContext(midasSession, 0),
+            concealedModifiedTile);
+        runner.Check(Enumerable.Range(0, 4)
+                .All(seatIndex => midasRuntime.DrainEventsForSeat(seatIndex).Count == 0),
+            "a public modified tile does not reveal the same talent twice");
+
+        GameSession scoringSession = new GameSession(GameMode.Single);
+        TalentMatchRuntime scoringRuntime = CreateRuntime(mainIds: new[]
+        {
+            "head_start", "dragon_ascent"
+        });
+        scoringRuntime.BeginMatch(scoringSession);
+        BeginReadyRound(scoringRuntime, scoringSession);
+        ScoringOptions candidateOptions = scoringRuntime.BuildScoringOptions(
+            new TalentScoringContext(scoringSession, 0));
+        runner.Check(candidateOptions.BonusFan == 2
+                     && candidateOptions.RelaxedPureStraight
+                     && Enumerable.Range(0, 4)
+                         .All(seatIndex => scoringRuntime.DrainEventsForSeat(seatIndex).Count == 0),
+            "candidate scoring applies hidden options without revealing either scoring talent");
+
+        TalentWinEvaluation ordinaryAcceptedWin = new TalentWinEvaluation(isLegal: true, finalFan: 10);
+        scoringRuntime.ResolveAcceptedWinVisibility(new TalentAcceptedWinContext(
+            scoringSession,
+            0,
+            ordinaryAcceptedWin,
+            options => new TalentWinEvaluation(
+                isLegal: true,
+                finalFan: 8 + options.BonusFan)));
+        IReadOnlyList<TalentRuntimeEvent>[] ordinaryWinEvents = Enumerable.Range(0, 4)
+            .Select(scoringRuntime.DrainEventsForSeat)
+            .ToArray();
+        runner.Check(ordinaryWinEvents.All(events => events.Count == 1
+                                                    && events[0].TalentId == "head_start"
+                                                    && events[0].Visibility == TalentEventVisibility.Public),
+            "an accepted win reveals head start when excluding it changes the final fan");
+
+        scoringRuntime.ResolveAcceptedWinVisibility(new TalentAcceptedWinContext(
+            scoringSession,
+            0,
+            ordinaryAcceptedWin,
+            options => options.RelaxedPureStraight
+                ? ordinaryAcceptedWin
+                : new TalentWinEvaluation(isLegal: false, finalFan: 0)));
+        IReadOnlyList<TalentRuntimeEvent>[] relaxedWinEvents = Enumerable.Range(0, 4)
+            .Select(scoringRuntime.DrainEventsForSeat)
+            .ToArray();
+        runner.Check(relaxedWinEvents.All(events => events.Count == 1
+                                                   && events[0].TalentId == "dragon_ascent"
+                                                   && events[0].Visibility == TalentEventVisibility.Public),
+            "dragon ascent reveals only when a counterfactual recomputation proves it changed the accepted win");
+    }
+
+    private static void NetworkRuntimeIntegrationHasNoStableTalentIdLiterals(RegressionRunner runner)
+    {
+        string roomSource = File.ReadAllText(Path.Combine(
+            "Assets", "Scripts", "Core", "Network", "Room.cs"));
+        string gameServerSource = File.ReadAllText(Path.Combine(
+            "Assets", "Scripts", "Core", "Network", "GameServer.cs"));
+        string[] stableIds =
+        {
+            "midas_touch", "peek", "dragon_ascent", "draw_reward", "head_start", "starting_capital"
+        };
+
+        runner.Check(stableIds.All(id => !roomSource.Contains($"\"{id}\"", StringComparison.Ordinal)),
+            "Room must not execute stable talent ids through source-level effect branches");
+        runner.Check(stableIds.All(id => !gameServerSource.Contains($"\"{id}\"", StringComparison.Ordinal)),
+            "GameServer must not execute stable talent ids through source-level effect branches");
+    }
+
     private static TalentMatchRuntime CreateRuntime(
         string[] mainIds = null,
         string[] reserveIds = null)
@@ -574,6 +741,12 @@ internal static class TalentFoundationTests
         runtime.BeginRound(new TalentRoundContext(session));
         runtime.ApplyWallBuilding(new TalentWallContext(session, roundWall));
         runtime.ResolvePostShuffle(new TalentPostShuffleContext(session, roundWall));
+    }
+
+    private static TalentAcceptedWinContext CreateAcceptedWinContext(GameSession session, int seatIndex)
+    {
+        TalentWinEvaluation accepted = new TalentWinEvaluation(isLegal: true, finalFan: 8);
+        return new TalentAcceptedWinContext(session, seatIndex, accepted, _ => accepted);
     }
 
     private static bool Throws<TException>(Action action) where TException : Exception
@@ -705,7 +878,8 @@ internal sealed class LifecycleTestTalent : TalentRule
             TalentId = "spoofed",
             EventType = "round_started",
             Visibility = TalentEventVisibility.OwnerOnly,
-            Value = matchRounds
+            Value = matchRounds,
+            IsScoreDelta = true
         });
     }
 

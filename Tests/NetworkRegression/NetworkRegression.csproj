@@ -70,7 +70,6 @@
     <Compile Include="..\..\Assets\Scripts\Core\Network\UsernameIdentityPolicy.cs" Link="UsernameIdentityPolicy.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\PlayerLoadoutCodec.cs" Link="PlayerLoadoutCodec.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\PlayerLoadoutErrorCodes.cs" Link="PlayerLoadoutErrorCodes.cs" />
-    <Compile Include="..\..\Assets\Scripts\Core\Network\SessionTalentPolicy.cs" Link="SessionTalentPolicy.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\SessionScorePolicy.cs" Link="SessionScorePolicy.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\GameSession.cs" Link="GameSession.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\ServerGameState.cs" Link="ServerGameState.cs" />

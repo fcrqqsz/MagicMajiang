@@ -139,6 +139,22 @@ namespace MahjongGame.Core.Network
                     EnsurePrivateSeat(snapshot).peekWallTiles = CloneTiles(message.tiles);
                     return;
                 }
+                case "TalentRuntimeEvent":
+                {
+                    var message = MessageSerializer.DeserializePayload<TalentRuntimeEventMessage>(envelope.data);
+                    if (message == null
+                        || !message.isScoreDelta
+                        || message.ownerSeatIndex < 0
+                        || message.ownerSeatIndex >= 4)
+                    {
+                        return;
+                    }
+
+                    snapshot.scores ??= new int[4];
+                    if (snapshot.scores.Length == 4)
+                        snapshot.scores[message.ownerSeatIndex] += message.value;
+                    return;
+                }
                 case "TileDrawn":
                 {
                     var message = MessageSerializer.DeserializePayload<TileDrawnMessage>(envelope.data);
