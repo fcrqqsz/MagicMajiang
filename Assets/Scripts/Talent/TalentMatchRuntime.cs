@@ -54,7 +54,12 @@ namespace MahjongGame.Talents
             if (string.IsNullOrWhiteSpace(talentId)) return;
 
             TalentRule rule = registry.CreateInstance(talentId, seatIndex);
-            if (rule == null) return;
+            if (rule == null)
+            {
+                throw new ArgumentException(
+                    $"Seat {seatIndex} carries unknown talent id: {talentId}",
+                    nameof(talentId));
+            }
 
             _entries.Add(new RuntimeEntry(
                 seatIndex,

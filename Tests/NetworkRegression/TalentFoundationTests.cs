@@ -195,14 +195,27 @@ internal static class TalentFoundationTests
             "runtime rejects duplicate carried identity in main, cross-area, and reserve slots");
 
         valid.SlotTalentIds[0] = " ";
-        valid.SlotTalentIds[1] = "network_test_unknown";
         valid.SlotTalentIds[2] = "network_test_lifecycle";
-        TalentMatchRuntime runtime = null;
-        bool ignoredSafely = !Throws<Exception>(() => runtime = CreateRuntimeFromConfig(valid));
+        TalentMatchRuntime runtime = CreateRuntimeFromConfig(valid);
         GameSession session = new GameSession(GameMode.Single);
-        if (runtime != null) runtime.BeginMatch(session);
-        runner.Check(ignoredSafely && session.Scores.SequenceEqual(new[] { 7, 0, 0, 0 }),
-            "blank and unknown ids are ignored without suppressing known carried talents");
+        runtime.BeginMatch(session);
+        runner.Check(session.Scores.SequenceEqual(new[] { 7, 0, 0, 0 }),
+            "blank ids remain empty slots without suppressing known carried talents");
+
+        TalentSlotConfig unknown = new TalentSlotConfig();
+        unknown.SlotTalentIds[0] = "network_test_unknown";
+        ArgumentException unknownError = null;
+        try
+        {
+            CreateRuntimeFromConfig(unknown);
+        }
+        catch (ArgumentException ex)
+        {
+            unknownError = ex;
+        }
+        runner.Check(unknownError != null
+                     && unknownError.Message.Contains("network_test_unknown"),
+            "runtime rejects a non-empty unknown carried talent id with a descriptive ArgumentException");
     }
 
     private static void RuntimeRejectsIllegalLifecycleOrderAndForeignSessions(RegressionRunner runner)
