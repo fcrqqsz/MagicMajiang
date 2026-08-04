@@ -1,5 +1,7 @@
 # 共享比赛宿主与正式本地入口设计
 
+> **状态：已废弃，不得实施。** 2026-08-04 决策改为删除客户端进程内本地权威，一人游玩统一使用 AI 补位在线房间。替代设计见 `docs/superpowers/specs/2026-08-04-room-authority-remove-local-mode-design.md`。
+
 ## 背景
 
 当前 `03_Game` 场景同时包含两条启动路径：有活动房间时作为联机客户端，没有活动房间时由 `GameManager` 在 Unity 客户端进程内创建 `GameSession`、`GameServer`、一名 `LocalPlayerClient` 和三名 `SimpleAIClient`。核心麻将规则能够复用，但局间推进、构筑装配、天赋开场效果和结算分别存在于 `Room` 与 `GameManager`。

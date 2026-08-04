@@ -1,5 +1,7 @@
 # Talent UI, AI, and Feedback Implementation Plan
 
+> **状态：待按 Room 唯一权威设计修订，暂不得执行。** 前置设计见 `docs/superpowers/specs/2026-08-04-room-authority-remove-local-mode-design.md`。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 让玩家能清楚构筑 6 主 + 3 备选、理解异化值档位、在牌桌上看见自身技能和已知对手天赋、完成中场换装，并通过结算拆分与 AI 策略持续验证“做大牌、克制、攒大招”的玩法闭环。

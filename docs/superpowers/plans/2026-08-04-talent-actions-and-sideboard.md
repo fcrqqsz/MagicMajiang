@@ -1,5 +1,7 @@
 # Talent Actions and Sideboard Implementation Plan
 
+> **状态：待按 Room 唯一权威设计修订，暂不得执行。** 前置设计见 `docs/superpowers/specs/2026-08-04-room-authority-remove-local-mode-design.md`。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 在现有主回合决策上增加不关闭基本动作的天赋补充动作，实现 `藏锋`、`截流`、`定心` 三项锚点天赋，并在半庄/全庄第 4 小局后加入一次 45 秒并行中场备牌。

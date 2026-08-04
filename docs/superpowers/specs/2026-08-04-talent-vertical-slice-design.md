@@ -24,7 +24,7 @@
 
 ## 权威天赋运行时
 
-本设计实施前先完成 `docs/superpowers/specs/2026-08-04-shared-match-host-local-entry-design.md`。共享的纯 C# `MatchSessionHost` 持有一个贯穿整场对战的 `TalentMatchRuntime`；Dedicated Server 的 `Room` 和正常客户端进入的本地模式都使用同一个 host 实现，不分别维护比赛权威。当前每小局创建的新 `GameServer` 接收同一个运行时引用，并只负责在明确的生命周期节点调用它。比赛宿主释放时一并释放运行时，避免状态跨比赛残留。
+本设计实施前先完成 `docs/superpowers/specs/2026-08-04-room-authority-remove-local-mode-design.md`。客户端进程内的隐式本地权威被删除，Dedicated Server 的 `Room` 是唯一比赛权威，并持有一个贯穿整场对战的 `TalentMatchRuntime`；`GameManager` 只维护客户端展示投影，不持有运行时。当前每小局创建的新 `GameServer` 接收同一个运行时引用，并只负责在明确的生命周期节点调用它。房间释放时一并释放运行时，避免状态跨比赛残留。
 
 运行时管理：
 
