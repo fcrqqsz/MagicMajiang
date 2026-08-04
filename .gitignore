@@ -108,3 +108,6 @@ InitTestScene*.unity*
 
 #cache
 %SystemDrive%/
+
+# Codex isolated feature worktrees
+/.worktrees/
