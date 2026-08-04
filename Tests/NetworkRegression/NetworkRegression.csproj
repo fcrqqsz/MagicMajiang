@@ -14,6 +14,7 @@
     <Compile Include="NetworkAuthorityBoundaryTests.cs" />
     <Compile Include="SnapshotReconnectTests.cs" />
     <Compile Include="ActionValidationTests.cs" />
+    <Compile Include="TalentFoundationTests.cs" />
     <Compile Include="UnityEngineStubs.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\ActionValidator.cs" Link="ActionValidator.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\MahjongLogic.cs" Link="MahjongLogic.cs" />
@@ -83,9 +84,17 @@
     <Compile Include="..\..\Assets\Scripts\Core\DeckConfig.cs" Link="DeckConfig.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\ScoringOptions.cs" Link="ScoringOptions.cs" />
     <Compile Include="..\..\Assets\Scripts\Talent\TalentSlotConfig.cs" Link="TalentSlotConfig.cs" />
+    <Compile Include="..\..\Assets\Scripts\Talent\TalentMetadata.cs" Link="TalentMetadata.cs" />
     <Compile Include="..\..\Assets\Scripts\Talent\TalentRule.cs" Link="TalentRule.cs" />
     <Compile Include="..\..\Assets\Scripts\Talent\TalentRuleAttribute.cs" Link="TalentRuleAttribute.cs" />
     <Compile Include="..\..\Assets\Scripts\Talent\TalentRegistry.cs" Link="TalentRegistry.cs" />
     <Compile Include="..\..\Assets\Scripts\Talent\Impl\StartingCapitalTalent.cs" Link="StartingCapitalTalent.cs" />
+    <Compile Include="..\..\Assets\Scripts\Talent\Impl\PeekTalent.cs" Link="PeekTalent.cs" />
+    <Compile Include="..\..\Assets\Scripts\Talent\Impl\MidasTouchTalent.cs" Link="MidasTouchTalent.cs" />
+    <Compile Include="..\..\Assets\Scripts\Talent\Impl\DragonAscentTalent.cs" Link="DragonAscentTalent.cs" />
+    <Compile Include="..\..\Assets\Scripts\Talent\Impl\DrawRewardTalent.cs" Link="DrawRewardTalent.cs" />
+    <Compile Include="..\..\Assets\Scripts\Talent\Impl\HeadStartTalent.cs" Link="HeadStartTalent.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\Network\Data\SavedDeck.cs" Link="SavedDeck.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\Network\Data\PlayerProfile.cs" Link="PlayerProfile.cs" />
   </ItemGroup>
 </Project>

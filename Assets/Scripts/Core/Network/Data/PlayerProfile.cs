@@ -16,6 +16,16 @@ namespace MahjongGame.Core.Network.Data
         // We will use two lists for keys and values for simple serialization if needed, or a custom class.
         // For now, simple list of unlocked cosmetics is enough.
         public List<string> UnlockedCosmetics = new List<string>();
+
+        public void Normalize()
+        {
+            Settings ??= new ProfileSettings();
+            SavedDecks ??= new List<SavedDeck>();
+            foreach (SavedDeck deck in SavedDecks)
+            {
+                deck?.Normalize();
+            }
+        }
     }
 
     [System.Serializable]

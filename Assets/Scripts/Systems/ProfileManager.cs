@@ -35,6 +35,14 @@ namespace MahjongGame.Systems
                 {
                     string json = File.ReadAllText(profilePath);
                     CurrentProfile = JsonUtility.FromJson<PlayerProfile>(json);
+                    if (CurrentProfile == null)
+                    {
+                        CreateNewProfile();
+                    }
+                    else
+                    {
+                        CurrentProfile.Normalize();
+                    }
                 }
                 catch (System.Exception e)
                 {

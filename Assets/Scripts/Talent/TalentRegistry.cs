@@ -13,8 +13,31 @@ namespace MahjongGame.Talents
         public static TalentRegistry Instance => _instance ??= new TalentRegistry();
 
         private Dictionary<string, Type> _talentTypes = new Dictionary<string, Type>();
-        private Dictionary<string, (TalentTier tier, int cost, TalentPhase[] phases, string displayName, string description)> _metadata
-            = new Dictionary<string, (TalentTier, int, TalentPhase[], string, string)>();
+        private sealed class RegistryEntry
+        {
+            public TalentTier Tier { get; }
+            public int Cost { get; }
+            public TalentPhase[] Phases { get; }
+            public string DisplayName { get; }
+            public string Description { get; }
+            public TalentMetadata Metadata { get; }
+
+            public RegistryEntry(TalentRuleAttribute attribute)
+            {
+                Tier = attribute.Tier;
+                Cost = attribute.AlienationCost;
+                Phases = attribute.Phases;
+                DisplayName = attribute.DisplayName;
+                Description = attribute.Description;
+                Metadata = new TalentMetadata(
+                    attribute.StateScope,
+                    attribute.ActivationWindow,
+                    attribute.RevealPolicy,
+                    attribute.SideboardPolicy);
+            }
+        }
+
+        private Dictionary<string, RegistryEntry> _entries = new Dictionary<string, RegistryEntry>();
 
         private TalentRegistry()
         {
@@ -24,7 +47,7 @@ namespace MahjongGame.Talents
         private void LoadByReflection()
         {
             _talentTypes.Clear();
-            _metadata.Clear();
+            _entries.Clear();
 
             var assembly = Assembly.GetExecutingAssembly();
             var types = assembly.GetTypes()
@@ -38,7 +61,7 @@ namespace MahjongGame.Talents
                 if (!_talentTypes.ContainsKey(attr.Id))
                 {
                     _talentTypes[attr.Id] = type;
-                    _metadata[attr.Id] = (attr.Tier, attr.AlienationCost, attr.Phases, attr.DisplayName, attr.Description);
+                    _entries[attr.Id] = new RegistryEntry(attr);
                 }
             }
 
@@ -48,18 +71,25 @@ namespace MahjongGame.Talents
         public TalentRule CreateInstance(string id, int ownerPlayerId)
         {
             if (!_talentTypes.TryGetValue(id, out var type)) return null;
-            var meta = _metadata[id];
+            var entry = _entries[id];
 
             var rule = (TalentRule)Activator.CreateInstance(type);
-            rule.Initialize(id, meta.tier, meta.cost, meta.phases);
+            rule.Initialize(id, entry.Tier, entry.Cost, entry.Phases);
             rule.OwnerPlayerId = ownerPlayerId;
             return rule;
         }
 
-        public int GetCost(string id) => _metadata.TryGetValue(id, out var m) ? m.cost : 0;
-        public TalentTier GetTier(string id) => _metadata.TryGetValue(id, out var m) ? m.tier : TalentTier.Small;
-        public string GetDisplayName(string id) => _metadata.TryGetValue(id, out var m) ? m.displayName : id;
-        public string GetDescription(string id) => _metadata.TryGetValue(id, out var m) ? m.description : "";
+        public TalentMetadata GetMetadata(string talentId)
+        {
+            if (!_entries.TryGetValue(talentId, out RegistryEntry entry))
+                throw new KeyNotFoundException($"Unknown talent id: {talentId}");
+            return entry.Metadata;
+        }
+
+        public int GetCost(string id) => _entries.TryGetValue(id, out var entry) ? entry.Cost : 0;
+        public TalentTier GetTier(string id) => _entries.TryGetValue(id, out var entry) ? entry.Tier : TalentTier.Small;
+        public string GetDisplayName(string id) => _entries.TryGetValue(id, out var entry) ? entry.DisplayName : id;
+        public string GetDescription(string id) => _entries.TryGetValue(id, out var entry) ? entry.Description : "";
         public List<string> GetAllIds() => _talentTypes.Keys.ToList();
         public bool HasTalent(string id) => _talentTypes.ContainsKey(id);
     }

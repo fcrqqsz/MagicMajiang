@@ -5,5 +5,6 @@ RoomSessionTests.Run(runner);
 NetworkAuthorityBoundaryTests.Run(runner);
 SnapshotReconnectTests.Run(runner);
 ActionValidationTests.Run(runner);
+TalentFoundationTests.Run(runner);
 
 return runner.Complete();
