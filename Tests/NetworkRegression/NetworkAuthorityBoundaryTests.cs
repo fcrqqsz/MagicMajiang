@@ -11,6 +11,7 @@ internal static class NetworkAuthorityBoundaryTests
     {
         TestGameSceneEntry(runner);
         TestGameManagerHasNoAuthority(runner);
+        TestPresentationHasNoLocalAuthority(runner);
         TestSingleHumanAiFill(runner);
         TestGameModeLengths(runner);
     }
@@ -75,6 +76,21 @@ internal static class NetworkAuthorityBoundaryTests
         string roomSource = ReadRepoFile("Assets", "Scripts", "Core", "Network", "Room.cs");
         runner.Check(Count(roomSource, "Session.AdvanceRound(") == 1,
             "Room owns the single authoritative round advance call.");
+    }
+
+    private static void TestPresentationHasNoLocalAuthority(RegressionRunner runner)
+    {
+        string hud = ReadRepoFile("Assets", "UI", "GameHUD", "GameHUDController.cs");
+        runner.Check(!hud.Contains("DeckManager.Instance", StringComparison.Ordinal),
+            "HUD wall count comes only from server projection.");
+        runner.Check(!hud.Contains("IsNetworkRoom", StringComparison.Ordinal),
+            "HUD has no local/network authority branch.");
+
+        string result = ReadRepoFile("Assets", "UI", "ResultPanelController.cs");
+        runner.Check(!result.Contains("GameManager.Instance.EndSession", StringComparison.Ordinal),
+            "Result UI never broadcasts a client-owned session end.");
+        runner.Check(!result.Contains("SceneManager.LoadScene(SceneNames.Game", StringComparison.Ordinal),
+            "Result fallback never reloads the Game scene.");
     }
 
     private static string ReadRepoFile(params string[] segments)

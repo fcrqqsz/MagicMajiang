@@ -478,23 +478,21 @@ namespace MahjongGame.UI
             }
             else
             {
-                // 单局模式 或 多局对战已结束 → 显示总结算
-                ShowSessionResult();
+                ReturnToLobby();
             }
         }
 
         private async void ReturnToLobby()
         {
-            if (NetworkManager.Instance != null)
+            NetworkManager networkManager = NetworkManager.Instance;
+            if (networkManager == null)
             {
-                NetworkManager.Instance.RoomService?.LeaveRoom();
-                await NetworkManager.Instance.LoadSceneAndUnloadCurrentAsync(SceneNames.MainLobby, SceneNames.Game);
+                SceneManager.LoadScene(SceneNames.Persistent, LoadSceneMode.Single);
+                return;
             }
-            else
-            {
-                // Fallback: 直接从 Game 场景启动时没有 NetworkManager
-                SceneManager.LoadScene(SceneNames.Game);
-            }
+
+            networkManager.RoomService?.LeaveRoom();
+            await networkManager.LoadSceneAndUnloadCurrentAsync(SceneNames.MainLobby, SceneNames.Game);
         }
     }
 }

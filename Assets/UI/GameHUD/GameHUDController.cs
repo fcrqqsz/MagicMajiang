@@ -4,7 +4,6 @@ using UnityEngine.UIElements;
 using MahjongGame.Core;
 using MahjongGame.Core.Network;
 using MahjongGame.Core.Network.Messages;
-using MahjongGame.Systems;
 using DG.Tweening;
 
 namespace MahjongGame.UI
@@ -85,9 +84,7 @@ namespace MahjongGame.UI
             if (session == null) return;
 
             string modeName = GetModeName(session.Mode);
-            int remaining = IsNetworkRoom
-                ? Mathf.Max(_lastRemainingCount, 0)
-                : DeckManager.Instance != null ? DeckManager.Instance.RemainingCount : 0;
+            int remaining = Mathf.Max(_lastRemainingCount, 0);
 
             if (session.Mode == GameMode.Single)
                 _infoPrefix = $"{modeName}-";
@@ -166,17 +163,6 @@ namespace MahjongGame.UI
 
         void Update()
         {
-            // 实时更新牌山余量（仅在数量变化时更新，避免每帧 GC）
-            if (!IsNetworkRoom && DeckManager.Instance != null && _infoLabel != null && _infoPrefix != null)
-            {
-                int remaining = DeckManager.Instance.RemainingCount;
-                if (remaining != _lastRemainingCount)
-                {
-                    _lastRemainingCount = remaining;
-                    _infoLabel.text = $"{_infoPrefix}余{remaining}张";
-                }
-            }
-
             if (!_isTimerRunning) return;
 
             _timerRemaining -= Time.deltaTime;
@@ -280,8 +266,6 @@ namespace MahjongGame.UI
             int localSeat = NetworkManager.Instance?.RoomService?.SeatIndex ?? 0;
             return (playerIndex - localSeat + 4) % 4;
         }
-
-        private bool IsNetworkRoom => NetworkManager.Instance?.RoomService?.HasRoom == true;
 
         private string GetModeName(GameMode mode)
         {
