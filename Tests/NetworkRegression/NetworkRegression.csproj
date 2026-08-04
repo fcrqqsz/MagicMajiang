@@ -11,6 +11,7 @@
     <Compile Include="RegressionRunner.cs" />
     <Compile Include="IdentityConnectionTests.cs" />
     <Compile Include="RoomSessionTests.cs" />
+    <Compile Include="NetworkAuthorityBoundaryTests.cs" />
     <Compile Include="SnapshotReconnectTests.cs" />
     <Compile Include="ActionValidationTests.cs" />
     <Compile Include="UnityEngineStubs.cs" />
@@ -57,6 +58,7 @@
     <Compile Include="..\..\Assets\Scripts\Core\Network\ResponseActionPolicy.cs" Link="ResponseActionPolicy.cs" />
     <Compile Include="..\..\Assets\Scripts\Systems\SceneTransitionPolicy.cs" Link="SceneTransitionPolicy.cs" />
     <Compile Include="..\..\Assets\Scripts\Systems\LoginUsernamePolicy.cs" Link="LoginUsernamePolicy.cs" />
+    <Compile Include="..\..\Assets\Scripts\Systems\NetworkGameSceneEntryPolicy.cs" Link="NetworkGameSceneEntryPolicy.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\Protocol.cs" Link="Protocol.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\Messages\NetworkMessage.cs" Link="NetworkMessage.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\Messages\MessageSerializer.cs" Link="MessageSerializer.cs" />
