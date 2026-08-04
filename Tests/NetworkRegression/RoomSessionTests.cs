@@ -12,10 +12,58 @@ internal static class RoomSessionTests
     {
         TestLoadoutValidation(runner);
         TestRoomAlienationAdmission(runner);
+        TestRoomRevalidatesClonedLoadout(runner);
         TestWallAndSessionTalent(runner);
         TestRoomReadyAndDeparture(runner);
         TestResponseAndTurnPolicies(runner);
         TestClientRoomAndScoreProjection(runner);
+    }
+
+    private static void TestRoomRevalidatesClonedLoadout(RegressionRunner runner)
+    {
+        var room = new Room("stale-loadout", GameMode.Single, AlienationPreset.Low, "host", true, 8);
+        PlayerLoadoutCodec.TryDecode(
+            PlayerLoadoutCodec.CreateMessage(DeckConfig.CreateStandard(), new TalentSlotConfig()),
+            AlienationPreset.Low,
+            out var hostLoadout,
+            out _);
+        runner.Check(room.TryAddHuman(
+                "host", new GameEndpoint(), "dev:host", "Host", hostLoadout, out int hostSeat)
+            && hostSeat == 0,
+            "Stale-loadout regression setup must establish one valid room seat.");
+        room.TrySendToHumanSeat(0, "RoomSeatUpdated", new RoomSeatUpdatedMessage
+        {
+            roomId = room.RoomId,
+            seat = room.GetSeatMessage(0)
+        });
+
+        PlayerLoadoutCodec.TryDecode(
+            PlayerLoadoutCodec.CreateMessage(DeckConfig.CreateStandard(), new TalentSlotConfig()),
+            AlienationPreset.Low,
+            out var staleLoadout,
+            out _);
+        ConfigureThirtyAlienationDeck(staleLoadout.DeckConfig);
+        staleLoadout.TalentConfig.SlotTalentIds[0] = "midas_touch";
+
+        RoomState stateBefore = room.State;
+        int onlineBefore = room.OnlineHumanCount;
+        RoomSeat[] seatsBefore = room.Seats.ToArray();
+        int sequenceBefore = room.Seats[0].MessageStream.LatestSequence;
+        int messagesBefore = room.Seats[0].Endpoint.SentMessages.Count;
+
+        bool added = room.TryAddHuman(
+            "stale", new GameEndpoint(), "dev:stale", "Stale", staleLoadout, out int staleSeat);
+
+        runner.Check(staleLoadout.TotalAlienation == 0
+            && !added
+            && staleSeat == -1
+            && room.State == stateBefore
+            && room.OnlineHumanCount == onlineBefore
+            && room.Seats.SequenceEqual(seatsBefore)
+            && room.Seats[0].MessageStream.LatestSequence == sequenceBefore
+            && room.Seats[0].Endpoint.SentMessages.Count == messagesBefore,
+            "Room admission must revalidate a cloned mutable loadout before changing seats, state, or streams.");
+        room.Dispose();
     }
 
     private static void TestRoomAlienationAdmission(RegressionRunner runner)
@@ -109,17 +157,22 @@ internal static class RoomSessionTests
     private static PlayerLoadoutMessage BuildOverLowPresetLoadout()
     {
         var deck = DeckConfig.CreateStandard();
-        foreach (Suit suit in new[] { Suit.Man, Suit.Pin, Suit.Sou })
-        {
-            deck.SetCardCount(suit, 1, 6);
-            for (int value = 2; value <= 6; value++) deck.SetCardCount(suit, value, 0);
-        }
+        ConfigureThirtyAlienationDeck(deck);
         var talents = new TalentSlotConfig
         {
             SlotTalentIds = new[] { "midas_touch", null, null, null, null, null },
             ReserveTalentIds = new string[TalentSlotConfig.ReserveSlotCount]
         };
         return PlayerLoadoutCodec.CreateMessage(deck, talents);
+    }
+
+    private static void ConfigureThirtyAlienationDeck(DeckConfig deck)
+    {
+        foreach (Suit suit in new[] { Suit.Man, Suit.Pin, Suit.Sou })
+        {
+            deck.SetCardCount(suit, 1, 6);
+            for (int value = 2; value <= 6; value++) deck.SetCardCount(suit, value, 0);
+        }
     }
 
     private static void TestLoadoutValidation(RegressionRunner runner)

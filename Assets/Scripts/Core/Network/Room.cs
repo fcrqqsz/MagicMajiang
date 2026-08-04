@@ -74,15 +74,15 @@ namespace MahjongGame.Core.Network
         {
             seatIndex = -1;
             if (loadout == null || string.IsNullOrWhiteSpace(playerId)
-                || loadout.TotalAlienation > AlienationBudgetPolicy.GetLimit(AlienationPreset)
                 || (State != RoomState.WaitingForPlayers && State != RoomState.WaitingForMatchReady)) return false;
+            var trustedLoadout = PlayerLoadoutCodec.CloneTrustedLoadout(loadout);
+            if (trustedLoadout == null
+                || trustedLoadout.TotalAlienation > AlienationBudgetPolicy.GetLimit(AlienationPreset)) return false;
             if (RoomMembershipPolicy.RequiresReconnect(
                     _seats.Where(seat => seat != null && !seat.IsAi).Select(seat => seat.PlayerId), playerId)) return false;
             for (int i = 0; i < _seats.Length; i++)
             {
                 if (_seats[i] != null) continue;
-                var trustedLoadout = PlayerLoadoutCodec.CloneTrustedLoadout(loadout);
-                if (trustedLoadout == null) return false;
                 _expiredPlayerIds.Remove(playerId);
                 _seats[i] = new RoomSeat
                 {
