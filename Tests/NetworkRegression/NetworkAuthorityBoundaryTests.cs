@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
 using MahjongGame.Core;
 using MahjongGame.Core.Network;
 using MahjongGame.Systems;
@@ -13,6 +14,7 @@ internal static class NetworkAuthorityBoundaryTests
         TestGameManagerHasNoAuthority(runner);
         TestGameSceneHasNoLocalModeFields(runner);
         TestPresentationHasNoLocalAuthority(runner);
+        TestUnitySourceBoundaries(runner);
         TestSingleHumanAiFill(runner);
         TestGameModeLengths(runner);
     }
@@ -98,6 +100,29 @@ internal static class NetworkAuthorityBoundaryTests
             "Completed matches show the final summary before leaving the room.");
     }
 
+    private static void TestUnitySourceBoundaries(RegressionRunner runner)
+    {
+        string hud = ReadRepoFile("Assets", "UI", "GameHUD", "GameHUDController.cs");
+        if (hud.Contains("NetworkManager", StringComparison.Ordinal))
+        {
+            runner.Check(hud.Contains("using MahjongGame.Systems;", StringComparison.Ordinal),
+                "HUD using NetworkManager must import MahjongGame.Systems.");
+        }
+
+        string policyMetaPath = GetRepoPath(
+            "Assets", "Scripts", "Systems", "NetworkGameSceneEntryPolicy.cs.meta");
+        bool policyMetaExists = File.Exists(policyMetaPath);
+        runner.Check(policyMetaExists,
+            "NetworkGameSceneEntryPolicy must have a Unity .cs.meta file.");
+        if (!policyMetaExists) return;
+
+        string policyMeta = File.ReadAllText(policyMetaPath);
+        runner.Check(policyMeta.Contains("fileFormatVersion: 2", StringComparison.Ordinal),
+            "NetworkGameSceneEntryPolicy meta must use fileFormatVersion 2.");
+        runner.Check(Regex.IsMatch(policyMeta, @"(?m)^guid: [0-9a-f]{32}$"),
+            "NetworkGameSceneEntryPolicy meta must contain a 32-character hexadecimal guid.");
+    }
+
     private static void TestGameSceneHasNoLocalModeFields(RegressionRunner runner)
     {
         string scene = ReadRepoFile("Assets", "Scenes", "03_Game.unity");
@@ -123,11 +148,16 @@ internal static class NetworkAuthorityBoundaryTests
 
     private static string ReadRepoFile(params string[] segments)
     {
+        return File.ReadAllText(GetRepoPath(segments));
+    }
+
+    private static string GetRepoPath(params string[] segments)
+    {
         DirectoryInfo directory = new DirectoryInfo(AppContext.BaseDirectory);
         while (directory != null && !File.Exists(Path.Combine(directory.FullName, "ProjectSettings", "ProjectVersion.txt")))
             directory = directory.Parent;
         if (directory == null) throw new InvalidOperationException("Repository root not found.");
-        return File.ReadAllText(Path.Combine(new[] { directory.FullName }.Concat(segments).ToArray()));
+        return Path.Combine(new[] { directory.FullName }.Concat(segments).ToArray());
     }
 
     private static int Count(string source, string value)
