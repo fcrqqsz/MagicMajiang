@@ -91,6 +91,10 @@ internal static class NetworkAuthorityBoundaryTests
             "Result UI never broadcasts a client-owned session end.");
         runner.Check(!result.Contains("SceneManager.LoadScene(SceneNames.Game", StringComparison.Ordinal),
             "Result fallback never reloads the Game scene.");
+        runner.Check(Count(result, "ReturnToLobby();") == 1,
+            "Only the final summary view exits to the lobby.");
+        runner.Check(Count(result, "ShowSessionResult();") == 2,
+            "Completed matches show the final summary before leaving the room.");
     }
 
     private static string ReadRepoFile(params string[] segments)
