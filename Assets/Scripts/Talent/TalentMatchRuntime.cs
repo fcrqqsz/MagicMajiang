@@ -15,7 +15,9 @@ namespace MahjongGame.Talents
         private readonly Dictionary<int, long> _eventCursors = new Dictionary<int, long>();
         private readonly Dictionary<int, List<TileData>> _privatePeekTiles =
             new Dictionary<int, List<TileData>>();
-        private bool _matchStarted;
+        private RuntimePhase _phase;
+        private GameSession _session;
+        private object _sessionIdentity;
         private long _nextEventId;
 
         public TalentMatchRuntime(
@@ -33,33 +35,71 @@ namespace MahjongGame.Talents
                     throw new ArgumentOutOfRangeException(nameof(loadouts), seatIndex, "Seat index must be 0..3.");
 
                 TalentSlotConfig config = loadout.Value;
-                if (config == null) continue;
+                ValidateCarriedConfig(config, seatIndex);
 
-                HashSet<string> activeIds = new HashSet<string>(
-                    config.GetMainIds(),
-                    StringComparer.Ordinal);
-                foreach (string talentId in config.GetCarriedIds())
-                {
-                    TalentRule rule = registry.CreateInstance(talentId, seatIndex);
-                    if (rule == null)
-                        throw new InvalidOperationException($"Unknown carried talent id: {talentId}");
+                foreach (string talentId in config.SlotTalentIds)
+                    TryAddEntry(seatIndex, talentId, isActive: true, registry, ref sequence);
+                foreach (string talentId in config.ReserveTalentIds)
+                    TryAddEntry(seatIndex, talentId, isActive: false, registry, ref sequence);
+            }
+        }
 
-                    _entries.Add(new RuntimeEntry(
-                        seatIndex,
-                        rule,
-                        registry.GetMetadata(talentId),
-                        new TalentRuntimeState { IsActive = activeIds.Contains(talentId) },
-                        sequence++));
-                }
+        private void TryAddEntry(
+            int seatIndex,
+            string talentId,
+            bool isActive,
+            TalentRegistry registry,
+            ref int sequence)
+        {
+            if (string.IsNullOrWhiteSpace(talentId)) return;
+
+            TalentRule rule = registry.CreateInstance(talentId, seatIndex);
+            if (rule == null) return;
+
+            _entries.Add(new RuntimeEntry(
+                seatIndex,
+                rule,
+                registry.GetMetadata(talentId),
+                new TalentRuntimeState { IsActive = isActive },
+                sequence++));
+        }
+
+        private static void ValidateCarriedConfig(TalentSlotConfig config, int seatIndex)
+        {
+            if (config == null)
+                throw new ArgumentException($"Seat {seatIndex} talent config cannot be null.", nameof(config));
+            if (config.SlotTalentIds == null
+                || config.SlotTalentIds.Length != TalentSlotConfig.MainSlotCount)
+            {
+                throw new ArgumentException(
+                    $"Seat {seatIndex} must have exactly {TalentSlotConfig.MainSlotCount} main talent slots.",
+                    nameof(config));
+            }
+            if (config.ReserveTalentIds == null
+                || config.ReserveTalentIds.Length != TalentSlotConfig.ReserveSlotCount)
+            {
+                throw new ArgumentException(
+                    $"Seat {seatIndex} must have exactly {TalentSlotConfig.ReserveSlotCount} reserve talent slots.",
+                    nameof(config));
+            }
+
+            HashSet<string> carriedIds = new HashSet<string>(StringComparer.Ordinal);
+            foreach (string talentId in config.SlotTalentIds.Concat(config.ReserveTalentIds))
+            {
+                if (string.IsNullOrWhiteSpace(talentId)) continue;
+                if (!carriedIds.Add(talentId))
+                    throw new ArgumentException($"Seat {seatIndex} carries duplicate talent id: {talentId}", nameof(config));
             }
         }
 
         public void BeginMatch(GameSession session)
         {
             if (session == null) throw new ArgumentNullException(nameof(session));
-            if (_matchStarted)
+            if (_phase != RuntimePhase.NotStarted)
                 throw new InvalidOperationException("Talent match runtime has already begun this match.");
-            _matchStarted = true;
+            _session = session;
+            _sessionIdentity = TalentSessionSnapshot.Create(session).Identity;
+            _phase = RuntimePhase.BetweenRounds;
 
             foreach (RuntimeEntry entry in _entries)
             {
@@ -70,7 +110,7 @@ namespace MahjongGame.Talents
                 entry.Rule.InitializeMatchState(context);
             }
 
-            foreach (RuntimeEntry entry in GetActiveEntries())
+            foreach (RuntimeEntry entry in GetAllActiveEntries())
             {
                 TalentMatchContext context = CreateMatchContext(entry, session, allowEvents: true);
                 int scoreDelta = entry.Rule.GetMatchStartScoreDelta(context);
@@ -91,34 +131,42 @@ namespace MahjongGame.Talents
 
         public void BeginRound(TalentRoundContext context)
         {
-            EnsureMatchStarted();
             if (context == null) throw new ArgumentNullException(nameof(context));
+            EnsureSession(context);
+            EnsurePhase(RuntimePhase.BetweenRounds, nameof(BeginRound));
 
             _privatePeekTiles.Clear();
             foreach (RuntimeEntry entry in _entries)
                 entry.State.ResetRoundState();
 
-            foreach (RuntimeEntry entry in GetActiveEntries())
+            _phase = RuntimePhase.RoundStarted;
+            foreach (RuntimeEntry entry in GetAllActiveEntries())
                 entry.Rule.OnRoundStarted(BindRoundContext(context, entry));
         }
 
         public void ApplyWallBuilding(TalentWallContext context)
         {
-            EnsureMatchStarted();
             if (context == null) throw new ArgumentNullException(nameof(context));
+            EnsureSession(context);
+            EnsurePhase(RuntimePhase.RoundStarted, nameof(ApplyWallBuilding));
 
-            foreach (RuntimeEntry entry in GetPipeline(TalentPhase.WallBuilding, currentSeatIndex: -1))
-                entry.Rule.OnWallBuilding(BindContext(context, entry));
+            foreach (RuntimeEntry entry in GetGlobalPipeline(TalentPhase.WallBuilding))
+                entry.Rule.OnWallBuilding(BindWallContext(context, entry));
+            _phase = RuntimePhase.WallBuilt;
         }
 
         public void ResolvePostShuffle(TalentPostShuffleContext context)
         {
-            EnsureMatchStarted();
             if (context == null) throw new ArgumentNullException(nameof(context));
+            EnsureSession(context);
+            EnsurePhase(RuntimePhase.WallBuilt, nameof(ResolvePostShuffle));
 
-            foreach (RuntimeEntry entry in GetActiveEntries())
+            foreach (RuntimeEntry entry in GetAllActiveEntries())
             {
-                TalentRoundContext roundContext = new TalentRoundContext(context.Session);
+                TalentRoundContext roundContext = new TalentRoundContext(
+                    context.Session,
+                    context.GameState,
+                    context.DeckSnapshots);
                 int peekCount = entry.Rule.GetRoundStartPeekCount(BindRoundContext(roundContext, entry));
                 if (peekCount <= 0) continue;
 
@@ -134,37 +182,38 @@ namespace MahjongGame.Talents
                     snapshot.Add(CopyTile(context.ShuffledWallTiles[index]));
                 _privatePeekTiles[entry.OwnerSeatIndex] = snapshot;
             }
+            _phase = RuntimePhase.RoundReady;
         }
 
         public TileData ApplyDraw(TalentDrawContext context, TileData drawnTile)
         {
-            EnsureMatchStarted();
             if (context == null) throw new ArgumentNullException(nameof(context));
+            EnsureReadyRound(context, nameof(ApplyDraw));
 
             TileData currentTile = drawnTile;
-            foreach (RuntimeEntry entry in GetPipeline(TalentPhase.OnDraw, context.CurrentSeatIndex))
+            foreach (RuntimeEntry entry in GetSeatPipeline(TalentPhase.OnDraw, context.CurrentSeatIndex))
                 currentTile = entry.Rule.OnDraw(BindContext(context, entry), currentTile);
             return currentTile;
         }
 
         public TileData ApplyDiscard(TalentDiscardContext context, TileData discardedTile)
         {
-            EnsureMatchStarted();
             if (context == null) throw new ArgumentNullException(nameof(context));
+            EnsureReadyRound(context, nameof(ApplyDiscard));
 
             TileData currentTile = discardedTile;
-            foreach (RuntimeEntry entry in GetPipeline(TalentPhase.OnDiscard, context.CurrentSeatIndex))
+            foreach (RuntimeEntry entry in GetSeatPipeline(TalentPhase.OnDiscard, context.CurrentSeatIndex))
                 currentTile = entry.Rule.OnDiscard(BindContext(context, entry), currentTile);
             return currentTile;
         }
 
         public void ValidateAction(TalentActionContext context)
         {
-            EnsureMatchStarted();
             if (context == null) throw new ArgumentNullException(nameof(context));
+            EnsureReadyRound(context, nameof(ValidateAction));
 
             context.IsAllowed = true;
-            foreach (RuntimeEntry entry in GetPipeline(TalentPhase.ActionValidation, context.CurrentSeatIndex))
+            foreach (RuntimeEntry entry in GetSeatPipeline(TalentPhase.ActionValidation, context.CurrentSeatIndex))
             {
                 if (entry.Rule.OnActionValidation(
                         BindContext(context, entry),
@@ -181,11 +230,11 @@ namespace MahjongGame.Talents
 
         public ScoringOptions BuildScoringOptions(TalentScoringContext context)
         {
-            EnsureMatchStarted();
             if (context == null) throw new ArgumentNullException(nameof(context));
+            EnsureReadyRound(context, nameof(BuildScoringOptions));
 
             ScoringOptions options = new ScoringOptions();
-            foreach (RuntimeEntry entry in GetActiveEntries(context.CurrentSeatIndex))
+            foreach (RuntimeEntry entry in GetActiveEntriesForSeat(context.CurrentSeatIndex))
                 entry.Rule.ConfigureScoring(context.BindScoring(
                     entry.OwnerSeatIndex,
                     entry.State,
@@ -195,11 +244,11 @@ namespace MahjongGame.Talents
 
         public void NotifyTileBecamePublic(TalentPublicTileContext context, TileData tile)
         {
-            EnsureMatchStarted();
             if (context == null) throw new ArgumentNullException(nameof(context));
+            EnsureReadyRound(context, nameof(NotifyTileBecamePublic));
             if (tile == null || !tile.IsModified || string.IsNullOrEmpty(tile.SpecialEffectID)) return;
 
-            RuntimeEntry source = GetActiveEntries()
+            RuntimeEntry source = GetAllActiveEntries()
                 .FirstOrDefault(entry => entry.OwnerSeatIndex == context.CurrentSeatIndex
                                          && string.Equals(
                                              entry.Rule.Id,
@@ -222,8 +271,8 @@ namespace MahjongGame.Talents
 
         public void ResolveAcceptedWinVisibility(TalentAcceptedWinContext context)
         {
-            EnsureMatchStarted();
             if (context == null) throw new ArgumentNullException(nameof(context));
+            EnsureReadyRound(context, nameof(ResolveAcceptedWinVisibility));
         }
 
         public IReadOnlyList<TileData> GetPrivatePeekTiles(int seatIndex)
@@ -236,13 +285,17 @@ namespace MahjongGame.Talents
 
         public void EndRound(TalentRoundOutcome outcome, GameSession session)
         {
-            EnsureMatchStarted();
             if (outcome == null) throw new ArgumentNullException(nameof(outcome));
             if (session == null) throw new ArgumentNullException(nameof(session));
+            EnsureSession(session);
+            EnsurePhase(RuntimePhase.RoundReady, nameof(EndRound));
+            ValidateOptionalSeat(outcome.WinnerSeatIndex, nameof(outcome.WinnerSeatIndex));
+            ValidateOptionalSeat(outcome.DiscarderSeatIndex, nameof(outcome.DiscarderSeatIndex));
 
             TalentRoundContext context = new TalentRoundContext(session);
-            foreach (RuntimeEntry entry in GetActiveEntries())
+            foreach (RuntimeEntry entry in GetAllActiveEntries())
                 entry.Rule.OnRoundEnded(BindRoundContext(context, entry), outcome);
+            _phase = RuntimePhase.BetweenRounds;
         }
 
         public IReadOnlyList<TalentRuntimeEvent> DrainEventsForSeat(int seatIndex)
@@ -262,18 +315,32 @@ namespace MahjongGame.Talents
             return visibleEvents;
         }
 
-        private IEnumerable<RuntimeEntry> GetPipeline(TalentPhase phase, int currentSeatIndex)
+        private IEnumerable<RuntimeEntry> GetGlobalPipeline(TalentPhase phase)
         {
-            return GetActiveEntries(currentSeatIndex)
+            return GetAllActiveEntries()
                 .Where(entry => entry.Rule.Phases != null && entry.Rule.Phases.Contains(phase));
         }
 
-        private IEnumerable<RuntimeEntry> GetActiveEntries(int currentSeatIndex = -1)
+        private IEnumerable<RuntimeEntry> GetSeatPipeline(TalentPhase phase, int currentSeatIndex)
+        {
+            return GetActiveEntriesForSeat(currentSeatIndex)
+                .Where(entry => entry.Rule.Phases != null && entry.Rule.Phases.Contains(phase));
+        }
+
+        private IEnumerable<RuntimeEntry> GetAllActiveEntries()
         {
             return _entries
+                .Where(entry => entry.State.IsActive)
+                .OrderByDescending(entry => entry.Rule.Priority)
+                .ThenBy(entry => entry.Sequence);
+        }
+
+        private IEnumerable<RuntimeEntry> GetActiveEntriesForSeat(int currentSeatIndex)
+        {
+            ValidateSeatIndex(currentSeatIndex);
+            return _entries
                 .Where(entry => entry.State.IsActive
-                                && (currentSeatIndex < 0
-                                    || entry.Rule.Scope == TalentScope.Global
+                                && (entry.Rule.Scope == TalentScope.Global
                                     || entry.OwnerSeatIndex == currentSeatIndex))
                 .OrderByDescending(entry => entry.Rule.Priority)
                 .ThenBy(entry => entry.Sequence);
@@ -306,6 +373,14 @@ namespace MahjongGame.Talents
                 runtimeEvent => EmitEvent(entry, runtimeEvent));
         }
 
+        private TalentWallContext BindWallContext(TalentWallContext context, RuntimeEntry entry)
+        {
+            return context.BindWall(
+                entry.OwnerSeatIndex,
+                entry.State,
+                runtimeEvent => EmitEvent(entry, runtimeEvent));
+        }
+
         private void EmitEvent(RuntimeEntry entry, TalentRuntimeEvent source)
         {
             if (source == null) throw new ArgumentNullException(nameof(source));
@@ -328,16 +403,41 @@ namespace MahjongGame.Talents
             }
         }
 
-        private void EnsureMatchStarted()
+        private void EnsureReadyRound(TalentContext context, string operation)
         {
-            if (!_matchStarted)
-                throw new InvalidOperationException("BeginMatch must be called before talent runtime use.");
+            EnsureSession(context);
+            EnsurePhase(RuntimePhase.RoundReady, operation);
         }
 
-        private static void ValidateSeatIndex(int seatIndex)
+        private void EnsureSession(TalentContext context)
+        {
+            if (!ReferenceEquals(_sessionIdentity, context.Session.Identity))
+                throw new InvalidOperationException("Talent context belongs to a different match session.");
+        }
+
+        private void EnsureSession(GameSession session)
+        {
+            if (_phase == RuntimePhase.NotStarted)
+                throw new InvalidOperationException("BeginMatch must be called before talent runtime use.");
+            if (!ReferenceEquals(_session, session))
+                throw new InvalidOperationException("Talent context belongs to a different match session.");
+        }
+
+        private void EnsurePhase(RuntimePhase expected, string operation)
+        {
+            if (_phase != expected)
+                throw new InvalidOperationException($"{operation} is invalid during talent runtime phase {_phase}.");
+        }
+
+        private static void ValidateOptionalSeat(int? seatIndex, string parameterName)
+        {
+            if (seatIndex.HasValue) ValidateSeatIndex(seatIndex.Value, parameterName);
+        }
+
+        private static void ValidateSeatIndex(int seatIndex, string parameterName = "seatIndex")
         {
             if (seatIndex < 0 || seatIndex > 3)
-                throw new ArgumentOutOfRangeException(nameof(seatIndex), seatIndex, "Seat index must be 0..3.");
+                throw new ArgumentOutOfRangeException(parameterName, seatIndex, "Seat index must be 0..3.");
         }
 
         private static TileData CopyTile(TileData tile)
@@ -372,6 +472,15 @@ namespace MahjongGame.Talents
                 State = state;
                 Sequence = sequence;
             }
+        }
+
+        private enum RuntimePhase
+        {
+            NotStarted,
+            BetweenRounds,
+            RoundStarted,
+            WallBuilt,
+            RoundReady
         }
     }
 }

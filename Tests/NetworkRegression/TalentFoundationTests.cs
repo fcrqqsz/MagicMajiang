@@ -18,6 +18,12 @@ internal static class TalentFoundationTests
         ProfileNormalizationRepairsLegacyDeckTalentSchema(runner);
         MetadataPreservesDefaultsAndExplicitPolicies(runner);
         ExistingTalentsRemainRegistrable(runner);
+        RuntimeRejectsMalformedAndDuplicateCarriedLoadouts(runner);
+        RuntimeRejectsIllegalLifecycleOrderAndForeignSessions(runner);
+        SeatScopedContextsRejectInvalidSeatIndices(runner);
+        RoundOutcomeRejectsInvalidSeatIndices(runner);
+        InactiveMatchInitializationCannotMutateAuthoritativeSession(runner);
+        DrawContextSnapshotsGameStateAndOwnerDeck(runner);
         CrossRoundRuntimePreservesMatchStateAndResetsRoundState(runner);
         RuntimeEventsRespectVisibilityWithoutDestructiveReads(runner);
         PostShufflePeekIsPrivateAndUsesShuffledOrder(runner);
@@ -153,6 +159,230 @@ internal static class TalentFoundationTests
             "all existing talent ids still create their matching rule instances");
     }
 
+    private static void RuntimeRejectsMalformedAndDuplicateCarriedLoadouts(RegressionRunner runner)
+    {
+        TalentSlotConfig valid = new TalentSlotConfig();
+        TalentSlotConfig nullMain = new TalentSlotConfig
+        {
+            SlotTalentIds = null,
+            ReserveTalentIds = new string[TalentSlotConfig.ReserveSlotCount]
+        };
+        TalentSlotConfig shortReserve = new TalentSlotConfig
+        {
+            SlotTalentIds = new string[TalentSlotConfig.MainSlotCount],
+            ReserveTalentIds = new string[TalentSlotConfig.ReserveSlotCount - 1]
+        };
+
+        runner.Check(Throws<ArgumentException>(() => CreateRuntimeFromConfig(null)),
+            "runtime rejects a null seat talent config");
+        runner.Check(Throws<ArgumentException>(() => CreateRuntimeFromConfig(nullMain))
+                     && Throws<ArgumentException>(() => CreateRuntimeFromConfig(shortReserve)),
+            "runtime rejects null or abnormal-length slot arrays instead of normalizing locked loadouts");
+
+        TalentSlotConfig duplicateMain = new TalentSlotConfig();
+        duplicateMain.SlotTalentIds[0] = "network_test_lifecycle";
+        duplicateMain.SlotTalentIds[1] = "network_test_lifecycle";
+        TalentSlotConfig duplicateAcross = new TalentSlotConfig();
+        duplicateAcross.SlotTalentIds[0] = "network_test_lifecycle";
+        duplicateAcross.ReserveTalentIds[0] = "network_test_lifecycle";
+        TalentSlotConfig duplicateReserve = new TalentSlotConfig();
+        duplicateReserve.ReserveTalentIds[0] = "network_test_reserve_lifecycle";
+        duplicateReserve.ReserveTalentIds[1] = "network_test_reserve_lifecycle";
+
+        runner.Check(Throws<ArgumentException>(() => CreateRuntimeFromConfig(duplicateMain))
+                     && Throws<ArgumentException>(() => CreateRuntimeFromConfig(duplicateAcross))
+                     && Throws<ArgumentException>(() => CreateRuntimeFromConfig(duplicateReserve)),
+            "runtime rejects duplicate carried identity in main, cross-area, and reserve slots");
+
+        valid.SlotTalentIds[0] = " ";
+        valid.SlotTalentIds[1] = "network_test_unknown";
+        valid.SlotTalentIds[2] = "network_test_lifecycle";
+        TalentMatchRuntime runtime = null;
+        bool ignoredSafely = !Throws<Exception>(() => runtime = CreateRuntimeFromConfig(valid));
+        GameSession session = new GameSession(GameMode.Single);
+        if (runtime != null) runtime.BeginMatch(session);
+        runner.Check(ignoredSafely && session.Scores.SequenceEqual(new[] { 7, 0, 0, 0 }),
+            "blank and unknown ids are ignored without suppressing known carried talents");
+    }
+
+    private static void RuntimeRejectsIllegalLifecycleOrderAndForeignSessions(RegressionRunner runner)
+    {
+        LifecycleTestTalent.ResetObservations();
+        WallLifecycleTestTalent.ResetObservations();
+        RuntimePeekTestTalent.ResetObservations();
+        GameSession session = new GameSession(GameMode.EastOnly);
+        GameSession foreignSession = new GameSession(GameMode.EastOnly);
+        TalentMatchRuntime runtime = CreateRuntime(mainIds: new[]
+        {
+            "network_test_lifecycle",
+            "network_test_wall_lifecycle",
+            "network_test_peek",
+            "network_test_pipeline_add"
+        });
+        List<TileData> wall = new List<TileData>
+        {
+            new TileData(Suit.Man, 1, 0),
+            new TileData(Suit.Pin, 2, 1)
+        };
+
+        runtime.BeginMatch(session);
+        runner.Check(Throws<InvalidOperationException>(() =>
+                         runtime.ApplyWallBuilding(new TalentWallContext(session, wall)))
+                     && Throws<InvalidOperationException>(() =>
+                         runtime.ResolvePostShuffle(new TalentPostShuffleContext(session, wall)))
+                     && Throws<InvalidOperationException>(() =>
+                         runtime.EndRound(new TalentRoundOutcome(), session)),
+            "wall, post-shuffle, and round-end calls are rejected before a round starts");
+        runner.Check(WallLifecycleTestTalent.Calls == 0
+                     && RuntimePeekTestTalent.Calls == 0
+                     && LifecycleTestTalent.RoundEnds == 0,
+            "rejected pre-round lifecycle calls do not execute rule hooks");
+
+        runtime.BeginRound(new TalentRoundContext(session));
+        runner.Check(Throws<InvalidOperationException>(() =>
+                         runtime.BeginRound(new TalentRoundContext(session)))
+                     && Throws<InvalidOperationException>(() =>
+                         runtime.BeginRound(new TalentRoundContext(foreignSession))),
+            "runtime rejects consecutive and foreign-session BeginRound calls");
+        runner.Check(LifecycleTestTalent.MatchRoundCounts.SequenceEqual(new[] { 1 }),
+            "rejected BeginRound calls do not increment match or round counters");
+        runner.Check(Throws<InvalidOperationException>(() =>
+                         runtime.EndRound(new TalentRoundOutcome { WinnerSeatIndex = 0 }, session))
+                     && Throws<InvalidOperationException>(() =>
+                         runtime.ResolvePostShuffle(new TalentPostShuffleContext(session, wall))),
+            "round end and post-shuffle are rejected before wall building completes");
+
+        runtime.ApplyWallBuilding(new TalentWallContext(session, wall));
+        runner.Check(Throws<InvalidOperationException>(() =>
+                         runtime.ApplyWallBuilding(new TalentWallContext(session, wall)))
+                     && Throws<InvalidOperationException>(() =>
+                         runtime.EndRound(new TalentRoundOutcome(), session)),
+            "wall building runs once and a wall-built round cannot end before post-shuffle");
+        runner.Check(WallLifecycleTestTalent.Calls == 1
+                     && wall.Count == 3
+                     && LifecycleTestTalent.RoundEnds == 0,
+            "rejected wall/end repeats leave lifecycle hook counts unchanged");
+        runner.Check(Throws<InvalidOperationException>(() => runtime.ApplyDraw(
+                         new TalentDrawContext(session, 0),
+                         new TileData(Suit.Man, 2, 0)))
+                     && Throws<InvalidOperationException>(() => runtime.BuildScoringOptions(
+                         new TalentScoringContext(session, 0))),
+            "draw and scoring are unavailable until the round is post-shuffle ready");
+
+        runtime.ResolvePostShuffle(new TalentPostShuffleContext(session, wall));
+        runner.Check(Throws<InvalidOperationException>(() =>
+                         runtime.ResolvePostShuffle(new TalentPostShuffleContext(session, wall)))
+                     && RuntimePeekTestTalent.Calls == 1,
+            "post-shuffle resolution runs once per active round");
+        runner.Check(Throws<InvalidOperationException>(() => runtime.ApplyDraw(
+                         new TalentDrawContext(foreignSession, 0),
+                         new TileData(Suit.Man, 2, 0)))
+                     && Throws<InvalidOperationException>(() => runtime.ValidateAction(
+                         new TalentActionContext(foreignSession, 0, ClientActionType.Discard, null)))
+                     && Throws<InvalidOperationException>(() => runtime.BuildScoringOptions(
+                         new TalentScoringContext(foreignSession, 0)))
+                     && Throws<InvalidOperationException>(() => runtime.NotifyTileBecamePublic(
+                         new TalentPublicTileContext(foreignSession, 0),
+                         new TileData(Suit.Man, 1, 0)))
+                     && Throws<InvalidOperationException>(() => runtime.ResolveAcceptedWinVisibility(
+                         new TalentAcceptedWinContext(foreignSession, 0))),
+            "ready-round draw, action, scoring, public, and win hooks reject foreign sessions");
+        runner.Check(Throws<InvalidOperationException>(() => runtime.EndRound(
+                         new TalentRoundOutcome { WinnerSeatIndex = 0 },
+                         foreignSession))
+                     && LifecycleTestTalent.RoundEnds == 0,
+            "foreign-session EndRound is rejected before executing round-end hooks");
+
+        TileData transformed = runtime.ApplyDraw(
+            new TalentDrawContext(session, 0),
+            new TileData(Suit.Man, 2, 0));
+        runtime.EndRound(new TalentRoundOutcome { WinnerSeatIndex = 0 }, session);
+        runner.Check(transformed.Value == 3 && LifecycleTestTalent.RoundEnds == 1,
+            "ready-round hooks execute for the match session and end exactly once");
+        runner.Check(Throws<InvalidOperationException>(() =>
+                         runtime.EndRound(new TalentRoundOutcome { WinnerSeatIndex = 0 }, session))
+                     && LifecycleTestTalent.RoundEnds == 1,
+            "consecutive EndRound calls are rejected without repeating effects");
+    }
+
+    private static void SeatScopedContextsRejectInvalidSeatIndices(RegressionRunner runner)
+    {
+        GameSession session = new GameSession(GameMode.Single);
+        foreach (int invalidSeat in new[] { -1, 4 })
+        {
+            runner.Check(Throws<ArgumentOutOfRangeException>(() => new TalentDrawContext(session, invalidSeat))
+                         && Throws<ArgumentOutOfRangeException>(() => new TalentDiscardContext(session, invalidSeat))
+                         && Throws<ArgumentOutOfRangeException>(() => new TalentActionContext(
+                             session, invalidSeat, ClientActionType.Discard, null))
+                         && Throws<ArgumentOutOfRangeException>(() => new TalentScoringContext(session, invalidSeat))
+                         && Throws<ArgumentOutOfRangeException>(() => new TalentPublicTileContext(session, invalidSeat))
+                         && Throws<ArgumentOutOfRangeException>(() => new TalentAcceptedWinContext(session, invalidSeat)),
+                $"all seat-scoped contexts reject seat {invalidSeat}");
+        }
+    }
+
+    private static void RoundOutcomeRejectsInvalidSeatIndices(RegressionRunner runner)
+    {
+        foreach (TalentRoundOutcome invalidOutcome in new[]
+                 {
+                     new TalentRoundOutcome { WinnerSeatIndex = -1 },
+                     new TalentRoundOutcome { WinnerSeatIndex = 4 },
+                     new TalentRoundOutcome { WinnerSeatIndex = 0, DiscarderSeatIndex = -1 },
+                     new TalentRoundOutcome { WinnerSeatIndex = 0, DiscarderSeatIndex = 4 }
+                 })
+        {
+            LifecycleTestTalent.ResetObservations();
+            GameSession session = new GameSession(GameMode.Single);
+            TalentMatchRuntime runtime = CreateRuntime(mainIds: new[] { "network_test_lifecycle" });
+            runtime.BeginMatch(session);
+            BeginReadyRound(runtime, session);
+
+            runner.Check(Throws<ArgumentOutOfRangeException>(() => runtime.EndRound(invalidOutcome, session))
+                         && LifecycleTestTalent.RoundEnds == 0,
+                "round outcome rejects invalid winner/discarder seats before rule hooks");
+        }
+    }
+
+    private static void InactiveMatchInitializationCannotMutateAuthoritativeSession(RegressionRunner runner)
+    {
+        LifecycleTestTalent.ResetObservations();
+        ReserveLifecycleTestTalent.ResetObservations();
+        GameSession session = new GameSession(GameMode.Single);
+        TalentMatchRuntime runtime = CreateRuntime(
+            mainIds: new[] { "network_test_lifecycle" },
+            reserveIds: new[] { "network_test_reserve_lifecycle" });
+
+        runtime.BeginMatch(session);
+
+        runner.Check(!ReserveLifecycleTestTalent.MutableSessionLeaked
+                     && session.Scores.SequenceEqual(new[] { 7, 0, 0, 0 }),
+            "inactive match initialization receives a session snapshot and cannot mutate authoritative scores");
+    }
+
+    private static void DrawContextSnapshotsGameStateAndOwnerDeck(RegressionRunner runner)
+    {
+        ReadOnlyBoundaryTestTalent.ResetObservations();
+        GameSession session = new GameSession(GameMode.Single);
+        ServerGameState gameState = new ServerGameState(4);
+        gameState.InitHand(0, new List<TileData> { new TileData(Suit.Man, 1, 0) });
+        DeckConfig deck = DeckConfig.CreateStandard();
+        Dictionary<int, DeckConfig> decks = new Dictionary<int, DeckConfig> { [0] = deck };
+        TalentMatchRuntime runtime = CreateRuntime(mainIds: new[] { "network_test_read_only_boundary" });
+        runtime.BeginMatch(session);
+        BeginReadyRound(runtime, session);
+
+        runtime.ApplyDraw(
+            new TalentDrawContext(session, 0, gameState, decks),
+            new TileData(Suit.Pin, 2, 0));
+
+        runner.Check(ReadOnlyBoundaryTestTalent.SawReadOnlyViews
+                     && !ReadOnlyBoundaryTestTalent.MutableGameStateLeaked
+                     && !ReadOnlyBoundaryTestTalent.MutableDeckLeaked,
+            "draw rules receive game-state and owner-deck snapshots instead of mutable authority objects");
+        runner.Check(gameState.GetHand(0).Count == 1 && deck.GetCardCount(Suit.Man, 1) == 1,
+            "draw context snapshots cannot mutate authoritative hand or deck configuration");
+    }
+
     private static void CrossRoundRuntimePreservesMatchStateAndResetsRoundState(RegressionRunner runner)
     {
         LifecycleTestTalent.ResetObservations();
@@ -173,9 +403,9 @@ internal static class TalentFoundationTests
             duplicateBeginRejected = true;
         }
 
-        runtime.BeginRound(new TalentRoundContext(session));
+        BeginReadyRound(runtime, session);
         runtime.EndRound(new TalentRoundOutcome { WinnerSeatIndex = 0, FinalFan = 8 }, session);
-        runtime.BeginRound(new TalentRoundContext(session));
+        BeginReadyRound(runtime, session);
         runtime.EndRound(new TalentRoundOutcome
         {
             WinnerSeatIndex = 2,
@@ -252,6 +482,7 @@ internal static class TalentFoundationTests
             new TileData(Suit.Sou, 9, 3)
         };
 
+        runtime.ApplyWallBuilding(new TalentWallContext(session, shuffledWall));
         runtime.ResolvePostShuffle(new TalentPostShuffleContext(session, shuffledWall));
 
         runner.Check(runtime.GetPrivatePeekTiles(0).Select(tile => (tile.TileSuit, tile.Value))
@@ -269,7 +500,7 @@ internal static class TalentFoundationTests
             "network_test_pipeline_add", "network_test_pipeline_multiply"
         });
         runtime.BeginMatch(session);
-        runtime.BeginRound(new TalentRoundContext(session));
+        BeginReadyRound(runtime, session);
 
         TileData drawn = runtime.ApplyDraw(
             new TalentDrawContext(session, currentSeatIndex: 0),
@@ -289,7 +520,7 @@ internal static class TalentFoundationTests
         GameSession session = new GameSession(GameMode.Single);
         TalentMatchRuntime runtime = CreateRuntime(mainIds: new[] { "network_test_lifecycle" });
         runtime.BeginMatch(session);
-        runtime.BeginRound(new TalentRoundContext(session));
+        BeginReadyRound(runtime, session);
 
         ScoringOptions first = runtime.BuildScoringOptions(new TalentScoringContext(session, 0));
         first.BonusFan = 99;
@@ -312,6 +543,37 @@ internal static class TalentFoundationTests
         return new TalentMatchRuntime(
             new Dictionary<int, TalentSlotConfig> { [0] = config },
             TalentRegistry.Instance);
+    }
+
+    private static TalentMatchRuntime CreateRuntimeFromConfig(TalentSlotConfig config)
+    {
+        return new TalentMatchRuntime(
+            new Dictionary<int, TalentSlotConfig> { [0] = config },
+            TalentRegistry.Instance);
+    }
+
+    private static void BeginReadyRound(
+        TalentMatchRuntime runtime,
+        GameSession session,
+        List<TileData> wall = null)
+    {
+        List<TileData> roundWall = wall ?? new List<TileData>();
+        runtime.BeginRound(new TalentRoundContext(session));
+        runtime.ApplyWallBuilding(new TalentWallContext(session, roundWall));
+        runtime.ResolvePostShuffle(new TalentPostShuffleContext(session, roundWall));
+    }
+
+    private static bool Throws<TException>(Action action) where TException : Exception
+    {
+        try
+        {
+            action();
+            return false;
+        }
+        catch (TException)
+        {
+            return true;
+        }
     }
 
     private static void LoadoutDecodingEnforcesRoomAlienationPresets(RegressionRunner runner)
@@ -398,6 +660,7 @@ internal sealed class LifecycleTestTalent : TalentRule
     public static List<int> RoundCountsBeforeStart { get; } = new List<int>();
     public static List<bool> PreviousRoundWonAtStart { get; } = new List<bool>();
     public static bool LastRoundWon { get; private set; }
+    public static int RoundEnds { get; private set; }
 
     public static void ResetObservations()
     {
@@ -406,6 +669,7 @@ internal sealed class LifecycleTestTalent : TalentRule
         RoundCountsBeforeStart.Clear();
         PreviousRoundWonAtStart.Clear();
         LastRoundWon = false;
+        RoundEnds = 0;
     }
 
     public override void InitializeMatchState(TalentMatchContext context)
@@ -434,6 +698,7 @@ internal sealed class LifecycleTestTalent : TalentRule
 
     public override void OnRoundEnded(TalentRoundContext context, TalentRoundOutcome outcome)
     {
+        RoundEnds++;
         LastRoundWon = outcome.WinnerSeatIndex == context.OwnerSeatIndex;
         context.State.SetFlag("last_round_won", LastRoundWon, TalentStateScope.Match);
     }
@@ -451,15 +716,25 @@ internal sealed class ReserveLifecycleTestTalent : TalentRule
     public static int MatchInitializations { get; private set; }
     public static int MatchStartEffects { get; private set; }
     public static int RoundStarts { get; private set; }
+    public static bool MutableSessionLeaked { get; private set; }
 
     public static void ResetObservations()
     {
         MatchInitializations = 0;
         MatchStartEffects = 0;
         RoundStarts = 0;
+        MutableSessionLeaked = false;
     }
 
-    public override void InitializeMatchState(TalentMatchContext context) => MatchInitializations++;
+    public override void InitializeMatchState(TalentMatchContext context)
+    {
+        MatchInitializations++;
+        if ((object)context.Session is GameSession authority)
+        {
+            MutableSessionLeaked = true;
+            authority.Scores[context.OwnerSeatIndex] = 900;
+        }
+    }
 
     public override int GetMatchStartScoreDelta(TalentMatchContext context)
     {
@@ -473,7 +748,62 @@ internal sealed class ReserveLifecycleTestTalent : TalentRule
 [TalentRule("network_test_peek", "Peek", "test", TalentTier.Small, 0)]
 internal sealed class RuntimePeekTestTalent : TalentRule
 {
-    public override int GetRoundStartPeekCount(TalentRoundContext context) => 2;
+    public static int Calls { get; private set; }
+
+    public static void ResetObservations() => Calls = 0;
+
+    public override int GetRoundStartPeekCount(TalentRoundContext context)
+    {
+        Calls++;
+        return 2;
+    }
+}
+
+[TalentRule("network_test_wall_lifecycle", "Wall Lifecycle", "test", TalentTier.Small, 0,
+    TalentPhase.WallBuilding)]
+internal sealed class WallLifecycleTestTalent : TalentRule
+{
+    public static int Calls { get; private set; }
+
+    public static void ResetObservations() => Calls = 0;
+
+    public override void OnWallBuilding(TalentWallContext context)
+    {
+        Calls++;
+        context.WallTiles.Add(new TileData(Suit.Dragon, 3, 0));
+    }
+}
+
+[TalentRule("network_test_read_only_boundary", "Read-only Boundary", "test", TalentTier.Small, 0,
+    TalentPhase.OnDraw)]
+internal sealed class ReadOnlyBoundaryTestTalent : TalentRule
+{
+    public static bool SawReadOnlyViews { get; private set; }
+    public static bool MutableGameStateLeaked { get; private set; }
+    public static bool MutableDeckLeaked { get; private set; }
+
+    public static void ResetObservations()
+    {
+        SawReadOnlyViews = false;
+        MutableGameStateLeaked = false;
+        MutableDeckLeaked = false;
+    }
+
+    public override TileData OnDraw(TalentContext context, TileData tile)
+    {
+        SawReadOnlyViews = context.GameState != null && context.OwnerDeckConfig != null;
+        if ((object)context.GameState is ServerGameState authority)
+        {
+            MutableGameStateLeaked = true;
+            authority.AddTile(0, new TileData(Suit.Wind, 1, 0));
+        }
+        if ((object)context.OwnerDeckConfig is DeckConfig deck)
+        {
+            MutableDeckLeaked = true;
+            deck.SetCardCount(Suit.Man, 1, 9);
+        }
+        return tile;
+    }
 }
 
 [TalentRule("network_test_pipeline_add", "Pipeline Add", "test", TalentTier.Small, 0,

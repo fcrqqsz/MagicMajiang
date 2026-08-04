@@ -75,9 +75,15 @@ namespace MahjongGame.Talents
 
             foreach (var rule in pipeline)
             {
-                var ctx = CreateContext(rule, -1, gameState, session, deckConfigs);
-                ctx.WallTiles = wallTiles;
-                rule.OnWallBuilding(ctx);
+                TalentWallContext context = new TalentWallContext(
+                    session,
+                    wallTiles,
+                    gameState,
+                    deckConfigs);
+                rule.OnWallBuilding(context.BindWall(
+                    rule.OwnerSeatIndex,
+                    new TalentRuntimeState { IsActive = true },
+                    null));
             }
         }
 
@@ -147,14 +153,12 @@ namespace MahjongGame.Talents
 
         private TalentContext CreateContext(TalentRule rule, int currentPlayerId, ServerGameState gameState, GameSession session, Dictionary<int, DeckConfig> deckConfigs)
         {
-            return new TalentContext
-            {
-                CurrentSeatIndex = currentPlayerId,
-                OwnerSeatIndex = rule.OwnerSeatIndex,
-                GameState = gameState,
-                Session = session,
-                OwnerDeckConfig = deckConfigs != null && deckConfigs.TryGetValue(rule.OwnerSeatIndex, out var cfg) ? cfg : null
-            };
+            return TalentContext.CreateLegacy(
+                session,
+                currentPlayerId,
+                rule.OwnerSeatIndex,
+                gameState,
+                deckConfigs);
         }
     }
 }

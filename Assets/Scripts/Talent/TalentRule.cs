@@ -23,7 +23,7 @@ namespace MahjongGame.Talents
         }
 
         // 各阶段钩子，子类按需覆写
-        public virtual void OnWallBuilding(TalentContext ctx) { }
+        public virtual void OnWallBuilding(TalentWallContext ctx) { }
         public virtual TileData OnDraw(TalentContext ctx, TileData tile) => tile;
         public virtual TileData OnDiscard(TalentContext ctx, TileData tile) => tile;
         public virtual bool OnActionValidation(TalentContext ctx, ClientActionType actionType, TileData targetTile) => true;
