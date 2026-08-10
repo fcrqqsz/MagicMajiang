@@ -1,5 +1,5 @@
 麻将 Roguelike 项目进度快照 (Project Snapshot)
-日期: 2026-07-25 版本: Alpha - Online Framework & Reconnect 引擎: Unity (2022.3.61t9)
+日期: 2026-08-10 版本: Alpha - Talent Plan 1 Complete 引擎: Unity (2022.3.61t9)
 
 > **文档约定**: 已完成的任务统一记录在 `milestone.md`，`plan.md` 仅保留待办与未来规划。
 
