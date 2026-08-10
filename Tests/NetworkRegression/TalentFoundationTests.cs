@@ -6,6 +6,7 @@ using MahjongGame.Core;
 using MahjongGame.Core.Network;
 using MahjongGame.Core.Network.Data;
 using MahjongGame.Core.Network.Messages;
+using MahjongGame.Core.Interfaces;
 using MahjongGame.Talents;
 
 internal static class TalentFoundationTests
@@ -28,6 +29,7 @@ internal static class TalentFoundationTests
         CrossRoundRuntimePreservesMatchStateAndResetsRoundState(runner);
         RuntimeEventsRespectVisibilityWithoutDestructiveReads(runner);
         PostShufflePeekIsPrivateAndUsesShuffledOrder(runner);
+        GameStartPeekCapturesNextFourPhysicalTilesAfterInitialDeal(runner);
         DrawAndDiscardPipelinesKeepStablePriorityOrder(runner);
         ScoringOptionsAreFreshForEveryEvaluation(runner);
         ScoringEvaluationCannotMutateAuthoritativeStateOrEmit(runner);
@@ -511,6 +513,42 @@ internal static class TalentFoundationTests
             "post-shuffle peek results remain private to the owning seat");
     }
 
+    private static void GameStartPeekCapturesNextFourPhysicalTilesAfterInitialDeal(RegressionRunner runner)
+    {
+        GameSession session = new GameSession(GameMode.Single);
+        TalentMatchRuntime runtime = CreateRuntime(mainIds: new[] { "peek" });
+        runtime.BeginMatch(session);
+        runtime.BeginRound(new TalentRoundContext(session));
+
+        var wall = new DeterministicWallService(Enumerable.Range(0, 60)
+            .Select(index => new TileData(Suit.Man, index % 9 + 1, index % 4)
+            {
+                ID = $"physical-{index:D2}"
+            }));
+        var dealtTiles = new List<TileData>();
+
+        GameRoundSetupSequence.BuildShuffleDealAndCapturePeek(
+            buildWall: () => wall.BuildWall(new List<DeckConfig>()),
+            applyWallTalents: () => runtime.ApplyWallBuilding(
+                new TalentWallContext(session, wall.GetWallTiles())),
+            shuffleWall: wall.ShuffleWall,
+            dealStartingHands: () =>
+            {
+                for (int index = 0; index < 52; index++)
+                    dealtTiles.Add(wall.DrawTile());
+            },
+            capturePeek: () => runtime.ResolvePostShuffle(
+                new TalentPostShuffleContext(session, wall.GetWallTiles())));
+
+        string[] peekIds = runtime.GetPrivatePeekTiles(0).Select(tile => tile.ID).ToArray();
+        runner.Check(peekIds.SequenceEqual(new[]
+            {
+                "physical-52", "physical-53", "physical-54", "physical-55"
+            })
+            && !peekIds.Intersect(dealtTiles.Select(tile => tile.ID)).Any(),
+            "GameServer setup captures exactly the next four undealt physical tiles for Peek");
+    }
+
     private static void DrawAndDiscardPipelinesKeepStablePriorityOrder(RegressionRunner runner)
     {
         GameSession session = new GameSession(GameMode.Single);
@@ -878,6 +916,30 @@ internal static class TalentFoundationTests
         }
         return entries.ToArray();
     }
+}
+
+internal sealed class DeterministicWallService : IWallService
+{
+    private readonly List<TileData> _initialTiles;
+    private List<TileData> _wallTiles;
+
+    public DeterministicWallService(IEnumerable<TileData> tiles)
+    {
+        _initialTiles = tiles.ToList();
+        _wallTiles = new List<TileData>(_initialTiles);
+    }
+
+    public void BuildWall(List<DeckConfig> playerConfigs) => _wallTiles = new List<TileData>(_initialTiles);
+    public List<TileData> GetWallTiles() => _wallTiles;
+    public void ShuffleWall() { }
+    public TileData DrawTile()
+    {
+        TileData tile = _wallTiles[0];
+        _wallTiles.RemoveAt(0);
+        return tile;
+    }
+    public List<TileData> PeekTopTiles(int count) => _wallTiles.Take(count).ToList();
+    public int RemainingCount => _wallTiles.Count;
 }
 
 [TalentRule("network_test_scoring_side_effect", "Scoring Side Effect", "test", TalentTier.Small, 0)]

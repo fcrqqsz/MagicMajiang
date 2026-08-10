@@ -6,5 +6,6 @@ NetworkAuthorityBoundaryTests.Run(runner);
 SnapshotReconnectTests.Run(runner);
 ActionValidationTests.Run(runner);
 TalentFoundationTests.Run(runner);
+AuthoritativePublicTileTransitionTests.Run(runner);
 
 return runner.Complete();

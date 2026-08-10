@@ -587,47 +587,80 @@ namespace MahjongGame.Core.Network
                 finishedServer.OnTalentEventsAvailable -= BroadcastTalentEventsAtSafeBoundary;
             }
 
-            _talentRuntime.EndRound(new TalentRoundOutcome
+            try
             {
-                IsAborted = completion?.Kind == GameRoundCompletionKind.Aborted,
-                WinnerSeatIndex = finishedServer != null && finishedServer.WinnerId >= 0
-                    ? finishedServer.WinnerId
-                    : null,
-                DiscarderSeatIndex = finishedServer != null
-                                     && !finishedServer.WinIsSelfDraw
-                                     && finishedServer.LoserId >= 0
-                    ? finishedServer.LoserId
-                    : null,
-                FinalFan = finishedServer?.WinFan ?? 0
-            }, Session);
-            BroadcastTalentEventsAtSafeBoundary();
-            if (completion?.Kind == GameRoundCompletionKind.Aborted)
-            {
-                foreach (RoomSeat seat in _seats.Where(candidate => candidate != null && !candidate.IsAi))
+                _talentRuntime.EndRound(new TalentRoundOutcome
                 {
-                    seat.MessageStream.Send("RoomError", new RoomErrorMessage
+                    IsAborted = completion?.Kind == GameRoundCompletionKind.Aborted,
+                    WinnerSeatIndex = finishedServer != null && finishedServer.WinnerId >= 0
+                        ? finishedServer.WinnerId
+                        : null,
+                    DiscarderSeatIndex = finishedServer != null
+                                         && !finishedServer.WinIsSelfDraw
+                                         && finishedServer.LoserId >= 0
+                        ? finishedServer.LoserId
+                        : null,
+                    FinalFan = finishedServer?.WinFan ?? 0
+                }, Session);
+                BroadcastTalentEventsAtSafeBoundary();
+                if (completion?.Kind == GameRoundCompletionKind.Aborted)
+                {
+                    CompleteAbortedSessionBestEffort();
+                    return;
+                }
+
+                Session.AdvanceRound();
+                if (Session.IsSessionOver())
+                {
+                    State = RoomState.SessionCompleted;
+                    NotifySessionEndBestEffort();
+                    return;
+                }
+
+                foreach (var seat in _seats.Where(s => s != null && !s.IsAi))
+                    seat.MatchReady = RoomLifecyclePolicy.ShouldAutoReadyNextRoundSeat(seat.IsOnline);
+                State = RoomState.WaitingForNextRound;
+            }
+            catch (Exception error)
+            {
+                Debug.LogError($"[Room:{RoomId}] Round finalization failed; aborting session: {error}");
+                CompleteAbortedSessionBestEffort();
+            }
+        }
+
+        private void CompleteAbortedSessionBestEffort()
+        {
+            State = RoomState.SessionCompleted;
+            foreach (RoomSeat seat in _seats.Where(candidate => candidate != null && !candidate.IsAi))
+            {
+                TryTerminalCallback(seat, "RoundAborted", () => seat.MessageStream?.Send(
+                    "RoomError",
+                    new RoomErrorMessage
                     {
                         code = NetworkErrorCodes.RoundAborted,
                         message = "The current round was terminated by an internal server error."
-                    });
-                    seat.Controller?.OnSessionEnd(Session.Scores);
-                }
-                State = RoomState.SessionCompleted;
-                return;
+                    }));
+                TryTerminalCallback(seat, "SessionEnd", () => seat.Controller?.OnSessionEnd(Session.Scores));
             }
+        }
 
-            Session.AdvanceRound();
-            if (Session.IsSessionOver())
+        private void NotifySessionEndBestEffort()
+        {
+            foreach (RoomSeat seat in _seats.Where(candidate => candidate != null && !candidate.IsAi))
+                TryTerminalCallback(seat, "SessionEnd", () => seat.Controller?.OnSessionEnd(Session.Scores));
+        }
+
+        private void TryTerminalCallback(RoomSeat seat, string callbackName, Action callback)
+        {
+            try
             {
-                foreach (var seat in _seats)
-                    if (seat != null && !seat.IsAi) seat.Controller?.OnSessionEnd(Session.Scores);
-                State = RoomState.SessionCompleted;
-                return;
+                callback?.Invoke();
             }
-
-            foreach (var seat in _seats.Where(s => s != null && !s.IsAi))
-                seat.MatchReady = RoomLifecyclePolicy.ShouldAutoReadyNextRoundSeat(seat.IsOnline);
-            State = RoomState.WaitingForNextRound;
+            catch (Exception error)
+            {
+                Debug.LogError(
+                    $"[Room:{RoomId}] {callbackName} delivery failed for seat {seat?.SeatIndex}: {error}");
+            }
         }
 
         private void BroadcastTalentEventsAtSafeBoundary()

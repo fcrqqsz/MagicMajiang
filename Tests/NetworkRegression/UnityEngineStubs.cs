@@ -41,11 +41,17 @@ namespace MahjongGame.Core.Network.Transport
     public class GameEndpoint
     {
         public readonly System.Collections.Generic.List<string> SentMessages = new System.Collections.Generic.List<string>();
+        public System.Func<string, bool> SendFailure { get; set; }
         public static event System.Action<string, GameEndpoint, long> OnClientConnected;
         public static event System.Action<string, string, GameEndpoint, long> OnMessageReceived;
         public static event System.Action<string, GameEndpoint, long> OnClientDisconnected;
 
-        public void SendMessage(string message) => SentMessages.Add(message);
+        public void SendMessage(string message)
+        {
+            if (SendFailure?.Invoke(message) == true)
+                throw new System.InvalidOperationException("injected endpoint send failure");
+            SentMessages.Add(message);
+        }
 
         public void Connect(string connectionId, long generation) =>
             OnClientConnected?.Invoke(connectionId, this, generation);

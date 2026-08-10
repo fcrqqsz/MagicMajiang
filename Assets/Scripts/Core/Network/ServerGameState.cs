@@ -105,16 +105,84 @@ namespace MahjongGame.Core.Network
                     break;
 
                 case ClientActionType.AnGan:
-                    RemoveMatching(snapshot.Hand, targetTile, 4);
-                    snapshot.Melds.Add(new Meld(MeldType.Kan_Concealed,
-                        new List<TileData> { CloneTile(targetTile), CloneTile(targetTile), CloneTile(targetTile), CloneTile(targetTile) },
-                        targetTile.OriginalOwnerID, true));
+                    TryCommitConcealedKong(playerId, targetTile, out _);
                     break;
 
                 case ClientActionType.JiaGang:
                     TryResolveAddedKong(playerId, targetTile, wasRobbed: false, out _);
                     break;
             }
+        }
+
+        public bool TryCommitConcealedKong(
+            int playerId,
+            TileData targetTile,
+            out List<TileData> publicTiles)
+        {
+            publicTiles = new List<TileData>();
+            if (targetTile == null) return false;
+
+            PlayerSnapshot snapshot = _players[playerId];
+            List<TileData> authoritativeTiles = snapshot.Hand
+                .Where(tile => tile.TileSuit == targetTile.TileSuit && tile.Value == targetTile.Value)
+                .Take(4)
+                .ToList();
+            if (authoritativeTiles.Count != 4) return false;
+
+            foreach (TileData tile in authoritativeTiles)
+                snapshot.Hand.Remove(tile);
+            publicTiles = authoritativeTiles.Select(CloneTile).ToList();
+            snapshot.Melds.Add(new Meld(
+                MeldType.Kan_Concealed,
+                publicTiles.Select(CloneTile).ToList(),
+                authoritativeTiles[0].OriginalOwnerID,
+                true));
+            return true;
+        }
+
+        public bool TryGetAddedKongDeclarationTile(
+            int playerId,
+            TileData targetTile,
+            out TileData authoritativeTile)
+        {
+            authoritativeTile = null;
+            if (targetTile == null) return false;
+
+            PlayerSnapshot snapshot = _players[playerId];
+            bool hasPon = snapshot.Melds.Any(
+                meld => meld.Type == MeldType.Pon
+                        && meld.FirstTile.TileSuit == targetTile.TileSuit
+                        && meld.FirstTile.Value == targetTile.Value);
+            if (!hasPon) return false;
+
+            TileData handTile = snapshot.Hand.FirstOrDefault(
+                tile => tile.TileSuit == targetTile.TileSuit && tile.Value == targetTile.Value);
+            if (handTile == null) return false;
+            authoritativeTile = CloneTile(handTile);
+            return true;
+        }
+
+        public bool TryCommitAddedKong(
+            int playerId,
+            TileData authoritativeTile,
+            out TileData publicTile)
+        {
+            publicTile = null;
+            if (authoritativeTile == null || string.IsNullOrEmpty(authoritativeTile.ID)) return false;
+
+            PlayerSnapshot snapshot = _players[playerId];
+            TileData handTile = snapshot.Hand.FirstOrDefault(tile => tile.ID == authoritativeTile.ID);
+            Meld ponMeld = snapshot.Melds.FirstOrDefault(
+                meld => meld.Type == MeldType.Pon
+                        && meld.FirstTile.TileSuit == authoritativeTile.TileSuit
+                        && meld.FirstTile.Value == authoritativeTile.Value);
+            if (handTile == null || ponMeld == null) return false;
+
+            snapshot.Hand.Remove(handTile);
+            ponMeld.Type = MeldType.Kan_Added;
+            ponMeld.Tiles.Add(CloneTile(handTile));
+            publicTile = CloneTile(handTile);
+            return true;
         }
 
         /// <summary>
@@ -129,21 +197,8 @@ namespace MahjongGame.Core.Network
         {
             publicTile = null;
             if (wasRobbed || targetTile == null) return false;
-
-            PlayerSnapshot snapshot = _players[playerId];
-            TileData authoritativeTile = snapshot.Hand.FirstOrDefault(
-                tile => tile.TileSuit == targetTile.TileSuit && tile.Value == targetTile.Value);
-            Meld ponMeld = snapshot.Melds.FirstOrDefault(
-                meld => meld.Type == MeldType.Pon
-                        && meld.FirstTile.TileSuit == targetTile.TileSuit
-                        && meld.FirstTile.Value == targetTile.Value);
-            if (authoritativeTile == null || ponMeld == null) return false;
-
-            snapshot.Hand.Remove(authoritativeTile);
-            ponMeld.Type = MeldType.Kan_Added;
-            ponMeld.Tiles.Add(CloneTile(authoritativeTile));
-            publicTile = CloneTile(authoritativeTile);
-            return true;
+            return TryGetAddedKongDeclarationTile(playerId, targetTile, out TileData authoritativeTile)
+                   && TryCommitAddedKong(playerId, authoritativeTile, out publicTile);
         }
 
         public TileData GetAutoDiscardTile(int playerId, TileData lastDrawn)

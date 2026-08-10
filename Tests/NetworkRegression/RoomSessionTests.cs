@@ -16,6 +16,7 @@ internal static class RoomSessionTests
         TestWallAndSessionTalent(runner);
         TestRoomOwnsOneTalentRuntimeAcrossRounds(runner);
         TestAbnormalRoundCompletionUnwindsRoomOnce(runner);
+        TestRoundFinalizationFailureTerminatesEveryHumanSeat(runner);
         TestRoomReadyAndDeparture(runner);
         TestResponseAndTurnPolicies(runner);
         TestClientRoomAndScoreProjection(runner);
@@ -433,6 +434,80 @@ internal static class RoomSessionTests
         return room;
     }
 
+    private static void TestRoundFinalizationFailureTerminatesEveryHumanSeat(RegressionRunner runner)
+    {
+        var hostTalents = new TalentSlotConfig();
+        hostTalents.SlotTalentIds[3] = "draw_reward";
+        hostTalents.SlotTalentIds[4] = "network_test_throw_round_end";
+        PlayerLoadoutCodec.TryDecode(
+            PlayerLoadoutCodec.CreateMessage(DeckConfig.CreateStandard(), hostTalents),
+            AlienationPreset.Standard,
+            out TrustedPlayerLoadout hostLoadout,
+            out _);
+        PlayerLoadoutCodec.TryDecode(
+            PlayerLoadoutCodec.CreateMessage(DeckConfig.CreateStandard(), new TalentSlotConfig()),
+            AlienationPreset.Standard,
+            out TrustedPlayerLoadout guestLoadout,
+            out _);
+
+        var hostEndpoint = new GameEndpoint();
+        var guestEndpoint = new GameEndpoint();
+        using var room = new Room(
+            "round-finalization-failure",
+            GameMode.EastOnly,
+            AlienationPreset.Standard,
+            "host",
+            true,
+            16);
+        room.TryAddHuman("host", hostEndpoint, "dev:failure-host", "Host", hostLoadout, out _);
+        room.TryAddHuman("guest", guestEndpoint, "dev:failure-guest", "Guest", guestLoadout, out _);
+        room.SetReady("host", ReadyPhase.MatchStart, out _);
+        room.SetReady("guest", ReadyPhase.MatchStart, out _);
+        room.SetReady("host", ReadyPhase.GameSceneLoaded, out _);
+        room.SetReady("guest", ReadyPhase.GameSceneLoaded, out _);
+        hostEndpoint.SendFailure = message =>
+            MessageSerializer.DeserializeEnvelope(message)?.type == "RoomError";
+
+        bool exceptionLeaked = false;
+        try
+        {
+            room.GameServer?.CompleteDrawRound();
+        }
+        catch (InvalidOperationException)
+        {
+            exceptionLeaked = true;
+        }
+
+        int hostSessionEnds = CountMessages(hostEndpoint, "SessionEnd");
+        int guestSessionEnds = CountMessages(guestEndpoint, "SessionEnd");
+        int guestAborts = CountMessages(guestEndpoint, "RoomError", NetworkErrorCodes.RoundAborted);
+        int scoreAfterFailure = room.Session.Scores[0];
+        room.GameServer?.CompleteDrawRound();
+
+        runner.Check(!exceptionLeaked
+                     && room.State == RoomState.SessionCompleted
+                     && room.Session.TotalRoundsPlayed == 0
+                     && scoreAfterFailure == 5
+                     && room.Session.Scores[0] == 5
+                     && room.GameServer?.CompletionNotifications == 1
+                     && hostSessionEnds == 1
+                     && guestSessionEnds == 1
+                     && guestAborts == 1
+                     && CountMessages(guestEndpoint, "SessionEnd") == 1
+                     && CountMessages(guestEndpoint, "RoomError", NetworkErrorCodes.RoundAborted) == 1,
+            "throwing round-end talent aborts Room once, does not duplicate rewards, and isolates terminal seat failures");
+    }
+
+    private static int CountMessages(GameEndpoint endpoint, string type, string errorCode = null)
+    {
+        return endpoint.SentMessages
+            .Select(MessageSerializer.DeserializeEnvelope)
+            .Count(envelope => envelope?.type == type
+                               && (errorCode == null
+                                   || MessageSerializer.DeserializePayload<RoomErrorMessage>(envelope.data)?.code
+                                   == errorCode));
+    }
+
     private static void TestRoomReadyAndDeparture(RegressionRunner runner)
     {
         runner.Check(!RoomReadyPolicy.CanMarkMatchReady(false, 3)
@@ -555,3 +630,12 @@ internal sealed class NetworkTestSmallTalent : TalentRule { }
 
 [TalentRule("network_test_medium", "Network Test Medium", "Regression-only medium talent.", TalentTier.Medium, 1)]
 internal sealed class NetworkTestMediumTalent : TalentRule { }
+
+[TalentRule("network_test_throw_round_end", "Throw Round End", "Regression-only failure talent.", TalentTier.Small, 0)]
+internal sealed class NetworkTestThrowRoundEndTalent : TalentRule
+{
+    public override void OnRoundEnded(TalentRoundContext context, TalentRoundOutcome outcome)
+    {
+        throw new InvalidOperationException("injected round-end talent failure");
+    }
+}

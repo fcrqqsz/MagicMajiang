@@ -95,6 +95,7 @@ namespace MahjongGame.Core.Network
 
         // 服务端场面快照 + 取消令牌
         private ServerGameState _gameState;
+        private AuthoritativePublicTileTransition _publicTileTransition;
         private CancellationTokenSource _turnCts;
 
         private Dictionary<int, DeckConfig> _deckConfigs;
@@ -168,26 +169,27 @@ namespace MahjongGame.Core.Network
 
             // 初始化服务端场面快照
             _gameState = new ServerGameState(clients.Count);
+            _publicTileTransition = new AuthoritativePublicTileTransition(
+                _gameState,
+                _talentRuntime,
+                _session);
 
             try
             {
                 _talentRuntime.BeginRound(new TalentRoundContext(_session));
 
-                // 构建牌山（不洗牌）
-                _wallService.BuildWall(configs);
-
-                // 天赋: 牌山构建阶段
-                _talentRuntime.ApplyWallBuilding(new TalentWallContext(
-                    _session,
-                    _wallService.GetWallTiles(),
-                    _gameState,
-                    _deckConfigs));
-
-                // 洗牌
-                _wallService.ShuffleWall();
-                _talentRuntime.ResolvePostShuffle(new TalentPostShuffleContext(
-                    _session,
-                    _wallService.GetWallTiles()));
+                GameRoundSetupSequence.BuildShuffleDealAndCapturePeek(
+                    buildWall: () => _wallService.BuildWall(configs),
+                    applyWallTalents: () => _talentRuntime.ApplyWallBuilding(new TalentWallContext(
+                        _session,
+                        _wallService.GetWallTiles(),
+                        _gameState,
+                        _deckConfigs)),
+                    shuffleWall: _wallService.ShuffleWall,
+                    dealStartingHands: DealStartingHands,
+                    capturePeek: () => _talentRuntime.ResolvePostShuffle(new TalentPostShuffleContext(
+                        _session,
+                        _wallService.GetWallTiles())));
 
                 // 广播圈风/门风信息
                 if (_session != null)
@@ -213,8 +215,6 @@ namespace MahjongGame.Core.Network
                     _clients[i].OnTalentInfo(options);
                 }
 
-                // 发牌
-                DealStartingHands();
                 BroadcastWallCount();
 
                 SendPrivatePeekResults();
@@ -405,38 +405,54 @@ namespace MahjongGame.Core.Network
                 else if (action.ActionType == ClientActionType.AnGan)
                 {
                     // 暗杠不能被抢胡，立即生效。
-                    _gameState.ApplyMeld(_currentPlayerIndex, action.ActionType, action.TargetTile, action.ChiCombinations);
-                    BroadcastAction(action);
+                    if (!_publicTileTransition.TryCommitConcealedKong(
+                            _currentPlayerIndex,
+                            action.TargetTile,
+                            action.ChiCombinations,
+                            BroadcastAction,
+                            out _))
+                    {
+                        Debug.LogError($"[GameServer] Could not commit concealed kong for player {_currentPlayerIndex}.");
+                        continue;
+                    }
+                    OnTalentEventsAvailable?.Invoke();
                     continue; // 直接重新循环
                 }
                 else if (action.ActionType == ClientActionType.JiaGang)
                 {
                     // 加杠先公开声明，但在抢杠窗口关闭前不能修改权威副露。
-                    ClientAction robKongWin = await CollectRobKongResponses(action);
+                    if (!_publicTileTransition.TryPrepareAddedKong(
+                            _currentPlayerIndex,
+                            action.TargetTile,
+                            out TileData authoritativeAddedKongTile))
+                    {
+                        Debug.LogError($"[GameServer] Could not resolve added kong declaration for player {_currentPlayerIndex}.");
+                        continue;
+                    }
+                    ClientAction declaration = new ClientAction(
+                        action.PlayerId,
+                        action.ActionType,
+                        authoritativeAddedKongTile,
+                        action.ChiCombinations);
+                    ClientAction robKongWin = await CollectRobKongResponses(declaration);
                     bool wasRobbed = robKongWin != null && robKongWin.ActionType == ClientActionType.Hu;
                     if (wasRobbed)
                     {
-                        _gameState.TryResolveAddedKong(
-                            _currentPlayerIndex,
-                            action.TargetTile,
-                            wasRobbed: true,
-                            out _);
-                        HandlePlayerWin(robKongWin, false, _currentPlayerIndex, action.TargetTile, true);
+                        HandlePlayerWin(robKongWin, false, _currentPlayerIndex, authoritativeAddedKongTile, true);
                         break;
                     }
 
                     // 所有人过或超时：此时才真正将碰升级为加杠，然后进入岭上补牌。
-                    if (!_gameState.TryResolveAddedKong(
+                    if (!_publicTileTransition.TryCommitAddedKong(
                             _currentPlayerIndex,
-                            action.TargetTile,
-                            wasRobbed: false,
-                            out TileData publicAddedKongTile))
+                            authoritativeAddedKongTile,
+                            action.ChiCombinations,
+                            BroadcastAction,
+                            out _))
                     {
                         Debug.LogError($"[GameServer] Could not commit added kong for player {_currentPlayerIndex}.");
                         continue;
                     }
-                    BroadcastAction(action);
-                    NotifyTileBecamePublic(_currentPlayerIndex, publicAddedKongTile);
                     continue;
                 }
                 else if (action.ActionType == ClientActionType.Discard)
@@ -591,10 +607,15 @@ namespace MahjongGame.Core.Network
             }
 
             // 该牌是公开的加杠声明，不是弃牌：客户端只能据此打开胡/过响应。
-            for (int i = 0; i < _clients.Count; i++)
-            {
-                _clients[i].OnAddedKongDeclared(_currentPlayerIndex, targetTile);
-            }
+            _publicTileTransition.PublishAddedKongDeclaration(
+                _currentPlayerIndex,
+                targetTile,
+                publicTile =>
+                {
+                    for (int i = 0; i < _clients.Count; i++)
+                        _clients[i].OnAddedKongDeclared(_currentPlayerIndex, publicTile);
+                });
+            OnTalentEventsAvailable?.Invoke();
 
             try
             {
@@ -1165,8 +1186,6 @@ namespace MahjongGame.Core.Network
                         isRobKongWin);
                     return new TalentWinEvaluation(isLegal, counterfactualFan);
                 }));
-            OnTalentEventsAvailable?.Invoke();
-
             // 断言比对：记录客户端与服务端计算差异（Phase 0 验证用）
             if (winAction.TotalFan != serverFan)
             {
@@ -1203,11 +1222,15 @@ namespace MahjongGame.Core.Network
                 _session.ApplyScore(pid, serverFan, isSelfDraw, loserId);
             }
 
-            foreach (var client in _clients)
+            _publicTileTransition.PublishWinningResult(pid, () =>
             {
-                client.OnPlayerWin(pid, serverFan, serverDetails, isSelfDraw,
-                    WinResultKind, loserId, WinningHandSnapshotCodec.Clone(WinningHandSnapshot));
-            }
+                foreach (var client in _clients)
+                {
+                    client.OnPlayerWin(pid, serverFan, serverDetails, isSelfDraw,
+                        WinResultKind, loserId, WinningHandSnapshotCodec.Clone(WinningHandSnapshot));
+                }
+            });
+            OnTalentEventsAvailable?.Invoke();
 
             TryCompleteRound(GameRoundCompletionKind.Win);
         }

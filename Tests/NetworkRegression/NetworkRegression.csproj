@@ -15,6 +15,7 @@
     <Compile Include="SnapshotReconnectTests.cs" />
     <Compile Include="ActionValidationTests.cs" />
     <Compile Include="TalentFoundationTests.cs" />
+    <Compile Include="AuthoritativePublicTileTransitionTests.cs" />
     <Compile Include="UnityEngineStubs.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\ActionValidator.cs" Link="ActionValidator.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\MahjongLogic.cs" Link="MahjongLogic.cs" />
@@ -32,6 +33,8 @@
     <Compile Include="..\..\Assets\Scripts\Core\Network\SeatMessageStream.cs" Link="SeatMessageStream.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\RoomLifecyclePolicy.cs" Link="RoomLifecyclePolicy.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\GameRoundCompletion.cs" Link="GameRoundCompletion.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\Network\GameRoundSetupSequence.cs" Link="GameRoundSetupSequence.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\Network\AuthoritativePublicTileTransition.cs" Link="AuthoritativePublicTileTransition.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\RoomMembershipPolicy.cs" Link="RoomMembershipPolicy.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\SeatDecisionControlLatch.cs" Link="SeatDecisionControlLatch.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\ClientReconnectTicket.cs" Link="ClientReconnectTicket.cs" />
