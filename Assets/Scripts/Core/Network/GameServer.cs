@@ -31,6 +31,7 @@ namespace MahjongGame.Core.Network
     {
         private readonly IWallService _wallService;
         private readonly TalentMatchRuntime _talentRuntime;
+        private readonly GameRoundCompletionLatch _roundCompletionLatch = new GameRoundCompletionLatch();
         private GameServerOptions _options;
         private NetworkDecisionTracker _decisionTracker;
 
@@ -106,7 +107,7 @@ namespace MahjongGame.Core.Network
         private TileData _pendingRobKongTile; // 加杠声明阶段：尚未落副露、可被抢胡的牌
 
         // 局结束事件，GameManager 监听此事件驱动多局循环
-        public event System.Action OnRoundFinished;
+        public event System.Action<GameRoundCompletion> OnRoundFinished;
         public event System.Action OnTalentEventsAvailable;
 
         // 回合切换事件 (供 HUD 倒计时使用)
@@ -168,58 +169,58 @@ namespace MahjongGame.Core.Network
             // 初始化服务端场面快照
             _gameState = new ServerGameState(clients.Count);
 
-            _talentRuntime.BeginRound(new TalentRoundContext(_session));
-
-            // 构建牌山（不洗牌）
-            _wallService.BuildWall(configs);
-
-            // 天赋: 牌山构建阶段
-            _talentRuntime.ApplyWallBuilding(new TalentWallContext(
-                _session,
-                _wallService.GetWallTiles(),
-                _gameState,
-                _deckConfigs));
-
-            // 洗牌
-            _wallService.ShuffleWall();
-            _talentRuntime.ResolvePostShuffle(new TalentPostShuffleContext(
-                _session,
-                _wallService.GetWallTiles()));
-
-            // 广播圈风/门风信息
-            if (_session != null)
-            {
-                for (int i = 0; i < _clients.Count; i++)
-                {
-                    _clients[i].OnRoundStart(
-                        _session.TotalRoundsPlayed + 1,
-                        _session.PrevalentWind,
-                        _session.GetSeatWind(i),
-                        _session.DealerIndex
-                    );
-                }
-            }
-
-            // 构建并缓存各玩家天赋加成信息（服务端验证 + 通知客户端）
-            _scoringOptions.Clear();
-            for (int i = 0; i < _clients.Count; i++)
-            {
-                ScoringOptions options = _talentRuntime.BuildScoringOptions(
-                    new TalentScoringContext(_session, i));
-                _scoringOptions[i] = options;
-                _clients[i].OnTalentInfo(options);
-            }
-
-            // 发牌
-            DealStartingHands();
-            BroadcastWallCount();
-
-            SendPrivatePeekResults();
-
-            _isGameActive = true;
-
             try
             {
+                _talentRuntime.BeginRound(new TalentRoundContext(_session));
+
+                // 构建牌山（不洗牌）
+                _wallService.BuildWall(configs);
+
+                // 天赋: 牌山构建阶段
+                _talentRuntime.ApplyWallBuilding(new TalentWallContext(
+                    _session,
+                    _wallService.GetWallTiles(),
+                    _gameState,
+                    _deckConfigs));
+
+                // 洗牌
+                _wallService.ShuffleWall();
+                _talentRuntime.ResolvePostShuffle(new TalentPostShuffleContext(
+                    _session,
+                    _wallService.GetWallTiles()));
+
+                // 广播圈风/门风信息
+                if (_session != null)
+                {
+                    for (int i = 0; i < _clients.Count; i++)
+                    {
+                        _clients[i].OnRoundStart(
+                            _session.TotalRoundsPlayed + 1,
+                            _session.PrevalentWind,
+                            _session.GetSeatWind(i),
+                            _session.DealerIndex
+                        );
+                    }
+                }
+
+                // 构建并缓存各玩家天赋加成信息（服务端验证 + 通知客户端）
+                _scoringOptions.Clear();
+                for (int i = 0; i < _clients.Count; i++)
+                {
+                    ScoringOptions options = _talentRuntime.BuildScoringOptions(
+                        new TalentScoringContext(_session, i));
+                    _scoringOptions[i] = options;
+                    _clients[i].OnTalentInfo(options);
+                }
+
+                // 发牌
+                DealStartingHands();
+                BroadcastWallCount();
+
+                SendPrivatePeekResults();
+
+                _isGameActive = true;
+
                 await RunGameLoop();
             }
             catch (TaskCanceledException)
@@ -229,6 +230,7 @@ namespace MahjongGame.Core.Network
             catch (Exception ex)
             {
                 Debug.LogError($"[GameServer] 游戏循环异常: {ex}");
+                AbortRound(ex);
             }
         }
 
@@ -411,15 +413,30 @@ namespace MahjongGame.Core.Network
                 {
                     // 加杠先公开声明，但在抢杠窗口关闭前不能修改权威副露。
                     ClientAction robKongWin = await CollectRobKongResponses(action);
-                    if (robKongWin != null && robKongWin.ActionType == ClientActionType.Hu)
+                    bool wasRobbed = robKongWin != null && robKongWin.ActionType == ClientActionType.Hu;
+                    if (wasRobbed)
                     {
+                        _gameState.TryResolveAddedKong(
+                            _currentPlayerIndex,
+                            action.TargetTile,
+                            wasRobbed: true,
+                            out _);
                         HandlePlayerWin(robKongWin, false, _currentPlayerIndex, action.TargetTile, true);
                         break;
                     }
 
                     // 所有人过或超时：此时才真正将碰升级为加杠，然后进入岭上补牌。
-                    _gameState.ApplyMeld(_currentPlayerIndex, action.ActionType, action.TargetTile, action.ChiCombinations);
+                    if (!_gameState.TryResolveAddedKong(
+                            _currentPlayerIndex,
+                            action.TargetTile,
+                            wasRobbed: false,
+                            out TileData publicAddedKongTile))
+                    {
+                        Debug.LogError($"[GameServer] Could not commit added kong for player {_currentPlayerIndex}.");
+                        continue;
+                    }
                     BroadcastAction(action);
+                    NotifyTileBecamePublic(_currentPlayerIndex, publicAddedKongTile);
                     continue;
                 }
                 else if (action.ActionType == ClientActionType.Discard)
@@ -553,8 +570,6 @@ namespace MahjongGame.Core.Network
         private async Task<ClientAction> CollectRobKongResponses(ClientAction declaration)
         {
             TileData targetTile = declaration.TargetTile;
-            List<TileData> handTilesBecomingPublic =
-                GetHandTilesBecomingPublic(declaration, targetTile);
             _pendingRobKongTile = targetTile;
             _pendingResponses.Clear();
             _responsesTcs = new TaskCompletionSource<bool>();
@@ -580,7 +595,6 @@ namespace MahjongGame.Core.Network
             {
                 _clients[i].OnAddedKongDeclared(_currentPlayerIndex, targetTile);
             }
-            NotifyTilesBecamePublic(_currentPlayerIndex, handTilesBecomingPublic);
 
             try
             {
@@ -1195,7 +1209,7 @@ namespace MahjongGame.Core.Network
                     WinResultKind, loserId, WinningHandSnapshotCodec.Clone(WinningHandSnapshot));
             }
 
-            OnRoundFinished?.Invoke();
+            TryCompleteRound(GameRoundCompletionKind.Win);
         }
 
         private void HandleDrawGame()
@@ -1210,7 +1224,30 @@ namespace MahjongGame.Core.Network
                 client.OnDrawGame();
             }
 
-            OnRoundFinished?.Invoke();
+            TryCompleteRound(GameRoundCompletionKind.Draw);
+        }
+
+        private void AbortRound(Exception error)
+        {
+            _isGameActive = false;
+            CloseActiveDecision();
+            try
+            {
+                OnTurnEnded?.Invoke();
+            }
+            catch (Exception callbackError)
+            {
+                Debug.LogError($"[GameServer] 回合异常清理回调失败: {callbackError}");
+            }
+            TryCompleteRound(GameRoundCompletionKind.Aborted, error);
+        }
+
+        private bool TryCompleteRound(GameRoundCompletionKind kind, Exception error = null)
+        {
+            if (!_roundCompletionLatch.TryComplete(kind, error, out GameRoundCompletion completion))
+                return false;
+            OnRoundFinished?.Invoke(completion);
+            return true;
         }
     }
 }

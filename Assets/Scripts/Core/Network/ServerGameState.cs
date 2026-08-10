@@ -112,18 +112,38 @@ namespace MahjongGame.Core.Network
                     break;
 
                 case ClientActionType.JiaGang:
-                    RemoveMatching(snapshot.Hand, targetTile, 1);
-                    var ponMeld = snapshot.Melds.FirstOrDefault(
-                        m => m.Type == MeldType.Pon
-                          && m.FirstTile.TileSuit == targetTile.TileSuit
-                          && m.FirstTile.Value == targetTile.Value);
-                    if (ponMeld != null)
-                    {
-                        ponMeld.Type = MeldType.Kan_Added;
-                        ponMeld.Tiles.Add(CloneTile(targetTile));
-                    }
+                    TryResolveAddedKong(playerId, targetTile, wasRobbed: false, out _);
                     break;
             }
+        }
+
+        /// <summary>
+        /// Resolves the pending added-kong against authoritative hand/meld state. The returned tile is
+        /// available for public-talent notification only after the meld transition has committed.
+        /// </summary>
+        public bool TryResolveAddedKong(
+            int playerId,
+            TileData targetTile,
+            bool wasRobbed,
+            out TileData publicTile)
+        {
+            publicTile = null;
+            if (wasRobbed || targetTile == null) return false;
+
+            PlayerSnapshot snapshot = _players[playerId];
+            TileData authoritativeTile = snapshot.Hand.FirstOrDefault(
+                tile => tile.TileSuit == targetTile.TileSuit && tile.Value == targetTile.Value);
+            Meld ponMeld = snapshot.Melds.FirstOrDefault(
+                meld => meld.Type == MeldType.Pon
+                        && meld.FirstTile.TileSuit == targetTile.TileSuit
+                        && meld.FirstTile.Value == targetTile.Value);
+            if (authoritativeTile == null || ponMeld == null) return false;
+
+            snapshot.Hand.Remove(authoritativeTile);
+            ponMeld.Type = MeldType.Kan_Added;
+            ponMeld.Tiles.Add(CloneTile(authoritativeTile));
+            publicTile = CloneTile(authoritativeTile);
+            return true;
         }
 
         public TileData GetAutoDiscardTile(int playerId, TileData lastDrawn)

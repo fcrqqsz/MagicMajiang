@@ -96,8 +96,14 @@ namespace MahjongGame.Core.Network
 
     public sealed class StableSeatController : StubPlayerClient
     {
+        private readonly SeatMessageStream _messageStream;
+
         public StableSeatController(int playerId, SeatMessageStream messageStream, GameSession session,
-            System.Func<bool> isOnline, System.Action<DecisionControllerKind> controllerChanged) => PlayerId = playerId;
+            System.Func<bool> isOnline, System.Action<DecisionControllerKind> controllerChanged)
+        {
+            PlayerId = playerId;
+            _messageStream = messageStream;
+        }
 
         public bool IsAiControllingActiveDecision => false;
         public bool IsHumanSubmissionAllowed(long decisionId) => true;
@@ -106,6 +112,9 @@ namespace MahjongGame.Core.Network
         public void SetPermanentAi() { }
         public void SetSession(GameSession session) { }
         public void SetServer(GameServer server) { }
+        public new void OnSessionEnd(int[] finalScores) => _messageStream.Send(
+            "SessionEnd",
+            new SessionEndMessage { scores = finalScores });
     }
 
     public sealed class GameServerOptions
@@ -132,7 +141,10 @@ namespace MahjongGame.Core.Network
             ReceivedTalentRuntimes.Add(talentRuntime);
         }
 
-        public event System.Action OnRoundFinished;
+        private readonly GameRoundCompletionLatch _completionLatch = new();
+
+        public static StubGameStartFailure NextStartFailure { get; set; }
+        public event System.Action<GameRoundCompletion> OnRoundFinished;
         public event System.Action OnTalentEventsAvailable;
         public MahjongGame.Talents.TalentMatchRuntime TalentRuntime { get; }
         public NetworkDecisionContext ActiveDecision => null;
@@ -146,6 +158,7 @@ namespace MahjongGame.Core.Network
         public int LoserId { get; private set; } = -1;
         public bool IsDrawGame { get; private set; }
         public WinningHandSnapshot WinningHandSnapshot => null;
+        public int CompletionNotifications { get; private set; }
 
         public bool SubmitNetworkAction(int seatIndex, long decisionId, ClientAction action, out string errorCode)
         {
@@ -176,10 +189,14 @@ namespace MahjongGame.Core.Network
         {
             IsDrawGame = true;
             WinnerId = -1;
-            OnRoundFinished?.Invoke();
+            Complete(GameRoundCompletionKind.Draw);
         }
 
-        public static void ResetObservations() => ReceivedTalentRuntimes.Clear();
+        public static void ResetObservations()
+        {
+            ReceivedTalentRuntimes.Clear();
+            NextStartFailure = StubGameStartFailure.None;
+        }
 
         private GameSession _session;
 
@@ -187,6 +204,15 @@ namespace MahjongGame.Core.Network
         {
             _session = session;
             if (TalentRuntime == null) return;
+
+            if (NextStartFailure == StubGameStartFailure.Startup)
+            {
+                TalentRuntime.BeginRound(new MahjongGame.Talents.TalentRoundContext(session));
+                Complete(
+                    GameRoundCompletionKind.Aborted,
+                    new System.InvalidOperationException("startup failure"));
+                return;
+            }
 
             var wall = new System.Collections.Generic.List<MahjongGame.Core.TileData>
             {
@@ -200,6 +226,26 @@ namespace MahjongGame.Core.Network
             TalentRuntime.ApplyWallBuilding(new MahjongGame.Talents.TalentWallContext(session, wall));
             TalentRuntime.ResolvePostShuffle(new MahjongGame.Talents.TalentPostShuffleContext(session, wall));
             OnTalentEventsAvailable?.Invoke();
+            if (NextStartFailure == StubGameStartFailure.Loop)
+            {
+                Complete(
+                    GameRoundCompletionKind.Aborted,
+                    new System.InvalidOperationException("loop failure"));
+            }
         }
+
+        private void Complete(GameRoundCompletionKind kind, System.Exception error = null)
+        {
+            if (!_completionLatch.TryComplete(kind, error, out GameRoundCompletion completion)) return;
+            CompletionNotifications++;
+            OnRoundFinished?.Invoke(completion);
+        }
+    }
+
+    public enum StubGameStartFailure
+    {
+        None,
+        Startup,
+        Loop
     }
 }

@@ -15,6 +15,7 @@ internal static class RoomSessionTests
         TestRoomRevalidatesClonedLoadout(runner);
         TestWallAndSessionTalent(runner);
         TestRoomOwnsOneTalentRuntimeAcrossRounds(runner);
+        TestAbnormalRoundCompletionUnwindsRoomOnce(runner);
         TestRoomReadyAndDeparture(runner);
         TestResponseAndTurnPolicies(runner);
         TestClientRoomAndScoreProjection(runner);
@@ -353,6 +354,83 @@ internal static class RoomSessionTests
         return endpoint.SentMessages
             .Select(MessageSerializer.DeserializeEnvelope)
             .Count(envelope => envelope?.type == "TalentRuntimeEvent");
+    }
+
+    private static void TestAbnormalRoundCompletionUnwindsRoomOnce(RegressionRunner runner)
+    {
+        var latch = new GameRoundCompletionLatch();
+        bool firstCompletion = latch.TryComplete(
+            GameRoundCompletionKind.Draw,
+            error: null,
+            out GameRoundCompletion drawCompletion);
+        bool duplicateCompletion = latch.TryComplete(
+            GameRoundCompletionKind.Aborted,
+            new InvalidOperationException("late failure"),
+            out GameRoundCompletion duplicate);
+        runner.Check(firstCompletion
+                     && drawCompletion.Kind == GameRoundCompletionKind.Draw
+                     && !duplicateCompletion
+                     && duplicate == null,
+            "a round completion latch admits only the first terminal result");
+
+        VerifyAbnormalRoomUnwind(runner, StubGameStartFailure.Startup);
+        VerifyAbnormalRoomUnwind(runner, StubGameStartFailure.Loop);
+
+        GameServer.ResetObservations();
+        using Room normalRoom = CreateRuntimeRoomWithDrawReward("normal-completion", out _);
+        GameServer.NextStartFailure = StubGameStartFailure.None;
+        normalRoom.SetReady("host", ReadyPhase.GameSceneLoaded, out _);
+        normalRoom.GameServer?.CompleteDrawRound();
+        normalRoom.GameServer?.CompleteDrawRound();
+        runner.Check(normalRoom.State == RoomState.WaitingForNextRound
+                     && normalRoom.Session.TotalRoundsPlayed == 1
+                     && normalRoom.Session.Scores[0] == 5
+                     && normalRoom.GameServer?.CompletionNotifications == 1,
+            "a normal round completion advances and applies round-end effects exactly once");
+    }
+
+    private static void VerifyAbnormalRoomUnwind(
+        RegressionRunner runner,
+        StubGameStartFailure failure)
+    {
+        GameServer.ResetObservations();
+        using Room room = CreateRuntimeRoomWithDrawReward($"abnormal-{failure}", out GameEndpoint endpoint);
+        GameServer.NextStartFailure = failure;
+        room.SetReady("host", ReadyPhase.GameSceneLoaded, out _);
+        room.GameServer?.CompleteDrawRound();
+
+        int terminalErrors = endpoint.SentMessages
+            .Select(MessageSerializer.DeserializeEnvelope)
+            .Count(envelope => envelope?.type == "RoomError"
+                               && MessageSerializer.DeserializePayload<RoomErrorMessage>(envelope.data)?.code
+                               == NetworkErrorCodes.RoundAborted);
+        int sessionEnds = endpoint.SentMessages
+            .Select(MessageSerializer.DeserializeEnvelope)
+            .Count(envelope => envelope?.type == "SessionEnd");
+        runner.Check(room.State == RoomState.SessionCompleted
+                     && room.Session.TotalRoundsPlayed == 0
+                     && room.Session.Scores[0] == 0
+                     && room.GameServer?.CompletionNotifications == 1
+                     && terminalErrors == 1
+                     && sessionEnds == 1,
+            $"a {failure.ToString().ToLowerInvariant()} exception ends the runtime and room exactly once without draw rewards");
+    }
+
+    private static Room CreateRuntimeRoomWithDrawReward(string roomId, out GameEndpoint endpoint)
+    {
+        var talents = new TalentSlotConfig();
+        talents.SlotTalentIds[3] = "draw_reward";
+        PlayerLoadoutCodec.TryDecode(
+            PlayerLoadoutCodec.CreateMessage(DeckConfig.CreateStandard(), talents),
+            AlienationPreset.Standard,
+            out TrustedPlayerLoadout loadout,
+            out _);
+
+        endpoint = new GameEndpoint();
+        var room = new Room(roomId, GameMode.EastOnly, AlienationPreset.Standard, "host", true, 16);
+        room.TryAddHuman("host", endpoint, $"dev:{roomId}", "Host", loadout, out _);
+        room.SetReady("host", ReadyPhase.MatchStart, out _);
+        return room;
     }
 
     private static void TestRoomReadyAndDeparture(RegressionRunner runner)

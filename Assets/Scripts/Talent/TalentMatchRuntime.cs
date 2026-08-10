@@ -251,8 +251,8 @@ namespace MahjongGame.Talents
                 if (ReferenceEquals(entry, excludedEntry)) continue;
                 entry.Rule.ConfigureScoring(context.BindScoring(
                     entry.OwnerSeatIndex,
-                    entry.State,
-                    runtimeEvent => EmitEvent(entry, runtimeEvent)), options);
+                    entry.State.CreateDetachedCopy(),
+                    eventSink: null), options);
             }
             return options;
         }
@@ -334,7 +334,20 @@ namespace MahjongGame.Talents
             if (outcome == null) throw new ArgumentNullException(nameof(outcome));
             if (session == null) throw new ArgumentNullException(nameof(session));
             EnsureSession(session);
-            EnsurePhase(RuntimePhase.RoundReady, nameof(EndRound));
+            if (outcome.IsAborted)
+            {
+                if (_phase != RuntimePhase.RoundStarted
+                    && _phase != RuntimePhase.WallBuilt
+                    && _phase != RuntimePhase.RoundReady)
+                {
+                    throw new InvalidOperationException(
+                        $"{nameof(EndRound)} is invalid during talent runtime phase {_phase}.");
+                }
+            }
+            else
+            {
+                EnsurePhase(RuntimePhase.RoundReady, nameof(EndRound));
+            }
             ValidateOptionalSeat(outcome.WinnerSeatIndex, nameof(outcome.WinnerSeatIndex));
             ValidateOptionalSeat(outcome.DiscarderSeatIndex, nameof(outcome.DiscarderSeatIndex));
 

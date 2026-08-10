@@ -51,6 +51,28 @@ namespace MahjongGame.Talents
             _roundFlags.Clear();
         }
 
+        internal TalentRuntimeState CreateDetachedCopy()
+        {
+            var copy = new TalentRuntimeState
+            {
+                IsActive = IsActive,
+                IsRevealed = IsRevealed
+            };
+            CopyCounters(_matchCounters, copy._matchCounters);
+            CopyCounters(_roundCounters, copy._roundCounters);
+            copy._matchFlags.UnionWith(_matchFlags);
+            copy._roundFlags.UnionWith(_roundFlags);
+            return copy;
+        }
+
+        private static void CopyCounters(
+            Dictionary<string, int> source,
+            Dictionary<string, int> destination)
+        {
+            foreach (KeyValuePair<string, int> pair in source)
+                destination[pair.Key] = pair.Value;
+        }
+
         private Dictionary<string, int> GetCounters(TalentStateScope scope)
         {
             return scope switch

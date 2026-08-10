@@ -44,5 +44,6 @@ namespace MahjongGame.Core.Network
         public const string WrongController = "WrongController";
         public const string WrongPhase = "WrongPhase";
         public const string NotEligible = "NotEligible";
+        public const string RoundAborted = "RoundAborted";
     }
 }

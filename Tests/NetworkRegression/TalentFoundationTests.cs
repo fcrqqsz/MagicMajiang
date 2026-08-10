@@ -30,6 +30,7 @@ internal static class TalentFoundationTests
         PostShufflePeekIsPrivateAndUsesShuffledOrder(runner);
         DrawAndDiscardPipelinesKeepStablePriorityOrder(runner);
         ScoringOptionsAreFreshForEveryEvaluation(runner);
+        ScoringEvaluationCannotMutateAuthoritativeStateOrEmit(runner);
         ExistingSixTalentsExecuteAcrossTwoRounds(runner);
         ModifiedTileAndAcceptedWinRevealOnlyAtPublicBoundaries(runner);
         NetworkRuntimeIntegrationHasNoStableTalentIdLiterals(runner);
@@ -548,6 +549,49 @@ internal static class TalentFoundationTests
             "each scoring evaluation builds an independent mutable options object");
     }
 
+    private static void ScoringEvaluationCannotMutateAuthoritativeStateOrEmit(RegressionRunner runner)
+    {
+        ScoringSideEffectTestTalent.Reset();
+        GameSession session = new GameSession(GameMode.Single);
+        TalentMatchRuntime runtime = CreateRuntime(mainIds: new[] { "network_test_scoring_side_effect" });
+        runtime.BeginMatch(session);
+        BeginReadyRound(runtime, session);
+
+        ScoringOptions firstCandidate = runtime.BuildScoringOptions(new TalentScoringContext(session, 0));
+        ScoringOptions secondCandidate = runtime.BuildScoringOptions(new TalentScoringContext(session, 0));
+        bool candidateEventsStayedEmpty = Enumerable.Range(0, 4)
+            .All(seatIndex => runtime.DrainEventsForSeat(seatIndex).Count == 0);
+
+        TalentWinEvaluation accepted = new TalentWinEvaluation(isLegal: true, finalFan: 4);
+        var acceptedContext = new TalentAcceptedWinContext(
+            session,
+            0,
+            accepted,
+            options => new TalentWinEvaluation(isLegal: true, finalFan: options.BonusFan));
+        runtime.ResolveAcceptedWinVisibility(acceptedContext);
+        IReadOnlyList<TalentRuntimeEvent>[] revealEvents = Enumerable.Range(0, 4)
+            .Select(runtime.DrainEventsForSeat)
+            .ToArray();
+        runtime.ResolveAcceptedWinVisibility(acceptedContext);
+        bool secondAcceptedEvaluationStayedQuiet = Enumerable.Range(0, 4)
+            .All(seatIndex => runtime.DrainEventsForSeat(seatIndex).Count == 0);
+
+        runtime.EndRound(new TalentRoundOutcome { WinnerSeatIndex = 0 }, session);
+
+        runner.Check(firstCandidate.BonusFan == 4
+                     && secondCandidate.BonusFan == 4
+                     && candidateEventsStayedEmpty,
+            "candidate scoring uses talent options without emitting runtime events");
+        runner.Check(ScoringSideEffectTestTalent.AuthoritativeMatchCounterAtRoundEnd == 0
+                     && !ScoringSideEffectTestTalent.AuthoritativeRoundFlagAtRoundEnd,
+            "candidate and counterfactual scoring cannot mutate authoritative talent state");
+        runner.Check(revealEvents.All(events => events.Count == 1
+                                                && events[0].TalentId == "network_test_scoring_side_effect"
+                                                && events[0].EventType == "talent_revealed")
+                     && secondAcceptedEvaluationStayedQuiet,
+            "formal accepted-win resolution emits exactly one explicit reveal event");
+    }
+
     private static void ExistingSixTalentsExecuteAcrossTwoRounds(RegressionRunner runner)
     {
         GameSession session = new GameSession(GameMode.EastOnly);
@@ -833,6 +877,41 @@ internal static class TalentFoundationTests
             }
         }
         return entries.ToArray();
+    }
+}
+
+[TalentRule("network_test_scoring_side_effect", "Scoring Side Effect", "test", TalentTier.Small, 0)]
+internal sealed class ScoringSideEffectTestTalent : TalentRule
+{
+    public static int AuthoritativeMatchCounterAtRoundEnd { get; private set; }
+    public static bool AuthoritativeRoundFlagAtRoundEnd { get; private set; }
+
+    public static void Reset()
+    {
+        AuthoritativeMatchCounterAtRoundEnd = -1;
+        AuthoritativeRoundFlagAtRoundEnd = true;
+    }
+
+    public override void ConfigureScoring(TalentScoringContext context, ScoringOptions options)
+    {
+        context.State.IncrementCounter("scoring_calls", TalentStateScope.Match);
+        context.State.SetFlag("scoring_touched", true, TalentStateScope.Round);
+        context.Emit(new TalentRuntimeEvent
+        {
+            EventType = "scoring_side_effect",
+            Visibility = TalentEventVisibility.Public
+        });
+        options.BonusFan += 4;
+    }
+
+    public override void OnRoundEnded(TalentRoundContext context, TalentRoundOutcome outcome)
+    {
+        AuthoritativeMatchCounterAtRoundEnd = context.State.GetCounter(
+            "scoring_calls",
+            TalentStateScope.Match);
+        AuthoritativeRoundFlagAtRoundEnd = context.State.GetFlag(
+            "scoring_touched",
+            TalentStateScope.Round);
     }
 }
 

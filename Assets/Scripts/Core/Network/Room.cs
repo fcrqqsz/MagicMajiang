@@ -578,7 +578,7 @@ namespace MahjongGame.Core.Network
             GameServer.StartGame(clients, _deckConfigs, Session);
         }
 
-        private void OnRoundFinished()
+        private void OnRoundFinished(GameRoundCompletion completion)
         {
             GameServer finishedServer = GameServer;
             if (finishedServer != null)
@@ -589,6 +589,7 @@ namespace MahjongGame.Core.Network
 
             _talentRuntime.EndRound(new TalentRoundOutcome
             {
+                IsAborted = completion?.Kind == GameRoundCompletionKind.Aborted,
                 WinnerSeatIndex = finishedServer != null && finishedServer.WinnerId >= 0
                     ? finishedServer.WinnerId
                     : null,
@@ -600,6 +601,21 @@ namespace MahjongGame.Core.Network
                 FinalFan = finishedServer?.WinFan ?? 0
             }, Session);
             BroadcastTalentEventsAtSafeBoundary();
+            if (completion?.Kind == GameRoundCompletionKind.Aborted)
+            {
+                foreach (RoomSeat seat in _seats.Where(candidate => candidate != null && !candidate.IsAi))
+                {
+                    seat.MessageStream.Send("RoomError", new RoomErrorMessage
+                    {
+                        code = NetworkErrorCodes.RoundAborted,
+                        message = "The current round was terminated by an internal server error."
+                    });
+                    seat.Controller?.OnSessionEnd(Session.Scores);
+                }
+                State = RoomState.SessionCompleted;
+                return;
+            }
+
             Session.AdvanceRound();
             if (Session.IsSessionOver())
             {

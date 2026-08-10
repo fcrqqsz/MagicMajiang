@@ -9,6 +9,7 @@ internal static class SnapshotReconnectTests
     public static void Run(RegressionRunner runner)
     {
         TestAuthoritativeTableState(runner);
+        TestAddedKongPublicCommitUsesAuthoritativeTile(runner);
         TestDecisionTracker(runner);
         TestSnapshotPrivacyAndSerialization(runner);
         TestAlienationSnapshotPrivacy(runner);
@@ -595,6 +596,60 @@ internal static class SnapshotReconnectTests
             && meld.tileCount == 4
             && meld.tiles.All(tile => tile.suit == (int)Suit.Pin && tile.value == 8),
             "Client projection must retain the public concealed-kan declaration.");
+    }
+
+    private static void TestAddedKongPublicCommitUsesAuthoritativeTile(RegressionRunner runner)
+    {
+        TileData target = new TileData(Suit.Dragon, 2, 0);
+
+        ServerGameState robbedState = BuildAddedKongState(target, out TileData robbedAuthoritativeTile);
+        bool robbedCommitted = robbedState.TryResolveAddedKong(
+            0,
+            target,
+            wasRobbed: true,
+            out TileData robbedPublicTile);
+        Meld robbedMeld = robbedState.GetMelds(0).Single();
+        runner.Check(!robbedCommitted
+                     && robbedPublicTile == null
+                     && robbedMeld.Type == MeldType.Pon
+                     && robbedState.GetHand(0).Single().ID == robbedAuthoritativeTile.ID,
+            "a robbed added-kong leaves the authoritative tile concealed and yields no public tile");
+
+        ServerGameState committedState = BuildAddedKongState(target, out TileData committedAuthoritativeTile);
+        bool committed = committedState.TryResolveAddedKong(
+            0,
+            target,
+            wasRobbed: false,
+            out TileData committedPublicTile);
+        Meld committedMeld = committedState.GetMelds(0).Single();
+        runner.Check(committed
+                     && committedState.GetHand(0).Count == 0
+                     && committedMeld.Type == MeldType.Kan_Added
+                     && committedMeld.Tiles.Count == 4
+                     && committedMeld.Tiles.Last().ID == committedAuthoritativeTile.ID
+                     && committedPublicTile != null
+                     && !ReferenceEquals(committedPublicTile, committedAuthoritativeTile)
+                     && committedPublicTile.ID == committedAuthoritativeTile.ID
+                     && committedPublicTile.IsModified
+                     && committedPublicTile.SpecialEffectID == "midas_touch",
+            "a successful added-kong exposes the authoritative modified tile only after the meld is committed");
+    }
+
+    private static ServerGameState BuildAddedKongState(TileData target, out TileData authoritativeTile)
+    {
+        var state = new ServerGameState(4);
+        state.InitHand(0, new List<TileData>
+        {
+            new TileData(target.TileSuit, target.Value, 0),
+            new TileData(target.TileSuit, target.Value, 0)
+        });
+        state.ApplyMeld(0, ClientActionType.Pon, target, null);
+        authoritativeTile = new TileData(target.TileSuit, target.Value, 0);
+        authoritativeTile.ID = "authoritative-added-kong";
+        authoritativeTile.IsModified = true;
+        authoritativeTile.SpecialEffectID = "midas_touch";
+        state.AddTile(0, authoritativeTile);
+        return state;
     }
 
     private static void TestTalentRuntimeEventProjection(RegressionRunner runner)

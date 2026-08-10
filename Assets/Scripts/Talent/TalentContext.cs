@@ -351,7 +351,8 @@ namespace MahjongGame.Talents
     {
         public int? WinnerSeatIndex { get; set; }
         public int? DiscarderSeatIndex { get; set; }
-        public bool IsDraw => !WinnerSeatIndex.HasValue;
+        public bool IsAborted { get; set; }
+        public bool IsDraw => !IsAborted && !WinnerSeatIndex.HasValue;
         public int FinalFan { get; set; }
     }
 
