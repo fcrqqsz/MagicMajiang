@@ -106,7 +106,7 @@ public sealed class TalentMatchRuntime
 - Modify: `Tests/NetworkRegression/NetworkRegression.csproj`
 - Modify: `Tests/NetworkRegression/Program.cs`
 
-- [ ] **Step 1: Add a failing metadata and slot-normalization regression**
+- [x] **Step 1: Add a failing metadata and slot-normalization regression**
 
 在 `TalentFoundationTests.cs` 建立统一入口，并先覆盖旧存档、6 个主槽、3 个备选槽、跨区重复和元数据默认值：
 
@@ -139,7 +139,7 @@ internal static class TalentFoundationTests
 
 把测试文件加入 `NetworkRegression.csproj` 的显式 `<Compile Include>`，并在 `Program.cs` 现有测试之后调用 `TalentFoundationTests.Run(runner)`。
 
-- [ ] **Step 2: Run the focused regression and confirm RED**
+- [x] **Step 2: Run the focused regression and confirm RED**
 
 Run:
 
@@ -149,7 +149,7 @@ pwsh -NoLogo -NoProfile -Command "dotnet run --project Tests/NetworkRegression/N
 
 Expected: 编译失败，缺少 `ReserveTalentIds`、`Normalize()`、`GetCarriedIds()`、`TalentMetadata` 和 `GetMetadata()`。
 
-- [ ] **Step 3: Implement immutable metadata with backward-compatible attribute defaults**
+- [x] **Step 3: Implement immutable metadata with backward-compatible attribute defaults**
 
 在 `TalentMetadata.cs` 添加：
 
@@ -224,7 +224,7 @@ public TalentMetadata GetMetadata(string talentId)
 
 给 `StartingCapitalTalent` 的属性增加 `StateScope = TalentStateScope.Match`、`RevealPolicy = TalentRevealPolicy.PublicAtMatchStart`、`SideboardPolicy = TalentSideboardPolicy.MainOnlyLocked`。给 `PeekTalent` 设置 `RevealPolicy = TalentRevealPolicy.OwnerOnly`。
 
-- [ ] **Step 4: Extend `TalentSlotConfig` without breaking old saves**
+- [x] **Step 4: Extend `TalentSlotConfig` without breaking old saves**
 
 保留 `SlotTalentIds` 作为六个主槽的序列化字段，新增三备选槽和显式枚举方法：
 
@@ -251,7 +251,7 @@ public IEnumerable<string> GetAllEquippedIds() => GetMainIds();
 
 `NormalizeArray` 必须复制到固定长度而不是直接信任存档数组；`SavedDeck.Normalize()` 执行 `Talents ??= new TalentSlotConfig()` 和 `Talents.Normalize()`。`PlayerProfile.Normalize()` 补齐空 `Settings`/`SavedDecks` 并遍历 deck；`ProfileManager.LoadProfile()` 在 `JsonUtility.FromJson` 后立即调用，若反序列化结果为 null 则创建新档。`CanEquip` 继续校验主槽层级，另增 `CanEquipReserve(int index, TalentTier tier)`，只允许中/小两种固定槽位。
 
-- [ ] **Step 5: Add duplicate validation across all nine carried slots**
+- [x] **Step 5: Add duplicate validation across all nine carried slots**
 
 在 `TalentSlotConfig` 添加：
 
@@ -269,7 +269,7 @@ public bool HasDuplicateCarriedIds()
 
 扩充测试，验证同一 ID 同时出现在主槽与备选槽时返回 `true`，空字符串不计入重复。
 
-- [ ] **Step 6: Run regression, inspect diff, and commit**
+- [x] **Step 6: Run regression, inspect diff, and commit**
 
 Run:
 
@@ -301,7 +301,7 @@ pwsh -NoLogo -NoProfile -Command "git add Assets/Scripts/Talent Assets/Scripts/C
 - Create: `Assets/Scripts/Core/Network/PlayerLoadoutErrorCodes.cs`
 - Test: `Tests/NetworkRegression/TalentFoundationTests.cs`
 
-- [ ] **Step 1: Add failing tests for preset limits, active-only cost, and schema v2**
+- [x] **Step 1: Add failing tests for preset limits, active-only cost, and schema v2**
 
 新增以下断言，测试数据使用一个 34 张合法牌库、主槽成本 15、备选槽成本 8：
 
@@ -329,11 +329,11 @@ runner.Check(TrustedPlayerLoadout.CurrentSchemaVersion == 2,
 
 这里先在测试程序集定义临时带成本的测试天赋，或复用现有稳定 ID；不要依赖尚未实现的三项新天赋。
 
-- [ ] **Step 2: Run regression and confirm RED**
+- [x] **Step 2: Run regression and confirm RED**
 
 Expected: 缺少 `AlienationPreset`、v2 消息字段和接收档位的解码重载。
 
-- [ ] **Step 3: Implement one authoritative alienation policy**
+- [x] **Step 3: Implement one authoritative alienation policy**
 
 `AlienationPreset.cs`：
 
@@ -375,7 +375,7 @@ public static class AlienationBudgetPolicy
 
 把 `DeckConfig.CalculateTotalAlienation` 改为委托该策略，禁止在编辑器、房间和运行时各自复制成本循环。
 
-- [ ] **Step 4: Upgrade the loadout wire schema to v2**
+- [x] **Step 4: Upgrade the loadout wire schema to v2**
 
 `PlayerLoadoutMessage` 使用明确字段：
 
@@ -452,7 +452,7 @@ public static bool TryDecode(
 
 错误消息带 `actual` 和 `limit` 只发给提交者；不要把精确总值写进公共房间广播。
 
-- [ ] **Step 5: Persist only the editor preview preference**
+- [x] **Step 5: Persist only the editor preview preference**
 
 在 `Assets/Scripts/Core/Network/Data/PlayerProfile.cs` 的 `ProfileSettings` 新增：
 
@@ -462,11 +462,11 @@ public AlienationPreset SelectedAlienationPreset = AlienationPreset.Standard;
 
 `ProfileSettings.Normalize()` 在遇到未定义枚举值时回退 `Standard`，并由 Task 1 已接入的 `PlayerProfile.Normalize()` 调用。此字段只决定大厅/编辑器默认预览和创建房间默认选项，不能替代服务端传入的房间档位。
 
-- [ ] **Step 6: Make legacy v1 handling explicit**
+- [x] **Step 6: Make legacy v1 handling explicit**
 
 协议升级后不静默猜测 v1 网络包。`TryDecode` 对 `schemaVersion != 2` 返回 `PlayerLoadoutErrorCodes.UnsupportedLoadoutVersion`。旧的本地 `SavedDeck` 仍由 Task 1 的归一化逻辑兼容；网络客户端必须用 v2 重新编码。
 
-- [ ] **Step 7: Run regression and commit**
+- [x] **Step 7: Run regression and commit**
 
 Run:
 
@@ -498,7 +498,7 @@ pwsh -NoLogo -NoProfile -Command "git add Assets/Scripts/Core Tests/NetworkRegre
 - Test: `Tests/NetworkRegression/RoomSessionTests.cs`
 - Test: `Tests/NetworkRegression/SnapshotReconnectTests.cs`
 
-- [ ] **Step 1: Add failing protocol and privacy regressions**
+- [x] **Step 1: Add failing protocol and privacy regressions**
 
 覆盖以下行为：
 
@@ -527,11 +527,11 @@ runner.Check(ownJoin.ownTotalAlienation == fixture.Seat0Total,
 
 `HasExactAlienationField()` 可在测试中用 JSON 序列化并断言不存在 `totalAlienation`；产品代码不需要该辅助方法。
 
-- [ ] **Step 2: Run regression and confirm RED**
+- [x] **Step 2: Run regression and confirm RED**
 
 Expected: 协议仍为 v2、创建房间没有档位、公共席位消息仍包含精确总异化值。
 
-- [ ] **Step 3: Upgrade the handshake and room-create contract**
+- [x] **Step 3: Upgrade the handshake and room-create contract**
 
 把 `NetworkProtocol.Version` 改为 `3`。`CreateRoomMessage` 增加非空 `AlienationPreset`；`JoinRoomMessage` 不重复提交档位，它只能接受房间既有档位。`RoomManager` 创建时校验枚举值，然后传入：
 
@@ -547,7 +547,7 @@ Room room = new Room(
 
 `Room` 暴露只读 `AlienationPreset`。创建者和后续加入者的构筑都调用 `PlayerLoadoutCodec.TryDecode(message.loadout, room.AlienationPreset, out loadout, out errorCode)`。
 
-- [ ] **Step 4: Split public preset from private exact totals**
+- [x] **Step 4: Split public preset from private exact totals**
 
 消息字段固定为：
 
@@ -571,15 +571,15 @@ public sealed class RoomSeatMessage
 
 `RoomGameSnapshot` 顶层携带公共 `AlienationPreset`，另在仅发给本家的私有段携带 `OwnTotalAlienation`。`ClientGameState` 原子应用这两个字段；不得从其他席位天赋或牌库反推精确值。
 
-- [ ] **Step 5: Reject invalid and over-budget joins before mutating room state**
+- [x] **Step 5: Reject invalid and over-budget joins before mutating room state**
 
 `RoomManager`/`Room` 必须先解码成功，再分配席位或变更 ready 状态。为低档位超限加入新增回归：返回 `AlienationLimitExceeded`，房间人数、连接绑定、席位消息序列均不变。
 
-- [ ] **Step 6: Update client encoding and reconnect snapshot assertions**
+- [x] **Step 6: Update client encoding and reconnect snapshot assertions**
 
 `ClientRoomService` 始终发送 schema v2 的主/备选数组；创建房间默认使用 `ProfileSettings.SelectedAlienationPreset`。重连快照测试验证：档位恢复、本人精确总值恢复、他人精确值仍不可见。
 
-- [ ] **Step 7: Run regression and commit**
+- [x] **Step 7: Run regression and commit**
 
 Run:
 
@@ -608,7 +608,7 @@ pwsh -NoLogo -NoProfile -Command "git add Assets/Scripts/Core/Network Tests/Netw
 - Test: `Tests/NetworkRegression/TalentFoundationTests.cs`
 - Modify: `Tests/NetworkRegression/NetworkRegression.csproj`
 
-- [ ] **Step 1: Add a failing lifecycle regression with an instrumented test talent**
+- [x] **Step 1: Add a failing lifecycle regression with an instrumented test talent**
 
 测试天赋必须记录 match/round 次数，并跨两个小局保留 match counter：
 
@@ -637,11 +637,11 @@ private sealed class LifecycleTestTalent : TalentRule
 
 构造 runtime，依次 `BeginMatch`、`BeginRound`、`EndRound` 两次，断言开场加分只发生一次、match counter 为 2、round-scope 状态在第二局前清空。为避免把玩家 ID 和席位混为一谈，`TalentRoundOutcome` 同时存 `WinnerSeatIndex`，规则通过上下文的 `OwnerSeatIndex` 判断。
 
-- [ ] **Step 2: Run regression and confirm RED**
+- [x] **Step 2: Run regression and confirm RED**
 
 Expected: 缺少 runtime、state、event 和新生命周期钩子。
 
-- [ ] **Step 3: Implement explicit state and event value objects**
+- [x] **Step 3: Implement explicit state and event value objects**
 
 `TalentRuntimeState` 只提供类型明确的状态操作：
 
@@ -683,7 +683,7 @@ public sealed class TalentRuntimeEvent
 
 事件中的 `TalentId` 用于显示和网络身份，不用于在 `Room`/`GameServer` 选择效果代码。
 
-- [ ] **Step 4: Add typed lifecycle contexts and rule hooks**
+- [x] **Step 4: Add typed lifecycle contexts and rule hooks**
 
 在 `TalentRule` 增加：
 
@@ -713,7 +713,7 @@ public sealed class TalentRoundOutcome
 }
 ```
 
-- [ ] **Step 5: Implement `TalentMatchRuntime` as the sole lifecycle coordinator**
+- [x] **Step 5: Implement `TalentMatchRuntime` as the sole lifecycle coordinator**
 
 构造函数输入每席位的 `TalentSlotConfig` 和 `TalentRegistry`，实例化全部 9 个 carried entries，只有开场主槽设为 active；这样中场启用备选时不会临时创造第二套身份。同一实例跨小局复用：
 
@@ -739,11 +739,11 @@ public TalentMatchRuntime(
 
 `BeginMatch` 只能成功一次；重复调用抛 `InvalidOperationException`，以便尽早暴露 Room 生命周期错误。它先对全部 carried entries 调用 `InitializeMatchState`，再只对 active entries 应用 `GetMatchStartScoreDelta`，保证备选天赋可以初始化次数但不会提前产生效果。active 且 `RevealPolicy == PublicAtMatchStart` 的 entry 在这里永久设为 `IsRevealed=true` 并产生公开事件。`BeginRound` 先清理所有 round-scope 数据，再只调用 active 规则。`ApplyWallBuilding` 发生在洗牌前；GameServer 洗牌后调用 `ResolvePostShuffle`，runtime 此时才根据 `GetRoundStartPeekCount` 读取牌山顶部并保存各席私有结果。`ApplyDraw`/`ApplyDiscard` 维持现有优先级稳定排序和管道链式返回。`BuildScoringOptions` 创建新实例后依次调用规则，不能复用上次胡牌的可变对象。`DrainEventsForSeat` 根据公开/私有可见性过滤并保证事件 ID 单调递增。
 
-- [ ] **Step 6: Verify two-round persistence and event privacy**
+- [x] **Step 6: Verify two-round persistence and event privacy**
 
 扩充测试：公共事件四席可见；OwnerOnly 只有本家可见；读取一席事件不能让其他席丢失。实现采用每席游标或按席缓存，不能使用全局 destructive dequeue。
 
-- [ ] **Step 7: Run regression and commit**
+- [x] **Step 7: Run regression and commit**
 
 Run:
 
@@ -778,7 +778,7 @@ pwsh -NoLogo -NoProfile -Command "git add Assets/Scripts/Talent Tests/NetworkReg
 - Test: `Tests/NetworkRegression/RoomSessionTests.cs`
 - Test: `Tests/NetworkRegression/SnapshotReconnectTests.cs`
 
-- [ ] **Step 1: Add failing behavior regressions for all six talents across two rounds**
+- [x] **Step 1: Add failing behavior regressions for all six talents across two rounds**
 
 建立一场两局测试，至少断言：
 
@@ -801,11 +801,11 @@ runner.Check(transformedTile.Suit == Suit.Dragon && transformedTile.Value == 2,
 
 再加源码守卫：读取 `Room.cs`、`GameServer.cs`，断言不包含六个稳定 ID 的字符串字面量。测试只防回归，不替代代码审查。
 
-- [ ] **Step 2: Run regression and confirm RED**
+- [x] **Step 2: Run regression and confirm RED**
 
 Expected: runtime 尚未由 `Room` 持有，现有硬编码策略仍使跨局次数或源码守卫失败。
 
-- [ ] **Step 3: Move each effect into its rule override**
+- [x] **Step 3: Move each effect into its rule override**
 
 实现映射固定如下：
 
@@ -840,7 +840,7 @@ public override void ConfigureScoring(TalentScoringContext context, ScoringOptio
 
 为此，GameServer 在牌真正进入牌河或公开副露后统一调用 `NotifyTileBecamePublic`。runtime 读取 `IsModified/SpecialEffectID` 定位来源 entry 并按其 reveal policy 发事件；这里只用 ID 找到身份，不执行效果分支。
 
-- [ ] **Step 4: Make Room own the runtime for the whole session**
+- [x] **Step 4: Make Room own the runtime for the whole session**
 
 `Room` 在四席构筑锁定、比赛启动之前创建一次：
 
@@ -859,7 +859,7 @@ BroadcastTalentEventsAtSafeBoundary();
 
 这样 `DrawReward` 使用的是刚结束小局的结果，而 `StartingCapital` 不会因重建 `GameServer` 再触发。
 
-- [ ] **Step 5: Replace `GameServer` hardcoding with runtime calls**
+- [x] **Step 5: Replace `GameServer` hardcoding with runtime calls**
 
 删除 `GameServer.StartGame` 中对 `HeadStart`、`DragonAscent`、`Peek` 的 ID 查询，改为：
 
@@ -878,7 +878,7 @@ ScoringOptions options = _talentRuntime.BuildScoringOptions(scoringContext);
 
 流局结算不再检查 `DrawReward` ID；统一由 `Room` 调用 `EndRound`。`GameServer` 仍负责权威发牌、动作校验和算番，不拥有 runtime 生命周期。客户端只消费 `TalentRuntimeEvent`、分数和快照，不调用任何 runtime 生命周期方法。
 
-- [ ] **Step 6: Remove obsolete managers and update explicit project includes**
+- [x] **Step 6: Remove obsolete managers and update explicit project includes**
 
 确认所有调用点迁移后删除 `TalentManager.cs`、`SessionTalentPolicy.cs` 及 `.meta`，从 `NetworkRegression.csproj` 移除旧 `<Compile Include>`，加入新 runtime 文件。运行：
 
@@ -888,7 +888,7 @@ pwsh -NoLogo -NoProfile -Command "rg -n 'TalentManager|SessionTalentPolicy|head_
 
 Expected: 不出现旧类型；稳定 ID 不出现在 `Room.cs` 或 `GameServer.cs`。`GameManager` 也不应包含效果型 ID 分支。
 
-- [ ] **Step 7: Run full verification and commit**
+- [x] **Step 7: Run full verification and commit**
 
 Run:
 
@@ -912,11 +912,11 @@ pwsh -NoLogo -NoProfile -Command "git add Assets/Scripts Tests/NetworkRegression
 
 只有以下条件全部满足，才能开始第二份计划：
 
-- [ ] 协议版本为 v3，构筑网络 schema 为 v2。
-- [ ] 40/80/120 三档预算由服务端统一校验，备选槽未激活时不计成本。
-- [ ] 公共房间消息不包含其他玩家精确总异化值。
-- [ ] `Room` 每场只创建一次 `TalentMatchRuntime`，`GameManager` 不创建、不持有也不调用 runtime。
-- [ ] 六个现有天赋在跨两小局回归中保持设计次数。
-- [ ] `Room.cs`、`GameServer.cs` 无六天赋 ID 效果分支。
-- [ ] 网络回归、构建和 `git diff --check` 全部通过。
-- [ ] `git status --short` 只显示预期文件，且不存在占位注释、未实现异常、空方法或假成功返回。
+- [x] 协议版本为 v3，构筑网络 schema 为 v2。
+- [x] 40/80/120 三档预算由服务端统一校验，备选槽未激活时不计成本。
+- [x] 公共房间消息不包含其他玩家精确总异化值。
+- [x] `Room` 每场只创建一次 `TalentMatchRuntime`，`GameManager` 不创建、不持有也不调用 runtime。
+- [x] 六个现有天赋在跨两小局回归中保持设计次数。
+- [x] `Room.cs`、`GameServer.cs` 无六天赋 ID 效果分支。
+- [x] 网络回归、构建和 `git diff --check` 全部通过。
+- [x] `git status --short` 只显示预期文件，且不存在占位注释、未实现异常、空方法或假成功返回。

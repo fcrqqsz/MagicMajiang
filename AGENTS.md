@@ -1,7 +1,7 @@
 # AGENTS.md - SuperMajiang Project Context
 
 ## Project Overview
-**SuperMajiang** 是一款基于 Unity 的 Roguelike 国标麻将游戏，支持单机与 WebSocket 联机。
+**SuperMajiang** 是一款基于 Unity 的 Roguelike 国标麻将游戏，支持 WebSocket 联机；一人游玩同样使用在线 `Room`，由 AI 补足其余席位。
 - **核心规则**: 国标麻将 (MCR/Guobiao)，支持 81 番种计算
 - **特色系统**: Roguelike 天赋系统、34 张自定义牌库、异化值机制
 - **当前阶段**: Alpha - 核心循环与规则已实现
@@ -24,8 +24,8 @@
 - 正式服务端使用 Dedicated Server / Headless 构建，唯一启动场景为 `00_ServerBootstrap`；客户端默认首场景仍为 `00_Persistent`
 - 服务端链路：`ServerBootstrap -> WebSocketService -> ConnectionRegistry -> RoomManager -> Room -> GameServer`
 - `ConnectionRegistry` 分离物理 WebSocket、连接代次、开发期身份和逻辑席位；旧 endpoint 的迟到回调必须被代次校验丢弃
-- `RoomManager` 管理房间生命周期，`Room` 持有四席构筑、`GameSession`、`GameServer`、席位消息流及断线托管状态
-- 协议版本为 v2；连接必须先完成 `Hello`，开发期以规范化 username 生成稳定 `playerId`
+- `RoomManager` 管理房间生命周期，`Room` 持有四席构筑、`GameSession`、跨小局复用的 `TalentMatchRuntime`、`GameServer`、席位消息流及断线托管状态
+- 协议版本为 v3，携带构筑 schema 为 v2；连接必须先完成 `Hello`，开发期以规范化 username 生成稳定 `playerId`
 - 每个真人席位使用独立、连续递增的 `SeatMessageStream`；公共消息也按席序列化，私有手牌、牌库、天赋和窥探结果不得串席
 - `RoomGameSnapshot` 只向本家暴露完整暗手牌；客户端使用纯 C# `ClientGameState` 原子应用快照和有序消息
 - 所有网络动作携带 `decisionId`；服务端拒绝过期、重复、错误阶段、错误席位和 AI 控制期间的人类动作
@@ -46,12 +46,12 @@
 
 **天赋系统**: 纯 C# 管道架构，服务端统一执行
 - 天赋通过 `[TalentRuleAttribute]` 标记，由 `TalentRegistry` 反射自动注册（镜像 `FanRuleRegistry` 模式）
-- `TalentManager` 非单例，每局由 `GameServer` 创建，避免跨局状态残留
-- 覆盖五个阶段钩子：牌山构建 / 摸牌 / 出牌 / 动作校验 / 算番
-- `OnDraw`/`OnDiscard` 返回修改后的 `TileData`，形成管道链式调用
-- 6 槽位配置（大×1 + 中×2 + 小×3），向下兼容（大槽可装中/小天赋）
-- 异化值 = 牌库异化值 + 天赋异化值之和（`DeckConfig.CalculateTotalAlienation`）
-- 天赋配置嵌入 `SavedDeck.Talents`，旧存档无此字段时默认空值，向后兼容
+- 四席构筑锁定后，`Room` 恰好创建一个 `TalentMatchRuntime`，并供所有 `GameServer` 小局复用；`TalentManager` 与 `SessionTalentPolicy` 已删除
+- runtime 负责带类型的比赛/小局状态、生命周期、管道、事件、私有窥探、算分选项、揭示及小局结束效果
+- 覆盖牌山构建、摸牌、出牌、动作校验和算番钩子；`OnDraw`/`OnDiscard` 返回修改后的 `TileData`，形成管道链式调用
+- 携带构筑为 6 个主槽（大×1 + 中×2 + 小×3）及 3 个备选槽；主槽可向下兼容装配
+- 异化值档位为 Low 40 / Standard 80 / High 120。服务端重建并验证构筑：总成本 = 牌库异化值 + 当前激活主天赋成本，未激活的三个备选不计成本；精确总值仅本家可见
+- 现有六个天赋均已迁入规则重写，并在跨两小局回归中验证
 
 **单例模式**: 逻辑层使用纯 C# 懒加载单例，不依赖 MonoBehaviour/场景状态
 
@@ -65,6 +65,7 @@ Assets/Scripts/
 │   ├── MahjongLogic.cs      # 核心算法 (回溯胡牌判定、多路径拆解、听牌分析)
 │   ├── ActionValidator.cs   # 吃碰杠胡动作校验
 │   ├── DeckConfig.cs        # 牌库配置与异化值计算
+│   ├── AlienationPreset.cs  # Low 40 / Standard 80 / High 120 服务端预算
 │   ├── HandController.cs    # 3D 手牌管理、布局、动画、交互
 │   ├── RiverController.cs   # 牌河 3D 排布
 │   ├── TileVisual.cs        # 单张牌视觉容器
@@ -94,15 +95,18 @@ Assets/Scripts/
 │               ├── MCR_8to24.cs # 8-24番 (28种)
 │               └── MCR_32Plus.cs # 32+番 (18种)
 ├── Systems/                 # 全局管理
-│   ├── GameManager.cs       # 游戏初始化入口, 多局循环驱动
+│   ├── GameManager.cs       # 客户端网络投影与场景协调，不持有服务端/会话/runtime
 │   └── DeckManager.cs       # 牌山构建、洗牌、发牌
 ├── Talent/                  # Roguelike 天赋系统
 │   ├── TalentRuleAttribute.cs # 标记属性 (id, displayName, description, tier, cost, phases)
 │   ├── TalentRule.cs        # 运行时抽象基类 (阶段钩子)
 │   ├── TalentContext.cs     # 上下文数据类
-│   ├── TalentSlotConfig.cs  # 可序列化 6 槽位配置
+│   ├── TalentSlotConfig.cs  # 可序列化 6+3 携带构筑（主槽 + 备选槽）
 │   ├── TalentRegistry.cs    # 纯 C# 懒加载单例注册中心
-│   ├── TalentManager.cs     # 纯 C# 管道执行器 (每局创建)
+│   ├── TalentMetadata.cs    # 生命周期、公开策略与备选限制元数据
+│   ├── TalentRuntimeState.cs # 跨小局的天赋状态
+│   ├── TalentRuntimeEvent.cs # 结构化公开/私有天赋事件
+│   ├── TalentMatchRuntime.cs # Room 持有的跨小局生命周期、管道与揭示协调器
 │   ├── TalentDefinition.cs  # SO 元数据 (UI 图标/描述, 可选)
 │   └── Impl/                # 具体天赋实现
 │       ├── MidasTouchTalent.cs
@@ -153,14 +157,14 @@ Assets/UI/                   # UI Toolkit 面板
 
 ### Debugging
 - `GameManager` 中 `useDebugHand` 可在 Inspector 配置测试牌型
-- `GameManager` 中 `gameMode` 可在 Inspector 切换对局模式 (Single/EastOnly/HalfGame/FullGame)
+- `GameManager` 中 `gameMode` 可在 Inspector 选择请求的对局模式 (Single/EastOnly/HalfGame/FullGame)
 - 算番开发: 在 `FanRules_Common.cs` 新增规则需实现 `GetMatchCount`，考虑优先级与排斥
 - Dedicated Server 使用 `Tools > Build > Dedicated Server (Windows)` 构建，不得修改客户端 Build Settings 首场景
 - 联机自动回归：`dotnet run --project Tests\NetworkRegression\NetworkRegression.csproj --no-restore`
 - 完整联机验证步骤见 `docs/network_verification.md`
 
 ### Design Principles
-- 客户端不应直接访问 `GameManager.Session` 等全局状态，信息通过接口回调下发
+- 客户端没有隐式本地权威路径；`GameManager` 仅协调网络投影和场景，不持有服务端、会话或天赋 runtime
 - 客户端不得自行推导联机权威分数、轮次、牌河或决策状态；统一从 `ClientGameState` 投影读取
 - `RemoteServerProxy` 不直接订阅原始 WebSocket，只消费 `ClientRoomService` 的有序消息和恢复快照
 - 服务端逻辑不得依赖 `GameManager.Instance`、`DeckManager.Instance`、HUD、手牌表现层或游戏场景对象
@@ -176,7 +180,7 @@ Assets/UI/                   # UI Toolkit 面板
 - ~~超时取消机制~~ (已完成: CancellationToken + ServerGameState)
 - ~~Home 页卡组选择器~~ (已完成: DeckSelector 左右箭头循环切换)
 - ~~多局对战 UI 完善~~ (已完成: 风位显示、分数面板、GameMode 选择器)
-- ~~天赋系统重构~~ (已完成: 纯 C# 管道架构、服务端执行、6 槽位 UI、MidasTouch 迁移)
+- ~~天赋系统重构~~ (已完成: Room 持有跨小局 runtime、服务端异化预算、6+3 构筑与六天赋迁移)
 - ~~牌河指针~~ (已完成: Emission 呼吸灯高亮最新出牌)
 - ~~通用悬浮牌面板~~ (已完成: FloatingTilePanel 展示/选择双模式，窥探天赋接入)
 - ~~天赋选择弹窗美化~~ (已完成: CSS class 重构，品阶颜色区分，结构化布局)

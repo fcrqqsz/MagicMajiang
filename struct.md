@@ -71,7 +71,7 @@ WebSocketClient
   -> Hand / River / HUD / Result presentation
 ```
 
-协议版本为 v2。username 目前仅作为开发期身份桥接，经 `IAccountAuthenticator` 规范化为稳定 `playerId`；它不是正式鉴权。断线时物理 endpoint 与逻辑席位分离，席位可进入 `OfflineReserved` / `AiControlled`，并只在安全决策边界切换控制者。重连使用 `{roomId, streamId}` 和已认证身份定位席位，当前始终请求完整权威快照；Dedicated Server 重启不恢复房间。
+协议版本为 v3，携带构筑 schema 为 v2。username 目前仅作为开发期身份桥接，经 `IAccountAuthenticator` 规范化为稳定 `playerId`；它不是正式鉴权。`Room` 锁定四席构筑后重建并验证 Low 40 / Standard 80 / High 120 异化值预算，公开消息只携带档位而非其他玩家精确总值。断线时物理 endpoint 与逻辑席位分离，席位可进入 `OfflineReserved` / `AiControlled`，并只在安全决策边界切换控制者。重连使用 `{roomId, streamId}` 和已认证身份定位席位，当前始终请求完整权威快照；Dedicated Server 重启不恢复房间。
 *   **表现层控制器 (MonoBehaviour)**:
     *   `HandController.cs`: 管理 3D 手牌生成、布局、DoTween 动画及交互。含 `ForceRemoveTile()` 超时出牌专用方法。
     *   `RiverController.cs`: 管理牌河的 3D 排布。
@@ -91,19 +91,22 @@ WebSocketClient
 *   `NetworkManager.cs`: 服务接口与 Additive 多场景加载的枢纽。
 *   `LoadingScreenController.cs`: UI Toolkit 加载遮罩控制。
 *   `CameraManager.cs`: 多场景动态相机切换控制。
-*   `GameManager.cs`: 游戏初始化入口，组装 Server 与 Clients，驱动多局循环。
+*   `GameManager.cs`: 客户端网络投影和场景协调器；不组装 Server/Clients，不拥有会话或 `TalentMatchRuntime`，也不驱动多局循环。
 *   `DeckManager.cs`: 牌山构建、洗牌、发牌管理。`GetWallTiles()` 暴露牌山引用供天赋修改，`ShuffleWall()` 公开由 GameServer 在天赋处理后显式调用。
 
 ### C. `Assets/Scripts/Talent` (Roguelike 天赋系统)
-纯 C# 管道架构，镜像算番系统的 Strategy + Reflection 模式。
+纯 C# 规则与跨小局 runtime 架构，镜像算番系统的 Strategy + Reflection 模式。`Room` 在四席构筑锁定后恰好创建一个 `TalentMatchRuntime`，供该场比赛全部 `GameServer` 小局复用。
 
 *   **基础设施**:
     *   `TalentRuleAttribute.cs`: 标记属性，定义天赋的 Id、DisplayName、Description、Tier、AlienationCost、Phases。
     *   `TalentRule.cs`: 运行时抽象基类，提供 5 个阶段钩子虚方法（OnWallBuilding / OnDraw / OnDiscard / OnActionValidation / OnScoring）。
     *   `TalentContext.cs`: 上下文数据类，传递当前玩家 ID、牌山引用、GameState 快照等信息。
-    *   `TalentSlotConfig.cs`: 可序列化 6 槽位配置（index 0=大, 1-2=中, 3-5=小），支持向下兼容装配。
+    *   `TalentMetadata.cs`: 生命周期、公开策略与备选限制等不可变元数据。
+    *   `TalentSlotConfig.cs`: 可序列化 6+3 携带构筑：主槽 index 0=大、1-2=中、3-5=小，另有三个备选槽；支持向下兼容装配。
     *   `TalentRegistry.cs`: 纯 C# 懒加载单例，反射自动发现 `[TalentRuleAttribute]` 标记的类，提供 `CreateInstance`、`GetDisplayName`、`GetDescription`、`GetCost`、`GetTier` 等查询方法。
-    *   `TalentManager.cs`: 管道执行器（非单例，每局由 GameServer 创建）。维护 `_playerTalents` 和 `_phasePipelines`，按 Priority 排序、Scope 过滤后链式调用。
+    *   `TalentRuntimeState.cs`: 每席每个天赋的带类型比赛/小局计数器、标志和公开状态。
+    *   `TalentRuntimeEvent.cs`: 带单调事件 ID 的结构化公开/私有天赋事件。
+    *   `TalentMatchRuntime.cs`: Room 持有的唯一生命周期协调器，执行管道、私有 Peek、算分选项、公开揭示和小局结束效果；`TalentManager` 与 `SessionTalentPolicy` 已删除。
     *   `TalentDefinition.cs`: ScriptableObject 元数据（图标/显示名/描述），仅供 UI 展示，运行时逻辑不依赖。
 *   **具体实现 (`Impl/`)**:
     *   `MidasTouchTalent.cs`: 点金手——摸牌时将风牌/箭牌转化为发财。
@@ -176,7 +179,7 @@ WebSocketClient
 *   **LoginPanel & MainLobby**: `01_Login` 和 `02_MainLobby` 场景中的 UI 主体面板。Home 页包含 `DeckSelector`（左右箭头循环切换卡组）、异化值显示及匹配入口。
 *   **操作面板 (`ActionPanel`)**: 按钮布局与可选吃牌组合逻辑。
 *   **结算面板 (`ResultPanel`)**: 汇总算番详情，驱动流局或胡牌界面。
-*   **牌库编辑器 (`DeckEditor`)**: 34 种牌选择界面与异化值计算提示。含天赋槽 UI（6 槽位选择、弹窗选择器、详情区域）。天赋选择弹窗使用 CSS class 结构化布局（品阶颜色区分、名称/描述/异化值分行显示）。
+*   **牌库编辑器 (`DeckEditor`)**: 34 种牌选择界面与异化值计算提示。含天赋槽 UI（6 个主槽及 3 个备选槽、弹窗选择器、详情区域）。天赋选择弹窗使用 CSS class 结构化布局（品阶颜色区分、名称/描述/异化值分行显示）。
 *   **天赋模板**: `TalentSlotTemplate.uxml/uss`（槽位显示）、`TalentItemTemplate.uxml`（列表项）。
 *   **通用悬浮牌面板 (`FloatingTilePanel`)**: `FloatingTilePanel.uxml/uss` + `FloatingTilePanelController.cs`，支持展示模式（自动关闭+手动关闭）和选择模式（点击回调），用于窥探天赋等需要展示牌面信息的场景。屏幕上方居中，淡入动画，不阻挡底层交互。
 *   **牌面图片工具**: `TileImageHelper.cs` 静态类，将 `Suit+Value` 映射为 `Resources` 路径，供 `WaitHintController`、`FloatingTilePanelController` 等共用。

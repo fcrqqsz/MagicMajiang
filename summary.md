@@ -8,10 +8,15 @@
 *   **核心规则**: 以国标麻将 (MCR) 为基础，支持81番种计算。
 *   **特色玩法**: Roguelike 天赋系统、自定义 34 张牌库及异化值机制。
 
-2. 最近进展 (Recent Progress)
+2. 最近进展 (Recent Progress, snapshot 2026-08-10 / Talent Plan 1 complete)
+*   **Talent Plan 1：Room 天赋基础、异化值与六天赋迁移 (2026-08-10)**:
+    *   一人游玩统一进入普通在线 `Room` 并由 AI 补足席位；客户端没有隐式本地权威路径，`GameManager` 只负责网络投影与场景协调。
+    *   协议升级为 v3，携带构筑 schema 为 v2。服务端重建并验证构筑；Low / Standard / High 异化值档位分别为 40 / 80 / 120，总成本为牌库异化值加当前激活主天赋成本，三个备选槽在启用前不计成本，精确总值仅本家可见。
+    *   四席构筑锁定后，`Room` 恰好创建一个跨小局复用的 `TalentMatchRuntime`；它承载带类型的比赛/小局状态、生命周期、管道、事件、私有 Peek、算分选项、揭示与小局结束效果，`TalentManager` 与 `SessionTalentPolicy` 已删除。
+    *   六个既有天赋均已迁入规则重写并完成跨两小局验证；Peek 读取发牌后的牌山，弃牌/副露/加杠/和牌边界使用权威实体牌公开，完成事件只发出一次，Room 异常时有终局兜底。
 *   **联机网络化框架 Phase A-E 最终验收 (2026-07-25)**:
     *   Dedicated Server 使用独立 `00_ServerBootstrap` 场景启动，正式服务端不依赖 `03_Game`、`GameManager.Instance`、`DeckManager.Instance` 或 UI。
-    *   完成协议 v2、开发期 username 身份桥接、连接代次、房间/席位管理、四席构筑锁定、服务端天赋执行和多人 Ready 流程。
+    *   完成开发期 username 身份桥接、连接代次、房间/席位管理、四席构筑锁定、服务端天赋执行和多人 Ready 流程；协议与构筑版本已由后续 Talent Plan 1 分别升级为 v3 / v2。
     *   `ServerGameState` 权威记录手牌、副露和牌河；`RoomGameSnapshot` 按席保护隐私，`ClientGameState` 幂等应用有序消息和完整快照。
     *   完成断线席位保留、决策边界 AI 托管、endpoint 重绑、心跳检测、自动重试、场景路由和客户端桌面原子恢复。
     *   已通过 1/2/3/4 真人组合、EastOnly 多小局、强退重连、心跳超时、加载/主回合/响应/局间/结算恢复和 Dedicated Server 验收。
