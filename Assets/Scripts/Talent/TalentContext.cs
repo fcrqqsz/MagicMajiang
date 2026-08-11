@@ -274,6 +274,42 @@ namespace MahjongGame.Talents
         }
     }
 
+    public sealed class TalentActivationContext : TalentContext
+    {
+        public new int CurrentSeatIndex => base.CurrentSeatIndex.Value;
+        public TalentActivationWindow RequiredWindow { get; }
+
+        public TalentActivationContext(
+            GameSession session,
+            int currentSeatIndex,
+            TalentActivationWindow requiredWindow)
+            : base(session, ValidateSeatIndex(currentSeatIndex))
+        {
+            RequiredWindow = requiredWindow;
+        }
+
+        private TalentActivationContext(
+            TalentSessionSnapshot session,
+            int currentSeatIndex,
+            TalentActivationWindow requiredWindow)
+            : base(session, currentSeatIndex, null, null)
+        {
+            RequiredWindow = requiredWindow;
+        }
+
+        internal TalentActivationContext WithState(
+            TalentRuntimeState state,
+            Action<TalentRuntimeEvent> eventSink)
+        {
+            TalentActivationContext context = new TalentActivationContext(
+                Session,
+                CurrentSeatIndex,
+                RequiredWindow);
+            context.ConfigureEntry(CurrentSeatIndex, state, eventSink);
+            return context;
+        }
+    }
+
     public sealed class TalentScoringContext : TalentContext
     {
         public new int CurrentSeatIndex => base.CurrentSeatIndex.Value;

@@ -233,6 +233,58 @@ namespace MahjongGame.Talents
             }
         }
 
+        public IReadOnlyList<TalentActionOption> GetAvailableActions(
+            int ownerSeatIndex,
+            TalentActivationWindow requiredWindow)
+        {
+            ValidateSeatIndex(ownerSeatIndex);
+            EnsurePhase(RuntimePhase.RoundReady, nameof(GetAvailableActions));
+            if (requiredWindow == TalentActivationWindow.None)
+                return Array.Empty<TalentActionOption>();
+
+            return _entries
+                .Where(entry => entry.OwnerSeatIndex == ownerSeatIndex
+                                && entry.State.IsActive
+                                && entry.Metadata.ActivationWindow.HasFlag(requiredWindow))
+                .OrderBy(entry => entry.Sequence)
+                .Select(entry => new TalentActionOption { TalentId = entry.Rule.Id })
+                .ToArray();
+        }
+
+        public TalentActionResult TryActivate(
+            int ownerSeatIndex,
+            TalentActionRequest request,
+            TalentActivationContext context)
+        {
+            if (request == null || context == null)
+                return TalentActionResult.Reject(TalentActionErrorCodes.InvalidTarget);
+            ValidateSeatIndex(ownerSeatIndex);
+            EnsureReadyRound(context, nameof(TryActivate));
+
+            if (context.CurrentSeatIndex != ownerSeatIndex)
+                return TalentActionResult.Reject(TalentActionErrorCodes.InvalidTarget);
+            if (context.RequiredWindow == TalentActivationWindow.None)
+                return TalentActionResult.Reject(TalentActionErrorCodes.NotAvailable);
+
+            RuntimeEntry entry = FindActiveEntry(ownerSeatIndex, request.TalentId);
+            if (entry == null)
+                return TalentActionResult.Reject(TalentActionErrorCodes.NotCarriedOrInactive);
+
+            if (!entry.Metadata.ActivationWindow.HasFlag(context.RequiredWindow))
+                return TalentActionResult.Reject(TalentActionErrorCodes.NotAvailable);
+
+            if (!GetAvailableActions(ownerSeatIndex, context.RequiredWindow)
+                    .Any(option => string.Equals(option.TalentId, request.TalentId, StringComparison.Ordinal)))
+            {
+                return TalentActionResult.Reject(TalentActionErrorCodes.NotAvailable);
+            }
+
+            return entry.Rule.TryActivate(
+                       context.WithState(entry.State, runtimeEvent => EmitEvent(entry, runtimeEvent)),
+                       request)
+                   ?? TalentActionResult.NotSupported();
+        }
+
         public ScoringOptions BuildScoringOptions(TalentScoringContext context)
         {
             if (context == null) throw new ArgumentNullException(nameof(context));
@@ -392,6 +444,15 @@ namespace MahjongGame.Talents
         {
             return GetAllActiveEntries()
                 .Where(entry => entry.Rule.Phases != null && entry.Rule.Phases.Contains(phase));
+        }
+
+        private RuntimeEntry FindActiveEntry(int ownerSeatIndex, string talentId)
+        {
+            if (string.IsNullOrWhiteSpace(talentId)) return null;
+            return _entries.FirstOrDefault(entry => entry.OwnerSeatIndex == ownerSeatIndex
+                                                    && entry.State.IsActive
+                                                    && string.Equals(entry.Rule.Id, talentId,
+                                                        StringComparison.Ordinal));
         }
 
         private IEnumerable<RuntimeEntry> GetSeatPipeline(TalentPhase phase, int currentSeatIndex)

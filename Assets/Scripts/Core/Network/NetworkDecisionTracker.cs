@@ -107,25 +107,8 @@ namespace MahjongGame.Core.Network
 
         public bool TrySubmitNetworkAction(long decisionId, int seatIndex, ClientActionType actionType, out string errorCode)
         {
-            errorCode = null;
-            if (_active == null)
-            {
-                errorCode = NetworkErrorCodes.NoActiveDecision;
-                return false;
-            }
-
-            if (decisionId != _active.DecisionId)
-            {
-                errorCode = NetworkErrorCodes.StaleDecision;
-                return false;
-            }
-
-            if (_active.DeadlineUnixMilliseconds > 0
-                && DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() >= _active.DeadlineUnixMilliseconds)
-            {
-                errorCode = NetworkErrorCodes.DecisionExpired;
-                return false;
-            }
+            errorCode = ValidateActiveDecision(decisionId);
+            if (errorCode != null) return false;
 
             if (_active.SubmittedSeats.Contains(seatIndex))
             {
@@ -177,6 +160,42 @@ namespace MahjongGame.Core.Network
             return true;
         }
 
+        /// <summary>
+        /// Checks whether a talent action may execute alongside the active base decision.
+        /// This method deliberately does not mark the seat as having submitted its base action.
+        /// </summary>
+        public bool TryValidateSupplementalAction(
+            long decisionId,
+            int seatIndex,
+            NetworkDecisionPhase requiredPhase,
+            out string errorCode)
+        {
+            errorCode = ValidateActiveDecision(decisionId);
+            if (errorCode != null) return false;
+
+            if (_active.Phase != requiredPhase)
+            {
+                errorCode = NetworkErrorCodes.WrongPhase;
+                return false;
+            }
+
+            if (requiredPhase == NetworkDecisionPhase.MainTurn
+                && seatIndex != _active.ControllerSeatIndex)
+            {
+                errorCode = NetworkErrorCodes.WrongController;
+                return false;
+            }
+
+            if (requiredPhase != NetworkDecisionPhase.MainTurn
+                && !_active.EligibleSeats.Contains(seatIndex))
+            {
+                errorCode = NetworkErrorCodes.NotEligible;
+                return false;
+            }
+
+            return true;
+        }
+
         public bool Close(long decisionId)
         {
             if (_active == null || _active.DecisionId != decisionId) return false;
@@ -188,6 +207,23 @@ namespace MahjongGame.Core.Network
         {
             if (_active != null)
                 throw new InvalidOperationException("Close the active network decision before opening another one.");
+        }
+
+        private string ValidateActiveDecision(long decisionId)
+        {
+            if (_active == null)
+                return NetworkErrorCodes.NoActiveDecision;
+
+            if (decisionId != _active.DecisionId)
+                return NetworkErrorCodes.StaleDecision;
+
+            if (_active.DeadlineUnixMilliseconds > 0
+                && DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() >= _active.DeadlineUnixMilliseconds)
+            {
+                return NetworkErrorCodes.DecisionExpired;
+            }
+
+            return null;
         }
     }
 }

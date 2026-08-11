@@ -739,6 +739,55 @@ namespace MahjongGame.Core.Network
             return true;
         }
 
+        /// <summary>
+        /// Executes a carried talent action alongside, rather than in place of, the active decision.
+        /// </summary>
+        public bool SubmitNetworkTalentAction(
+            int boundSeatIndex,
+            TalentActionMessage message,
+            out TalentActionResult result)
+        {
+            result = null;
+            if (message == null)
+            {
+                result = TalentActionResult.Reject(NetworkErrorCodes.InvalidAction);
+                return false;
+            }
+
+            NetworkDecisionContext activeDecision = _decisionTracker?.Active;
+            if (activeDecision == null)
+            {
+                result = TalentActionResult.Reject(NetworkErrorCodes.NoActiveDecision);
+                return false;
+            }
+
+            if (!_decisionTracker.TryValidateSupplementalAction(
+                    message.decisionId,
+                    boundSeatIndex,
+                    activeDecision.Phase,
+                    out string decisionError))
+            {
+                result = TalentActionResult.Reject(decisionError);
+                return false;
+            }
+
+            TalentActivationWindow window = activeDecision.Phase == NetworkDecisionPhase.MainTurn
+                ? TalentActivationWindow.MainTurn
+                : TalentActivationWindow.Response;
+            result = _talentRuntime.TryActivate(
+                boundSeatIndex,
+                new TalentActionRequest
+                {
+                    TalentId = message.talentId,
+                    TargetSeatIndex = message.targetSeatIndex,
+                    TargetTalentId = message.targetTalentId
+                },
+                new TalentActivationContext(_session, boundSeatIndex, window));
+            if (result.Accepted)
+                OnTalentEventsAvailable?.Invoke();
+            return result.Accepted;
+        }
+
         private void CompleteHuResponseCollection()
         {
             var potentialHuPlayerIds = GetPotentialHuPlayerIds();

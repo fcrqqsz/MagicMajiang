@@ -172,6 +172,15 @@ namespace MahjongGame.Core.Network
             return false;
         }
 
+        public bool SubmitNetworkTalentAction(
+            int seatIndex,
+            TalentActionMessage message,
+            out MahjongGame.Talents.TalentActionResult result)
+        {
+            result = MahjongGame.Talents.TalentActionResult.Reject(NetworkErrorCodes.NoActiveDecision);
+            return false;
+        }
+
         public System.Collections.Generic.List<MahjongGame.Core.TileData> GetHandSnapshot(int seatIndex) => new();
         public System.Collections.Generic.List<MahjongGame.Core.Meld> GetMeldSnapshot(int seatIndex) => new();
         public System.Collections.Generic.List<MahjongGame.Core.TileData> GetRiverSnapshot(int seatIndex) => new();

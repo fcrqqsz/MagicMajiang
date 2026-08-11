@@ -355,6 +355,43 @@ namespace MahjongGame.Core.Network
             return GameServer.SubmitNetworkAction(seatIndex, message.decisionId, action, out errorCode);
         }
 
+        public bool SubmitTalentAction(int seatIndex, TalentActionMessage message, out string errorCode)
+        {
+            errorCode = null;
+            if (State != RoomState.InRound || GameServer == null)
+            {
+                errorCode = NetworkErrorCodes.NoActiveDecision;
+                return false;
+            }
+            if (seatIndex < 0 || seatIndex > 3 || message == null)
+            {
+                errorCode = NetworkErrorCodes.InvalidAction;
+                return false;
+            }
+
+            RoomSeat seat = _seats[seatIndex];
+            if (seat == null || seat.IsAi
+                || (seat.Controller != null && !seat.Controller.IsHumanSubmissionAllowed(message.decisionId)))
+            {
+                errorCode = NetworkErrorCodes.WrongController;
+                return false;
+            }
+
+            bool accepted = GameServer.SubmitNetworkTalentAction(seatIndex, message, out TalentActionResult result);
+            errorCode = result?.ErrorCode;
+            if (accepted) BroadcastTalentEventsAtSafeBoundary();
+
+            TrySendToHumanSeat(seatIndex, "TalentActionResolved", new TalentActionResolvedMessage
+            {
+                decisionId = message.decisionId,
+                ownerSeatIndex = seatIndex,
+                talentId = message.talentId,
+                accepted = result?.Accepted ?? false,
+                errorCode = result?.ErrorCode
+            });
+            return accepted;
+        }
+
         public RoomSeatMessage[] GetSeatSnapshot()
         {
             return Enumerable.Range(0, 4).Select(GetSeatMessage).ToArray();

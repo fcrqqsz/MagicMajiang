@@ -226,6 +226,25 @@ namespace MahjongGame.Core.Network.Messages
     }
 
     [Serializable]
+    public sealed class TalentActionMessage
+    {
+        public long decisionId;
+        public string talentId;
+        public int targetSeatIndex = -1;
+        public string targetTalentId;
+    }
+
+    [Serializable]
+    public sealed class TalentActionResolvedMessage
+    {
+        public long decisionId;
+        public int ownerSeatIndex;
+        public string talentId;
+        public bool accepted;
+        public string errorCode;
+    }
+
+    [Serializable]
     public class SimpleTileData
     {
         public int suit;
