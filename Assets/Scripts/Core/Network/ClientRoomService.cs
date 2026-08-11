@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using MahjongGame.Core.Network.Messages;
 using MahjongGame.Core.Network.Transport;
 using MahjongGame.Core.Network.Data;
@@ -117,6 +119,46 @@ namespace MahjongGame.Core.Network
             if (!CanSubmitRoomCommand()) return;
             if (!HasRoom) { RoomError?.Invoke("No active room."); return; }
             Send("Ready", new ReadyMessage { phase = (int)phase });
+        }
+
+        public bool SubmitTalentAction(TalentActionOption option)
+        {
+            if (!CanSubmitRoomCommand()
+                || !HasRoom
+                || option == null
+                || string.IsNullOrWhiteSpace(option.TalentId)) return false;
+
+            ClientTalentRecoveryProjection projection = _gameState.CreateTalentRecoveryProjection();
+            if (projection.DecisionId <= 0) return false;
+
+            Send("TalentAction", new TalentActionMessage
+            {
+                decisionId = projection.DecisionId,
+                talentId = option.TalentId,
+                targetSeatIndex = option.TargetSeatIndex,
+                targetTalentId = option.TargetTalentId
+            });
+            return true;
+        }
+
+        public bool SubmitSideboard(IReadOnlyCollection<string> activeTalentIds)
+        {
+            if (!CanSubmitRoomCommand()
+                || !HasRoom
+                || activeTalentIds == null) return false;
+
+            SnapshotSideboardState sideboard = _roomState.Sideboard;
+            if (sideboard == null
+                || !sideboard.isActive
+                || sideboard.ownLocked
+                || sideboard.decisionId <= 0) return false;
+
+            Send("SideboardSubmit", new SideboardSubmitMessage
+            {
+                decisionId = sideboard.decisionId,
+                activeTalentIds = activeTalentIds.ToArray()
+            });
+            return true;
         }
 
         public void LeaveRoom()

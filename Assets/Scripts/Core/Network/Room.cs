@@ -373,35 +373,48 @@ namespace MahjongGame.Core.Network
         public bool SubmitTalentAction(int seatIndex, TalentActionMessage message, out string errorCode)
         {
             errorCode = null;
-            if (State != RoomState.InRound || GameServer == null)
-            {
-                errorCode = NetworkErrorCodes.NoActiveDecision;
-                return false;
-            }
-            if (seatIndex < 0 || seatIndex > 3 || message == null)
+            if (seatIndex < 0 || seatIndex >= _seats.Length)
             {
                 errorCode = NetworkErrorCodes.InvalidAction;
                 return false;
             }
 
             RoomSeat seat = _seats[seatIndex];
-            if (seat == null || seat.IsAi
-                || (seat.Controller != null && !seat.Controller.IsHumanSubmissionAllowed(message.decisionId)))
+            if (seat == null || seat.IsAi || seat.MessageStream == null)
             {
                 errorCode = NetworkErrorCodes.WrongController;
                 return false;
             }
 
-            bool accepted = GameServer.SubmitNetworkTalentAction(seatIndex, message, out TalentActionResult result);
-            errorCode = result?.ErrorCode;
+            TalentActionResult result;
+            bool accepted = false;
+            if (message == null || string.IsNullOrWhiteSpace(message.talentId))
+            {
+                result = TalentActionResult.Reject(NetworkErrorCodes.InvalidAction);
+            }
+            else if (State != RoomState.InRound || GameServer == null)
+            {
+                result = TalentActionResult.Reject(NetworkErrorCodes.NoActiveDecision);
+            }
+            else if (seat.Controller != null && !seat.Controller.IsHumanSubmissionAllowed(message.decisionId))
+            {
+                result = TalentActionResult.Reject(NetworkErrorCodes.WrongController);
+            }
+            else
+            {
+                accepted = GameServer.SubmitNetworkTalentAction(seatIndex, message, out result);
+                result ??= TalentActionResult.Reject(NetworkErrorCodes.InvalidAction);
+            }
+
+            errorCode = result.ErrorCode;
 
             TrySendToHumanSeat(seatIndex, "TalentActionResolved", new TalentActionResolvedMessage
             {
-                decisionId = message.decisionId,
+                decisionId = message?.decisionId ?? 0,
                 ownerSeatIndex = seatIndex,
-                talentId = message.talentId,
-                accepted = result?.Accepted ?? false,
-                errorCode = result?.ErrorCode
+                talentId = message?.talentId,
+                accepted = result.Accepted,
+                errorCode = result.ErrorCode
             });
             return accepted;
         }

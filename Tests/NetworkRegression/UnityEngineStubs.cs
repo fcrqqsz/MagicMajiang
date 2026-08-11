@@ -26,6 +26,7 @@ namespace UnityEngine
         public static int Min(int left, int right) => System.Math.Min(left, right);
         public static int Max(int left, int right) => System.Math.Max(left, right);
         public static int Abs(int value) => System.Math.Abs(value);
+        public static int Clamp(int value, int min, int max) => System.Math.Clamp(value, min, max);
     }
 
     public static class Debug
@@ -91,12 +92,42 @@ namespace MahjongGame.Core.Network.Transport
 
 namespace MahjongGame.Core.Network
 {
+    public interface IServer
+    {
+        void SubmitAction(ClientAction action);
+    }
+
     public sealed class PlayerPrefsClientReconnectTicketStore : IClientReconnectTicketStore
     {
         private readonly InMemoryClientReconnectTicketStore _inner = new();
         public void Save(ClientReconnectTicket ticket) => _inner.Save(ticket);
         public bool TryLoad(out ClientReconnectTicket ticket) => _inner.TryLoad(out ticket);
         public void Clear() => _inner.Clear();
+    }
+}
+
+namespace MahjongGame.Core
+{
+    public sealed class GameManager
+    {
+        public static GameManager Instance { get; set; }
+        public MahjongGame.Core.Network.GameSession Session { get; set; }
+    }
+}
+
+namespace MahjongGame.UI
+{
+    public sealed class GameHUDController
+    {
+        public static GameHUDController Instance { get; set; }
+        public void UpdateRoundInfo(MahjongGame.Core.Network.GameSession session) { }
+        public void UpdateScores(int[] scores) { }
+    }
+
+    public sealed class ResultPanelController
+    {
+        public static ResultPanelController Instance { get; set; }
+        public void SetSessionInfo(MahjongGame.Core.Network.GameSession session) { }
     }
 }
 
@@ -176,7 +207,8 @@ namespace MahjongGame.Core.Network
         }
 
         public bool IsAiControllingActiveDecision => false;
-        public bool IsHumanSubmissionAllowed(long decisionId) => true;
+        public bool HumanSubmissionAllowed { get; set; } = true;
+        public bool IsHumanSubmissionAllowed(long decisionId) => HumanSubmissionAllowed;
         public void MarkOffline() { }
         public void MarkOnline() { }
         public void SetPermanentAi() { }
@@ -229,6 +261,11 @@ namespace MahjongGame.Core.Network
         public bool IsDrawGame { get; private set; }
         public WinningHandSnapshot WinningHandSnapshot => null;
         public int CompletionNotifications { get; private set; }
+        public int TalentActionSubmissionCount { get; private set; }
+        public int LastTalentActionSeatIndex { get; private set; } = -1;
+        public TalentActionMessage LastTalentActionMessage { get; private set; }
+        public MahjongGame.Talents.TalentActionResult NextTalentActionResult { get; set; } =
+            MahjongGame.Talents.TalentActionResult.Reject(NetworkErrorCodes.NoActiveDecision);
 
         public bool SubmitNetworkAction(int seatIndex, long decisionId, ClientAction action, out string errorCode)
         {
@@ -241,8 +278,11 @@ namespace MahjongGame.Core.Network
             TalentActionMessage message,
             out MahjongGame.Talents.TalentActionResult result)
         {
-            result = MahjongGame.Talents.TalentActionResult.Reject(NetworkErrorCodes.NoActiveDecision);
-            return false;
+            TalentActionSubmissionCount++;
+            LastTalentActionSeatIndex = seatIndex;
+            LastTalentActionMessage = message;
+            result = NextTalentActionResult;
+            return result?.Accepted == true;
         }
 
         public System.Collections.Generic.IReadOnlyList<MahjongGame.Talents.TalentActionOption>

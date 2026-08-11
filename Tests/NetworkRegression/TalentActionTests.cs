@@ -1,5 +1,7 @@
 using MahjongGame.Core;
 using MahjongGame.Core.Network;
+using MahjongGame.Core.Network.Messages;
+using MahjongGame.Core.Network.Transport;
 using MahjongGame.Talents;
 
 internal static class TalentActionTests
@@ -27,6 +29,202 @@ internal static class TalentActionTests
         SheathedEdgeArmsOnlyOnTheFirstMainDecision(runner);
         SheathedEdgeReadOnlyResolutionConsumesOnlyAfterAcceptedWin(runner);
         SheathedEdgeUnusedArmExpiresWithoutRefund(runner);
+        RoomManagerRoutesTalentActionsWithExactlyOneSeatResolution(runner);
+    }
+
+    private static void RoomManagerRoutesTalentActionsWithExactlyOneSeatResolution(RegressionRunner runner)
+    {
+        VerifyManagedTalentAction(
+            runner,
+            "talent-route-accepted",
+            room => room.GameServer.NextTalentActionResult = TalentActionResult.Success(),
+            new TalentActionMessage
+            {
+                decisionId = 501,
+                talentId = "sheathed_edge",
+                targetSeatIndex = -1
+            },
+            expectedAccepted: true,
+            expectedErrorCode: null,
+            expectedServerSubmissions: 1,
+            "RoomManager routes an authenticated TalentAction through its bound seat and emits one ordered acceptance");
+
+        VerifyManagedTalentAction(
+            runner,
+            "talent-route-server-rejected",
+            room => room.GameServer.NextTalentActionResult = TalentActionResult.Reject(NetworkErrorCodes.WrongPhase),
+            new TalentActionMessage { decisionId = 502, talentId = "sheathed_edge" },
+            expectedAccepted: false,
+            expectedErrorCode: NetworkErrorCodes.WrongPhase,
+            expectedServerSubmissions: 1,
+            "a GameServer talent rejection emits one ordered seat resolution without a RoomError");
+
+        VerifyManagedTalentAction(
+            runner,
+            "talent-route-wrong-controller",
+            room => room.Seats[0].Controller.HumanSubmissionAllowed = false,
+            new TalentActionMessage { decisionId = 503, talentId = "sheathed_edge" },
+            expectedAccepted: false,
+            expectedErrorCode: NetworkErrorCodes.WrongController,
+            expectedServerSubmissions: 0,
+            "a Room controller rejection emits one ordered seat resolution without reaching GameServer");
+
+        VerifyManagedTalentAction(
+            runner,
+            "talent-route-empty",
+            _ => { },
+            null,
+            expectedAccepted: false,
+            expectedErrorCode: NetworkErrorCodes.InvalidAction,
+            expectedServerSubmissions: 0,
+            "an empty bound-seat TalentAction emits one ordered InvalidAction resolution");
+
+        using (var manager = new RoomManager(1, true, new ConnectionRegistry(int.MaxValue), messageCacheSize: 64))
+        {
+            Room room = CreateManagedTalentRoom(manager, "talent-route-wrong-phase", out GameEndpoint endpoint);
+            room.GameServer.CompleteDrawRound();
+            int beforeCount = endpoint.SentMessages.Count;
+
+            endpoint.Receive(
+                "talent-route-wrong-phase",
+                1,
+                MessageSerializer.Serialize("TalentAction", 0,
+                    new TalentActionMessage { decisionId = 504, talentId = "sheathed_edge" }));
+
+            NetworkMessageEnvelope[] newMessages = endpoint.SentMessages
+                .Skip(beforeCount)
+                .Select(MessageSerializer.DeserializeEnvelope)
+                .Where(envelope => envelope != null)
+                .ToArray();
+            TalentActionResolvedMessage resolved = newMessages.Length == 1
+                && newMessages[0].type == "TalentActionResolved"
+                    ? MessageSerializer.DeserializePayload<TalentActionResolvedMessage>(newMessages[0].data)
+                    : null;
+            runner.Check(
+                newMessages.Length == 1
+                && newMessages[0].seq > 0
+                && resolved?.accepted == false
+                && resolved.errorCode == NetworkErrorCodes.NoActiveDecision,
+                "a bound-seat TalentAction in the wrong room phase emits exactly one ordered NoActiveDecision resolution");
+        }
+
+        using (var manager = new RoomManager(1, true, new ConnectionRegistry(int.MaxValue), messageCacheSize: 64))
+        {
+            var endpoint = new GameEndpoint();
+            endpoint.Connect("talent-route-unbound", 1);
+            endpoint.Receive("talent-route-unbound", 1, MessageSerializer.Serialize("Hello", 0, new HelloMessage
+            {
+                protocolVersion = NetworkProtocol.Version,
+                username = "talent-route-unbound"
+            }));
+            int beforeCount = endpoint.SentMessages.Count;
+
+            endpoint.Receive(
+                "talent-route-unbound",
+                1,
+                MessageSerializer.Serialize("TalentAction", 0,
+                    new TalentActionMessage { decisionId = 505, talentId = "sheathed_edge" }));
+
+            NetworkMessageEnvelope[] newMessages = endpoint.SentMessages
+                .Skip(beforeCount)
+                .Select(MessageSerializer.DeserializeEnvelope)
+                .Where(envelope => envelope != null)
+                .ToArray();
+            RoomErrorMessage error = newMessages.Length == 1 && newMessages[0].type == "RoomError"
+                ? MessageSerializer.DeserializePayload<RoomErrorMessage>(newMessages[0].data)
+                : null;
+            runner.Check(
+                newMessages.Length == 1
+                && error?.code == "NotInRoom",
+                "an authenticated connection without a bound room seat keeps the existing RoomError contract");
+        }
+    }
+
+    private static void VerifyManagedTalentAction(
+        RegressionRunner runner,
+        string connectionId,
+        Action<Room> configure,
+        TalentActionMessage request,
+        bool expectedAccepted,
+        string expectedErrorCode,
+        int expectedServerSubmissions,
+        string description)
+    {
+        using var manager = new RoomManager(1, true, new ConnectionRegistry(int.MaxValue), messageCacheSize: 64);
+        Room room = CreateManagedTalentRoom(manager, connectionId, out GameEndpoint endpoint);
+        configure(room);
+        int beforeCount = endpoint.SentMessages.Count;
+        int beforeSequence = endpoint.SentMessages
+            .Select(MessageSerializer.DeserializeEnvelope)
+            .Where(envelope => envelope?.seq > 0)
+            .Select(envelope => envelope.seq)
+            .DefaultIfEmpty(0)
+            .Max();
+
+        endpoint.Receive(connectionId, 1, MessageSerializer.Serialize("TalentAction", 0, request));
+
+        NetworkMessageEnvelope[] newMessages = endpoint.SentMessages
+            .Skip(beforeCount)
+            .Select(MessageSerializer.DeserializeEnvelope)
+            .Where(envelope => envelope != null)
+            .ToArray();
+        TalentActionResolvedMessage resolved = newMessages.Length == 1
+            && newMessages[0].type == "TalentActionResolved"
+                ? MessageSerializer.DeserializePayload<TalentActionResolvedMessage>(newMessages[0].data)
+                : null;
+        runner.Check(
+            newMessages.Length == 1
+            && newMessages[0].seq == beforeSequence + 1
+            && resolved != null
+            && resolved.decisionId == (request?.decisionId ?? 0)
+            && resolved.ownerSeatIndex == 0
+            && resolved.talentId == request?.talentId
+            && resolved.accepted == expectedAccepted
+            && resolved.errorCode == expectedErrorCode
+            && room.GameServer.TalentActionSubmissionCount == expectedServerSubmissions
+            && (expectedServerSubmissions == 0
+                || (room.GameServer.LastTalentActionSeatIndex == 0
+                    && room.GameServer.LastTalentActionMessage?.decisionId == request.decisionId
+                    && room.GameServer.LastTalentActionMessage.talentId == request.talentId
+                    && room.GameServer.LastTalentActionMessage.targetSeatIndex == request.targetSeatIndex
+                    && room.GameServer.LastTalentActionMessage.targetTalentId == request.targetTalentId)),
+            description);
+    }
+
+    private static Room CreateManagedTalentRoom(
+        RoomManager manager,
+        string connectionId,
+        out GameEndpoint endpoint)
+    {
+        endpoint = new GameEndpoint();
+        endpoint.Connect(connectionId, 1);
+        endpoint.Receive(connectionId, 1, MessageSerializer.Serialize("Hello", 0, new HelloMessage
+        {
+            protocolVersion = NetworkProtocol.Version,
+            username = connectionId
+        }));
+        TrustedPlayerLoadout loadout = PlayerLoadoutCodec.CreateStandardLoadout();
+        endpoint.Receive(connectionId, 1, MessageSerializer.Serialize("CreateRoom", 0, new CreateRoomMessage
+        {
+            gameMode = (int)GameMode.Single,
+            alienationPreset = (int)AlienationPreset.Standard,
+            loadout = PlayerLoadoutCodec.CreateMessage(loadout.DeckConfig, loadout.TalentConfig)
+        }));
+
+        var roomsField = typeof(RoomManager).GetField(
+            "_rooms",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        var rooms = roomsField?.GetValue(manager) as Dictionary<string, Room>;
+        Room room = rooms?.Values.SingleOrDefault();
+        if (room == null) throw new InvalidOperationException("RoomManager did not create the talent route test room.");
+
+        endpoint.Receive(connectionId, 1, MessageSerializer.Serialize("Ready", 0,
+            new ReadyMessage { phase = (int)ReadyPhase.MatchStart }));
+        endpoint.Receive(connectionId, 1, MessageSerializer.Serialize("Ready", 0,
+            new ReadyMessage { phase = (int)ReadyPhase.GameSceneLoaded }));
+        if (room.State != RoomState.InRound || room.GameServer == null)
+            throw new InvalidOperationException("RoomManager did not start the talent route test room.");
+        return room;
     }
 
     private static void SupplementalActionValidationDoesNotConsumeMainDecision(RegressionRunner runner)

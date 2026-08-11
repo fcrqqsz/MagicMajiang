@@ -60,6 +60,12 @@ namespace MahjongGame.Core.Network
             WebSocketClient.Instance?.SendNetworkMessage(json);
         }
 
+        public bool SubmitTalentAction(TalentActionOption option) =>
+            _roomService.SubmitTalentAction(option);
+
+        public bool SubmitSideboard(IReadOnlyCollection<string> activeTalentIds) =>
+            _roomService.SubmitSideboard(activeTalentIds);
+
         private void HandleAcceptedSequenceEnvelope(NetworkMessageEnvelope envelope)
         {
             if (envelope == null) return;

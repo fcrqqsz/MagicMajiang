@@ -16,6 +16,7 @@
     <Compile Include="ActionValidationTests.cs" />
     <Compile Include="TalentFoundationTests.cs" />
     <Compile Include="TalentActionTests.cs" />
+    <Compile Include="TalentCommandClientTests.cs" />
     <Compile Include="SideboardTests.cs" />
     <Compile Include="AuthoritativePublicTileTransitionTests.cs" />
     <Compile Include="UnityEngineStubs.cs" />
@@ -65,6 +66,7 @@
     <Compile Include="..\..\Assets\Scripts\Core\Network\ClientRecoveryProgress.cs" Link="ClientRecoveryProgress.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\ClientProjectionLineage.cs" Link="ClientProjectionLineage.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\RemotePlayerClient.cs" Link="RemotePlayerClient.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\Network\RemoteServerProxy.cs" Link="RemoteServerProxy.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\ClientRoomState.cs" Link="ClientRoomState.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\RoomState.cs" Link="RoomState.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\RoomDeparturePolicy.cs" Link="RoomDeparturePolicy.cs" />

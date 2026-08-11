@@ -83,6 +83,7 @@ namespace MahjongGame.Core.Network
                     case "JoinRoom": HandleJoinRoom(connectionId, endpoint, MessageSerializer.DeserializePayload<JoinRoomMessage>(envelope.data)); break;
                     case "Ready": HandleReady(connectionId, endpoint, MessageSerializer.DeserializePayload<ReadyMessage>(envelope.data)); break;
                     case "SideboardSubmit": HandleSideboardSubmit(connectionId, endpoint, MessageSerializer.DeserializePayload<SideboardSubmitMessage>(envelope.data)); break;
+                    case "TalentAction": HandleTalentAction(connectionId, endpoint, MessageSerializer.DeserializePayload<TalentActionMessage>(envelope.data)); break;
                     case "Action": HandleAction(connectionId, endpoint, MessageSerializer.DeserializePayload<ClientActionMessage>(envelope.data)); break;
                     default: SendError(connectionId, endpoint, "UnsupportedMessage", $"Message type '{envelope.type}' is not valid here."); break;
                 }
@@ -230,6 +231,12 @@ namespace MahjongGame.Core.Network
                     string.IsNullOrEmpty(errorCode) ? SideboardErrorCodes.InvalidSelection : errorCode,
                     "The sideboard submission is not valid for the current halftime decision.");
             }
+        }
+
+        private void HandleTalentAction(string connectionId, GameEndpoint endpoint, TalentActionMessage message)
+        {
+            if (!TryGetRoomMember(connectionId, endpoint, out Room room, out int seatIndex)) return;
+            room.SubmitTalentAction(seatIndex, message, out _);
         }
 
         private void HandleLeaveRoom(string connectionId, GameEndpoint endpoint, long generation)
