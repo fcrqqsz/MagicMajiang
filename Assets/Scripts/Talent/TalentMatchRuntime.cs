@@ -16,6 +16,8 @@ namespace MahjongGame.Talents
         private readonly Dictionary<int, long> _eventCursors = new Dictionary<int, long>();
         private readonly Dictionary<int, List<TileData>> _privatePeekTiles =
             new Dictionary<int, List<TileData>>();
+        private readonly Dictionary<int, long> _firstMainDecisionIds =
+            new Dictionary<int, long>();
         private RuntimePhase _phase;
         private GameSession _session;
         private object _sessionIdentity;
@@ -142,6 +144,7 @@ namespace MahjongGame.Talents
             EnsurePhase(RuntimePhase.BetweenRounds, nameof(BeginRound));
 
             _privatePeekTiles.Clear();
+            _firstMainDecisionIds.Clear();
             foreach (RuntimeEntry entry in _entries)
                 entry.State.ResetRoundState();
 
@@ -256,6 +259,14 @@ namespace MahjongGame.Talents
                     "[TalentMatchRuntime] Rejected negative effect without an active public-charge target.");
                 return new TalentNegativeEffectResult();
             }
+            if (effect.SourceSeatIndex == effect.TargetSeatIndex
+                || !targetEntry.State.IsRevealed
+                || publicChargeTarget.GetCurrentCharge(targetEntry.State) <= 0)
+            {
+                Debug.LogWarning(
+                    "[TalentMatchRuntime] Rejected negative effect against an ineligible public-charge target.");
+                return new TalentNegativeEffectResult();
+            }
 
             foreach (RuntimeEntry entry in GetActiveTargetDefenses(effect.TargetSeatIndex))
             {
@@ -280,28 +291,58 @@ namespace MahjongGame.Talents
                 };
             }
 
-            publicChargeTarget.ReducePublicChargeLayer(new TalentPublicChargeContext(
-                targetEntry.OwnerSeatIndex,
-                targetEntry.State));
-            return new TalentNegativeEffectResult { WasApplied = true };
+            bool wasApplied = publicChargeTarget.TryReduceCharge(targetEntry.State, amount: 1);
+            if (wasApplied)
+            {
+                EmitEvent(targetEntry, new TalentRuntimeEvent
+                {
+                    EventType = "public_charge_reduced",
+                    Visibility = TalentEventVisibility.Public,
+                    Value = publicChargeTarget.GetCurrentCharge(targetEntry.State)
+                });
+            }
+            return new TalentNegativeEffectResult { WasApplied = wasApplied };
+        }
+
+        public void OpenMainDecision(int ownerSeatIndex, long decisionId)
+        {
+            ValidateSeatIndex(ownerSeatIndex, nameof(ownerSeatIndex));
+            EnsurePhase(RuntimePhase.RoundReady, nameof(OpenMainDecision));
+            if (decisionId <= 0)
+                throw new ArgumentOutOfRangeException(nameof(decisionId), decisionId, "Decision id must be positive.");
+            if (!_firstMainDecisionIds.ContainsKey(ownerSeatIndex))
+                _firstMainDecisionIds[ownerSeatIndex] = decisionId;
         }
 
         public IReadOnlyList<TalentActionOption> GetAvailableActions(
             int ownerSeatIndex,
-            TalentActivationWindow requiredWindow)
+            TalentActionQueryContext context)
         {
+            if (context == null) throw new ArgumentNullException(nameof(context));
             ValidateSeatIndex(ownerSeatIndex);
-            EnsurePhase(RuntimePhase.RoundReady, nameof(GetAvailableActions));
-            if (requiredWindow == TalentActivationWindow.None)
+            EnsureReadyRound(context, nameof(GetAvailableActions));
+            if (context.CurrentSeatIndex != ownerSeatIndex
+                || context.RequiredWindow == TalentActivationWindow.None)
+            {
                 return Array.Empty<TalentActionOption>();
+            }
 
-            return _entries
-                .Where(entry => entry.OwnerSeatIndex == ownerSeatIndex
-                                && entry.State.IsActive
-                                && entry.Metadata.ActivationWindow.HasFlag(requiredWindow))
-                .OrderBy(entry => entry.Sequence)
-                .Select(entry => new TalentActionOption { TalentId = entry.Rule.Id })
-                .ToArray();
+            bool isFirstMainDecision = IsFirstMainDecision(
+                ownerSeatIndex,
+                context.RequiredWindow,
+                context.DecisionId);
+            var options = new List<TalentActionOption>();
+            foreach (RuntimeEntry entry in _entries
+                         .Where(entry => entry.OwnerSeatIndex == ownerSeatIndex
+                                         && entry.State.IsActive
+                                         && entry.Metadata.ActivationWindow.HasFlag(context.RequiredWindow))
+                         .OrderBy(entry => entry.Sequence))
+            {
+                entry.Rule.GetAvailableActions(
+                    context.WithState(entry.State.CreateDetachedCopy(), isFirstMainDecision),
+                    options);
+            }
+            return options;
         }
 
         public TalentActionResult TryActivate(
@@ -316,6 +357,8 @@ namespace MahjongGame.Talents
 
             if (context.CurrentSeatIndex != ownerSeatIndex)
                 return TalentActionResult.Reject(TalentActionErrorCodes.InvalidTarget);
+            if (request.DecisionId != context.DecisionId)
+                return TalentActionResult.Reject(TalentActionErrorCodes.InvalidTarget);
             if (context.RequiredWindow == TalentActivationWindow.None)
                 return TalentActionResult.Reject(TalentActionErrorCodes.NotAvailable);
 
@@ -326,16 +369,99 @@ namespace MahjongGame.Talents
             if (!entry.Metadata.ActivationWindow.HasFlag(context.RequiredWindow))
                 return TalentActionResult.Reject(TalentActionErrorCodes.NotAvailable);
 
-            if (!GetAvailableActions(ownerSeatIndex, context.RequiredWindow)
+            var queryContext = new TalentActionQueryContext(
+                _session,
+                ownerSeatIndex,
+                context.RequiredWindow,
+                context.DecisionId);
+            if (!GetAvailableActions(ownerSeatIndex, queryContext)
                     .Any(option => string.Equals(option.TalentId, request.TalentId, StringComparison.Ordinal)))
             {
                 return TalentActionResult.Reject(TalentActionErrorCodes.NotAvailable);
             }
 
             return entry.Rule.TryActivate(
-                       context.WithState(entry.State, runtimeEvent => EmitEvent(entry, runtimeEvent)),
+                       context.WithState(
+                           entry.State,
+                           runtimeEvent => EmitEvent(entry, runtimeEvent),
+                           IsFirstMainDecision(
+                               ownerSeatIndex,
+                               context.RequiredWindow,
+                               context.DecisionId)),
                        request)
                    ?? TalentActionResult.NotSupported();
+        }
+
+        public int GetPublicCounter(int ownerSeatIndex, string talentId, string key)
+        {
+            ValidateSeatIndex(ownerSeatIndex, nameof(ownerSeatIndex));
+            RuntimeEntry entry = FindActiveEntry(ownerSeatIndex, talentId);
+            if (entry == null || !entry.State.IsRevealed) return 0;
+            return entry.State.GetCounter(key, TalentStateScope.Match);
+        }
+
+        public IReadOnlyList<PublicChargeTarget> GetPublicChargeTargets(int requestingSeatIndex)
+        {
+            ValidateSeatIndex(requestingSeatIndex, nameof(requestingSeatIndex));
+            return _entries
+                .Where(entry => entry.OwnerSeatIndex != requestingSeatIndex
+                                && entry.State.IsActive
+                                && entry.State.IsRevealed
+                                && entry.Rule is IPublicChargeTalent)
+                .OrderBy(entry => entry.Sequence)
+                .Select(entry => new
+                {
+                    Entry = entry,
+                    Charge = ((IPublicChargeTalent)entry.Rule).GetCurrentCharge(entry.State)
+                })
+                .Where(target => target.Charge > 0)
+                .Select(target => new PublicChargeTarget(
+                    target.Entry.OwnerSeatIndex,
+                    target.Entry.Rule.Id,
+                    target.Charge))
+                .ToArray();
+        }
+
+        public TalentFanResolution ResolvePostLegalFan(
+            TalentWinContext context,
+            int eligibilityFan)
+        {
+            if (context == null) throw new ArgumentNullException(nameof(context));
+            EnsureReadyRound(context, nameof(ResolvePostLegalFan));
+
+            int bonusFan = 0;
+            var requestedPenalties = new List<int>();
+            foreach (RuntimeEntry entry in GetActiveEntriesForSeat(context.CurrentSeatIndex))
+            {
+                TalentWinContext bound = context.BindWin(
+                    entry.OwnerSeatIndex,
+                    entry.State.CreateDetachedCopy(),
+                    eventSink: null);
+                bonusFan += Math.Max(0, entry.Rule.GetPostLegalFanBonus(bound));
+                requestedPenalties.Add(entry.Rule.GetPostLegalFanPenalty(bound));
+            }
+
+            int negativeFan = TalentFanModifierPolicy.SumPenalties(requestedPenalties);
+            return new TalentFanResolution
+            {
+                EligibilityFan = eligibilityFan,
+                PostLegalBonusFan = bonusFan,
+                NegativeFan = negativeFan,
+                FinalFan = Math.Max(0, eligibilityFan + bonusFan + negativeFan)
+            };
+        }
+
+        public void ConfirmAcceptedWin(TalentWinContext context)
+        {
+            if (context == null) throw new ArgumentNullException(nameof(context));
+            EnsureReadyRound(context, nameof(ConfirmAcceptedWin));
+            foreach (RuntimeEntry entry in GetActiveEntriesForSeat(context.CurrentSeatIndex))
+            {
+                entry.Rule.OnAcceptedWin(context.BindWin(
+                    entry.OwnerSeatIndex,
+                    entry.State,
+                    runtimeEvent => EmitEvent(entry, runtimeEvent)));
+            }
         }
 
         public ScoringOptions BuildScoringOptions(TalentScoringContext context)
@@ -497,6 +623,16 @@ namespace MahjongGame.Talents
         {
             return GetAllActiveEntries()
                 .Where(entry => entry.Rule.Phases != null && entry.Rule.Phases.Contains(phase));
+        }
+
+        private bool IsFirstMainDecision(
+            int ownerSeatIndex,
+            TalentActivationWindow requiredWindow,
+            long decisionId)
+        {
+            return requiredWindow == TalentActivationWindow.MainTurn
+                   && _firstMainDecisionIds.TryGetValue(ownerSeatIndex, out long firstDecisionId)
+                   && firstDecisionId == decisionId;
         }
 
         private RuntimeEntry FindActiveEntry(int ownerSeatIndex, string talentId)

@@ -1,4 +1,6 @@
 using MahjongGame.Core;
+using MahjongGame.Core.Network;
+using MahjongGame.Talents;
 
 internal static class ActionValidationTests
 {
@@ -7,6 +9,8 @@ internal static class ActionValidationTests
         DoesNotTreatHonorsAsContinuationOfNineSou(runner);
         DoesNotTreatAdjacentFrequencySlotsAsCrossSuitChi(runner);
         PreservesAllLegalChiDirections(runner);
+        SheathedEdgeDoesNotGrantWinEligibilityButAddsAfterLegalWin(runner);
+        PostLegalPenaltiesClampPerEffectAndInTotal(runner);
     }
 
     private static void PreservesAllLegalChiDirections(RegressionRunner runner)
@@ -93,5 +97,144 @@ internal static class ActionValidationTests
             "Chi option generation should agree that the 9-Sou hand has no legal Chi combination.");
     }
 
+    private static void SheathedEdgeDoesNotGrantWinEligibilityButAddsAfterLegalWin(
+        RegressionRunner runner)
+    {
+        TalentMatchRuntime runtime = CreateArmedScoringRuntime(
+            new[] { "sheathed_edge" },
+            out GameSession session);
+        List<Meld> sixFanMelds = BuildThreeFixedPungs();
+        List<TileData> sixFanHand = new List<TileData>
+        {
+            Tile(Suit.Man, 5), Tile(Suit.Man, 5),
+            Tile(Suit.Wind, 1), Tile(Suit.Wind, 1)
+        };
+        TileData sixFanWinTile = Tile(Suit.Man, 5);
+
+        bool sixFanIsLegal = MahjongLogic.CheckWinWithFan(
+            sixFanHand, sixFanMelds, sixFanWinTile, false, out _, out _);
+        bool sixPlusEligibilityBonusIsLegal = MahjongLogic.CheckWinWithFan(
+            sixFanHand,
+            sixFanMelds,
+            sixFanWinTile,
+            false,
+            out int boostedToEight,
+            out List<string> sixFanDetails,
+            options: new ScoringOptions { BonusFan = 2 });
+
+        List<Meld> eightFanMelds = BuildThreeFixedPungs();
+        List<TileData> eightFanHand = new List<TileData>
+        {
+            Tile(Suit.Dragon, 1), Tile(Suit.Dragon, 1),
+            Tile(Suit.Man, 5), Tile(Suit.Man, 5)
+        };
+        bool eightFanIsLegal = MahjongLogic.CheckWinWithFan(
+            eightFanHand,
+            eightFanMelds,
+            Tile(Suit.Dragon, 1),
+            false,
+            out int baseEight,
+            out List<string> eightFanDetails);
+        TalentFanResolution resolved = runtime.ResolvePostLegalFan(
+            new TalentWinContext(session, 0), baseEight);
+
+        runner.Check(!sixFanIsLegal && sixPlusEligibilityBonusIsLegal && boostedToEight == 8,
+            $"a six-fan hand remains ineligible because sheathed edge is not an eligibility bonus " +
+            $"(legal={sixFanIsLegal}, boostedLegal={sixPlusEligibilityBonusIsLegal}, boostedFan={boostedToEight}, " +
+            $"details={string.Join("|", sixFanDetails ?? new List<string>())})");
+        runner.Check(eightFanIsLegal && baseEight == 8
+                     && resolved.PostLegalBonusFan == 16
+                     && resolved.FinalFan == 24,
+            $"an eligible eight-fan hand resolves to twenty-four after sheathed edge " +
+            $"(legal={eightFanIsLegal}, base={baseEight}, bonus={resolved.PostLegalBonusFan}, final={resolved.FinalFan}, " +
+            $"details={string.Join("|", eightFanDetails ?? new List<string>())})");
+    }
+
+    private static void PostLegalPenaltiesClampPerEffectAndInTotal(RegressionRunner runner)
+    {
+        TalentMatchRuntime runtime = CreateArmedScoringRuntime(
+            new[] { "network_test_penalty_ten", "network_test_penalty_five" },
+            out GameSession session,
+            armSheathedEdge: false);
+
+        TalentFanResolution resolved = runtime.ResolvePostLegalFan(
+            new TalentWinContext(session, 0), eligibilityFan: 8);
+
+        runner.Check(TalentFanModifierPolicy.ClampPenalty(-10) == -4
+                     && TalentFanModifierPolicy.ClampPenalty(-5) == -4,
+            "each post-legal penalty is clamped to minus four");
+        runner.Check(resolved.EligibilityFan == 8
+                     && resolved.NegativeFan == -8
+                     && resolved.FinalFan == 0,
+            "post-legal penalties clamp to minus eight total without revoking base win eligibility");
+    }
+
+    private static TalentMatchRuntime CreateArmedScoringRuntime(
+        IReadOnlyList<string> talentIds,
+        out GameSession session,
+        bool armSheathedEdge = true)
+    {
+        var config = new TalentSlotConfig();
+        for (int index = 0; index < talentIds.Count; index++)
+            config.SlotTalentIds[index] = talentIds[index];
+        var runtime = new TalentMatchRuntime(
+            new Dictionary<int, TalentSlotConfig> { [0] = config },
+            TalentRegistry.Instance);
+        session = new GameSession(GameMode.EastOnly);
+        runtime.BeginMatch(session);
+        BeginReadyRound(runtime, session);
+
+        if (!armSheathedEdge) return runtime;
+        for (int round = 0; round < 3; round++)
+        {
+            runtime.EndRound(new TalentRoundOutcome { WinnerSeatIndex = round + 1 }, session);
+            BeginReadyRound(runtime, session);
+        }
+        runtime.OpenMainDecision(0, 501);
+        TalentActionResult result = runtime.TryActivate(
+            0,
+            new TalentActionRequest { TalentId = "sheathed_edge", DecisionId = 501 },
+            new TalentActivationContext(
+                session, 0, TalentActivationWindow.MainTurn, decisionId: 501));
+        if (!result.Accepted) throw new InvalidOperationException("Could not arm sheathed edge scoring fixture.");
+        return runtime;
+    }
+
+    private static void BeginReadyRound(TalentMatchRuntime runtime, GameSession session)
+    {
+        runtime.BeginRound(new TalentRoundContext(session));
+        runtime.ApplyWallBuilding(new TalentWallContext(session, new List<TileData>()));
+        runtime.ResolvePostShuffle(new TalentPostShuffleContext(session, new List<TileData>()));
+    }
+
+    private static List<Meld> BuildThreeFixedPungs()
+    {
+        return new List<Meld>
+        {
+            Pung(Suit.Man, 2),
+            Pung(Suit.Pin, 4),
+            Pung(Suit.Sou, 7)
+        };
+    }
+
+    private static Meld Pung(Suit suit, int value) => new Meld(
+        MeldType.Pon,
+        new List<TileData> { Tile(suit, value), Tile(suit, value), Tile(suit, value) },
+        sourceId: 1);
+
     private static TileData Tile(Suit suit, int value) => new TileData(suit, value, ownerID: 0);
+}
+
+[TalentRule("network_test_penalty_ten", "Penalty Ten", "test", TalentTier.Small, 0,
+    TalentPhase.Scoring)]
+internal sealed class PenaltyTenTalent : TalentRule
+{
+    public override int GetPostLegalFanPenalty(TalentWinContext context) => -10;
+}
+
+[TalentRule("network_test_penalty_five", "Penalty Five", "test", TalentTier.Small, 0,
+    TalentPhase.Scoring)]
+internal sealed class PenaltyFiveTalent : TalentRule
+{
+    public override int GetPostLegalFanPenalty(TalentWinContext context) => -5;
 }

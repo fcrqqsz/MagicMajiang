@@ -59,6 +59,25 @@ namespace MahjongGame.Talents
             _eventSink?.Invoke(runtimeEvent);
         }
 
+        public void EmitPublic(string eventType, int value)
+        {
+            Emit(new TalentRuntimeEvent
+            {
+                EventType = eventType,
+                Visibility = TalentEventVisibility.Public,
+                Value = value
+            });
+        }
+
+        public void SetPublicCounter(
+            string key,
+            int value,
+            TalentStateScope scope)
+        {
+            State.SetCounter(key, value, scope);
+            EmitPublic(key, value);
+        }
+
         internal static int ValidateSeatIndex(int seatIndex)
         {
             if (seatIndex < 0 || seatIndex > 3)
@@ -278,34 +297,116 @@ namespace MahjongGame.Talents
     {
         public new int CurrentSeatIndex => base.CurrentSeatIndex.Value;
         public TalentActivationWindow RequiredWindow { get; }
+        public long DecisionId { get; }
+        public bool IsFirstMainDecisionOfRound { get; private set; }
 
         public TalentActivationContext(
             GameSession session,
             int currentSeatIndex,
-            TalentActivationWindow requiredWindow)
+            TalentActivationWindow requiredWindow,
+            long decisionId = 0)
             : base(session, ValidateSeatIndex(currentSeatIndex))
         {
             RequiredWindow = requiredWindow;
+            DecisionId = decisionId;
         }
 
         private TalentActivationContext(
             TalentSessionSnapshot session,
             int currentSeatIndex,
-            TalentActivationWindow requiredWindow)
+            TalentActivationWindow requiredWindow,
+            long decisionId)
             : base(session, currentSeatIndex, null, null)
         {
             RequiredWindow = requiredWindow;
+            DecisionId = decisionId;
         }
 
         internal TalentActivationContext WithState(
             TalentRuntimeState state,
-            Action<TalentRuntimeEvent> eventSink)
+            Action<TalentRuntimeEvent> eventSink,
+            bool isFirstMainDecisionOfRound)
         {
             TalentActivationContext context = new TalentActivationContext(
                 Session,
                 CurrentSeatIndex,
-                RequiredWindow);
+                RequiredWindow,
+                DecisionId)
+            {
+                IsFirstMainDecisionOfRound = isFirstMainDecisionOfRound
+            };
             context.ConfigureEntry(CurrentSeatIndex, state, eventSink);
+            return context;
+        }
+    }
+
+    public sealed class TalentActionQueryContext : TalentContext
+    {
+        public new int CurrentSeatIndex => base.CurrentSeatIndex.Value;
+        public TalentActivationWindow RequiredWindow { get; }
+        public long DecisionId { get; }
+        public bool IsFirstMainDecisionOfRound { get; private set; }
+
+        public TalentActionQueryContext(
+            GameSession session,
+            int currentSeatIndex,
+            TalentActivationWindow requiredWindow,
+            long decisionId)
+            : base(session, ValidateSeatIndex(currentSeatIndex))
+        {
+            RequiredWindow = requiredWindow;
+            DecisionId = decisionId;
+        }
+
+        private TalentActionQueryContext(
+            TalentSessionSnapshot session,
+            int currentSeatIndex,
+            TalentActivationWindow requiredWindow,
+            long decisionId)
+            : base(session, currentSeatIndex, null, null)
+        {
+            RequiredWindow = requiredWindow;
+            DecisionId = decisionId;
+        }
+
+        internal TalentActionQueryContext WithState(
+            TalentRuntimeState state,
+            bool isFirstMainDecisionOfRound)
+        {
+            var context = new TalentActionQueryContext(
+                Session,
+                CurrentSeatIndex,
+                RequiredWindow,
+                DecisionId)
+            {
+                IsFirstMainDecisionOfRound = isFirstMainDecisionOfRound
+            };
+            context.ConfigureEntry(CurrentSeatIndex, state, eventSink: null);
+            return context;
+        }
+    }
+
+    public sealed class TalentWinContext : TalentContext
+    {
+        public new int CurrentSeatIndex => base.CurrentSeatIndex.Value;
+
+        public TalentWinContext(GameSession session, int currentSeatIndex)
+            : base(session, ValidateSeatIndex(currentSeatIndex))
+        {
+        }
+
+        private TalentWinContext(TalentSessionSnapshot session, int currentSeatIndex)
+            : base(session, currentSeatIndex, null, null)
+        {
+        }
+
+        internal TalentWinContext BindWin(
+            int ownerSeatIndex,
+            TalentRuntimeState state,
+            Action<TalentRuntimeEvent> eventSink)
+        {
+            var context = new TalentWinContext(Session, CurrentSeatIndex);
+            context.ConfigureEntry(ownerSeatIndex, state, eventSink);
             return context;
         }
     }

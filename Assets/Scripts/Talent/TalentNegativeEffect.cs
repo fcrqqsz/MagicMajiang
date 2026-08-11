@@ -35,9 +35,10 @@ namespace MahjongGame.Talents
         public string BlockingTalentId { get; set; }
     }
 
-    internal interface IPublicChargeTalent
+    public interface IPublicChargeTalent
     {
-        void ReducePublicChargeLayer(TalentPublicChargeContext context);
+        int GetCurrentCharge(TalentRuntimeState state);
+        bool TryReduceCharge(TalentRuntimeState state, int amount);
     }
 
     public sealed class TalentPublicChargeContext
@@ -49,6 +50,20 @@ namespace MahjongGame.Talents
         {
             OwnerSeatIndex = ownerSeatIndex;
             State = state;
+        }
+    }
+
+    public sealed class PublicChargeTarget
+    {
+        public int OwnerSeatIndex { get; }
+        public string TalentId { get; }
+        public int CurrentCharge { get; }
+
+        internal PublicChargeTarget(int ownerSeatIndex, string talentId, int currentCharge)
+        {
+            OwnerSeatIndex = ownerSeatIndex;
+            TalentId = talentId;
+            CurrentCharge = currentCharge;
         }
     }
 

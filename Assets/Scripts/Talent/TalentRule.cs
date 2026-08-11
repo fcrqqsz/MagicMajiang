@@ -1,6 +1,7 @@
 using MahjongGame.Core;
 using MahjongGame.Core.Fan;
 using MahjongGame.Core.Network;
+using System.Collections.Generic;
 
 namespace MahjongGame.Talents
 {
@@ -38,8 +39,17 @@ namespace MahjongGame.Talents
         public virtual bool TryBlockNegativeEffect(
             TalentNegativeEffectContext context,
             TalentNegativeEffect effect) => false;
+        public virtual void GetAvailableActions(
+            TalentActionQueryContext context,
+            List<TalentActionOption> output)
+        {
+            output.Add(new TalentActionOption { TalentId = Id });
+        }
         public virtual TalentActionResult TryActivate(
             TalentActivationContext context,
             TalentActionRequest request) => TalentActionResult.NotSupported();
+        public virtual int GetPostLegalFanBonus(TalentWinContext context) => 0;
+        public virtual int GetPostLegalFanPenalty(TalentWinContext context) => 0;
+        public virtual void OnAcceptedWin(TalentWinContext context) { }
     }
 }

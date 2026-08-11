@@ -18,6 +18,7 @@ namespace MahjongGame.Talents
 
     public sealed class TalentActionRequest
     {
+        public long DecisionId { get; set; }
         public string TalentId { get; set; }
         public int TargetSeatIndex { get; set; } = -1;
         public string TargetTalentId { get; set; }

@@ -74,6 +74,7 @@ namespace MahjongGame.Core.Network
         // 当前局结果 (供 GameManager 读取)
         public int WinnerId { get; private set; } = -1;
         public int WinFan { get; private set; }
+        public TalentFanResolution WinFanResolution { get; private set; } = new TalentFanResolution();
         public List<string> WinFanDetails { get; private set; } = new List<string>();
         public bool WinIsSelfDraw { get; private set; }
         public WinKind WinResultKind { get; private set; } = WinKind.Unknown;
@@ -154,6 +155,7 @@ namespace MahjongGame.Core.Network
             if (_session != null) _session.ResetRoundState();
             WinnerId = -1;
             WinFan = 0;
+            WinFanResolution = new TalentFanResolution();
             WinFanDetails = new List<string>();
             WinIsSelfDraw = false;
             WinResultKind = WinKind.Unknown;
@@ -334,6 +336,7 @@ namespace MahjongGame.Core.Network
                 var currentPlayer = _clients[_currentPlayerIndex];
                 _pendingActionTcs = new TaskCompletionSource<ClientAction>();
                 var mainDecision = _decisionTracker.OpenMainTurn(_currentPlayerIndex, GetDeadlineUnixMilliseconds(ActionTimeoutMs));
+                _talentRuntime.OpenMainDecision(_currentPlayerIndex, mainDecision.DecisionId);
                 SetRemoteDecision(currentPlayer, mainDecision);
 
                 // 1. 摸牌阶段
@@ -768,6 +771,7 @@ namespace MahjongGame.Core.Network
                 boundSeatIndex,
                 new TalentActionRequest
                 {
+                    DecisionId = message.decisionId,
                     TalentId = message.talentId,
                     TargetSeatIndex = message.targetSeatIndex,
                     TargetTalentId = message.targetTalentId
@@ -775,7 +779,8 @@ namespace MahjongGame.Core.Network
                 new TalentActivationContext(
                     _session,
                     boundSeatIndex,
-                    TalentActionAdmissionPolicy.RequiredActivationWindow));
+                    TalentActionAdmissionPolicy.RequiredActivationWindow,
+                    message.decisionId));
             if (result.Accepted)
                 OnTalentEventsAvailable?.Invoke();
             return result.Accepted;
@@ -802,17 +807,20 @@ namespace MahjongGame.Core.Network
             TileData targetTile = IsRobKongResponseActive ? _pendingRobKongTile : _lastDiscardedTile;
             if (targetTile == null) return potentialHuPlayerIds;
 
-            var roundWind = _session?.PrevalentWind ?? WindDirection.East;
             for (int playerId = 0; playerId < _clients.Count; playerId++)
             {
                 if (playerId == _currentPlayerIndex) continue;
 
-                var hand = _gameState.GetHand(playerId);
-                var melds = _gameState.GetMelds(playerId);
-                var options = _scoringOptions.ContainsKey(playerId) ? _scoringOptions[playerId] : null;
-                var seatWind = _session?.GetSeatWind(playerId) ?? WindDirection.East;
-                if (MahjongLogic.CheckWinWithFan(hand, melds, targetTile, false, out _, out _, roundWind, seatWind, options, IsRobKongResponseActive))
+                if (TryResolveWin(
+                        playerId,
+                        targetTile,
+                        isSelfDraw: false,
+                        isRobKongWin: IsRobKongResponseActive,
+                        out _,
+                        out _))
+                {
                     potentialHuPlayerIds.Add(playerId);
+                }
             }
 
             return potentialHuPlayerIds;
@@ -835,9 +843,6 @@ namespace MahjongGame.Core.Network
             int pid = action.PlayerId;
             var hand = _gameState.GetHand(pid);
             var melds = _gameState.GetMelds(pid);
-            var options = _scoringOptions.ContainsKey(pid) ? _scoringOptions[pid] : null;
-            var roundWind = _session?.PrevalentWind ?? WindDirection.East;
-            var seatWind = _session?.GetSeatWind(pid) ?? WindDirection.East;
 
             // 需要 TargetTile 的动作类型，null 直接判定失败
             if (action.TargetTile == null && (action.ActionType == ClientActionType.Discard
@@ -862,7 +867,13 @@ namespace MahjongGame.Core.Network
 
                 case ClientActionType.Hu:
                     // 验证自摸胡合法性
-                    if (_lastDrawnTile == null || !MahjongLogic.CheckWinWithFan(hand, melds, _lastDrawnTile, true, out _, out _, roundWind, seatWind, options))
+                    if (!TryResolveWin(
+                            pid,
+                            _lastDrawnTile,
+                            isSelfDraw: true,
+                            isRobKongWin: false,
+                            out _,
+                            out _))
                     {
                         Debug.LogWarning($"[ServerValidation] 玩家{pid} 自摸胡验证失败，自动出牌");
                         var fallback = _gameState.GetAutoDiscardTile(pid, _lastDrawnTile);
@@ -912,7 +923,6 @@ namespace MahjongGame.Core.Network
             int pid = action.PlayerId;
             var hand = _gameState.GetHand(pid);
             var melds = _gameState.GetMelds(pid);
-            var options = _scoringOptions.ContainsKey(pid) ? _scoringOptions[pid] : null;
             var roundWind = _session?.PrevalentWind ?? WindDirection.East;
             var seatWind = _session?.GetSeatWind(pid) ?? WindDirection.East;
             bool isNextPlayer = ((_currentPlayerIndex + 1) % _clients.Count) == pid;
@@ -928,7 +938,13 @@ namespace MahjongGame.Core.Network
             {
                 case ClientActionType.Hu:
                     // 验证点炮胡
-                    if (!MahjongLogic.CheckWinWithFan(hand, melds, _lastDiscardedTile, false, out _, out _, roundWind, seatWind, options))
+                    if (!TryResolveWin(
+                            pid,
+                            _lastDiscardedTile,
+                            isSelfDraw: false,
+                            isRobKongWin: false,
+                            out _,
+                            out _))
                     {
                         Debug.LogWarning($"[ServerValidation] 玩家{pid} 点炮胡验证失败，自动Skip");
                         Debug.LogWarning($"[ServerValidation] 点炮胡快照: 目标={_lastDiscardedTile}, 手牌=[{string.Join(", ", hand)}], 副露数={melds.Count}, 圈风={roundWind}, 门风={seatWind}");
@@ -1016,13 +1032,13 @@ namespace MahjongGame.Core.Network
             }
 
             int pid = action.PlayerId;
-            var hand = _gameState.GetHand(pid);
-            var melds = _gameState.GetMelds(pid);
-            var options = _scoringOptions.ContainsKey(pid) ? _scoringOptions[pid] : null;
-            var roundWind = _session?.PrevalentWind ?? WindDirection.East;
-            var seatWind = _session?.GetSeatWind(pid) ?? WindDirection.East;
-            if (!MahjongLogic.CheckWinWithFan(hand, melds, _pendingRobKongTile, false,
-                    out _, out _, roundWind, seatWind, options, true))
+            if (!TryResolveWin(
+                    pid,
+                    _pendingRobKongTile,
+                    isSelfDraw: false,
+                    isRobKongWin: true,
+                    out _,
+                    out _))
             {
                 Debug.LogWarning($"[ServerValidation] 玩家{pid} 抢杠胡验证失败，自动Skip");
                 return ClientAction.Skip(pid);
@@ -1170,6 +1186,46 @@ namespace MahjongGame.Core.Network
             }).ToList();
         }
 
+        private bool TryResolveWin(
+            int playerId,
+            TileData winTile,
+            bool isSelfDraw,
+            bool isRobKongWin,
+            out TalentFanResolution fanResolution,
+            out List<string> fanDetails)
+        {
+            fanResolution = new TalentFanResolution();
+            fanDetails = null;
+            if (winTile == null) return false;
+
+            List<TileData> hand = _gameState.GetHand(playerId);
+            List<Meld> melds = _gameState.GetMelds(playerId);
+            ScoringOptions options = _scoringOptions.TryGetValue(playerId, out ScoringOptions configured)
+                ? configured
+                : null;
+            WindDirection roundWind = _session?.PrevalentWind ?? WindDirection.East;
+            WindDirection seatWind = _session?.GetSeatWind(playerId) ?? WindDirection.East;
+            if (!MahjongLogic.CheckWinWithFan(
+                    hand,
+                    melds,
+                    winTile,
+                    isSelfDraw,
+                    out int eligibilityFan,
+                    out fanDetails,
+                    roundWind,
+                    seatWind,
+                    options,
+                    isRobKongWin))
+            {
+                return false;
+            }
+
+            fanResolution = _talentRuntime.ResolvePostLegalFan(
+                new TalentWinContext(_session, playerId),
+                eligibilityFan);
+            return true;
+        }
+
         private void HandlePlayerWin(ClientAction winAction, bool isSelfDraw, int loserId = -1, TileData winTileOverride = null, bool isRobKongWin = false)
         {
             _isGameActive = false;
@@ -1179,7 +1235,6 @@ namespace MahjongGame.Core.Network
             int pid = winAction.PlayerId;
             var hand = _gameState.GetHand(pid);
             var melds = _gameState.GetMelds(pid);
-            var options = _scoringOptions.ContainsKey(pid) ? _scoringOptions[pid] : null;
             var roundWind = _session?.PrevalentWind ?? WindDirection.East;
             var seatWind = _session?.GetSeatWind(pid) ?? WindDirection.East;
 
@@ -1187,23 +1242,14 @@ namespace MahjongGame.Core.Network
             TileData winTile = winTileOverride ?? (isSelfDraw ? _lastDrawnTile : _lastDiscardedTile);
 
             // 服务端权威重算番数
-            int serverFan = 0;
-            List<string> serverDetails = null;
-            bool acceptedLegal = false;
-            if (winTile != null)
-            {
-                acceptedLegal = MahjongLogic.CheckWinWithFan(
-                    hand,
-                    melds,
-                    winTile,
-                    isSelfDraw,
-                    out serverFan,
-                    out serverDetails,
-                    roundWind,
-                    seatWind,
-                    options,
-                    isRobKongWin);
-            }
+            bool acceptedLegal = TryResolveWin(
+                pid,
+                winTile,
+                isSelfDraw,
+                isRobKongWin,
+                out TalentFanResolution serverResolution,
+                out List<string> serverDetails);
+            int serverFan = acceptedLegal ? serverResolution.FinalFan : 0;
 
             TalentWinEvaluation acceptedEvaluation = new TalentWinEvaluation(
                 isLegal: acceptedLegal,
@@ -1226,8 +1272,18 @@ namespace MahjongGame.Core.Network
                         seatWind,
                         counterfactualOptions,
                         isRobKongWin);
-                    return new TalentWinEvaluation(isLegal, counterfactualFan);
+                    if (!isLegal) return new TalentWinEvaluation(false, 0);
+
+                    TalentFanResolution counterfactualResolution =
+                        _talentRuntime.ResolvePostLegalFan(
+                            new TalentWinContext(_session, pid),
+                            counterfactualFan);
+                    return new TalentWinEvaluation(
+                        true,
+                        counterfactualResolution.FinalFan);
                 }));
+            if (acceptedLegal)
+                _talentRuntime.ConfirmAcceptedWin(new TalentWinContext(_session, pid));
             // 断言比对：记录客户端与服务端计算差异（Phase 0 验证用）
             if (winAction.TotalFan != serverFan)
             {
@@ -1246,6 +1302,7 @@ namespace MahjongGame.Core.Network
             // 使用服务端权威计算结果
             WinnerId = pid;
             WinFan = serverFan;
+            WinFanResolution = serverResolution;
             WinFanDetails = serverDetails?.ToList() ?? new List<string>();
             WinIsSelfDraw = isSelfDraw;
             WinResultKind = isSelfDraw

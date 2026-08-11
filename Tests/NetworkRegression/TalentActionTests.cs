@@ -16,6 +16,12 @@ internal static class TalentActionTests
         NonTargetAndReserveDefensesDoNotBlockPublicChargeReduction(runner);
         NegativeEffectRejectsMissingPublicChargeTarget(runner);
         NegativeEffectRejectsUnknownTypesWithoutApplying(runner);
+        NegativeEffectRejectsIneligiblePublicChargeBeforeDefenses(runner);
+        SheathedEdgeChargesCapsAndExposesPublicTargets(runner);
+        SheathedEdgeDoesNotChargeOnOwnerWinOrAbortedRound(runner);
+        SheathedEdgeArmsOnlyOnTheFirstMainDecision(runner);
+        SheathedEdgeReadOnlyResolutionConsumesOnlyAfterAcceptedWin(runner);
+        SheathedEdgeUnusedArmExpiresWithoutRefund(runner);
     }
 
     private static void SupplementalActionValidationDoesNotConsumeMainDecision(RegressionRunner runner)
@@ -177,6 +183,7 @@ internal static class TalentActionTests
 
         runtime.EndRound(new TalentRoundOutcome { IsAborted = true }, session);
         BeginReadyRound(runtime, session);
+        NetworkTestPublicChargeTalent.SetCharge(1);
         TalentNegativeEffectResult refreshed = runtime.ApplyNegativeEffect(effect);
 
         runner.Check(refreshed.WasBlocked && !refreshed.WasApplied,
@@ -285,6 +292,205 @@ internal static class TalentActionTests
             "a negative effect rejects an active target without the public-charge capability");
     }
 
+    private static void NegativeEffectRejectsIneligiblePublicChargeBeforeDefenses(
+        RegressionRunner runner)
+    {
+        NetworkTestPublicChargeTalent.Reset();
+        var publicConfig = new TalentSlotConfig();
+        publicConfig.SlotTalentIds[0] = "composure";
+        publicConfig.SlotTalentIds[1] = "network_test_public_charge";
+        var hiddenConfig = new TalentSlotConfig();
+        hiddenConfig.SlotTalentIds[0] = "network_test_hidden_public_charge";
+        var runtime = new TalentMatchRuntime(
+            new Dictionary<int, TalentSlotConfig>
+            {
+                [0] = publicConfig,
+                [2] = hiddenConfig
+            },
+            TalentRegistry.Instance);
+        var session = new GameSession(GameMode.Single);
+        runtime.BeginMatch(session);
+        BeginReadyRound(runtime, session);
+
+        NetworkTestPublicChargeTalent.SetCharge(0);
+        TalentNegativeEffectResult zeroCharge = runtime.ApplyNegativeEffect(
+            BuildLayerReduction(sourceSeatIndex: 1, targetSeatIndex: 0));
+        NetworkTestPublicChargeTalent.SetCharge(1);
+        TalentNegativeEffectResult defenseStillAvailable = runtime.ApplyNegativeEffect(
+            BuildLayerReduction(sourceSeatIndex: 1, targetSeatIndex: 0));
+        TalentNegativeEffectResult selfTarget = runtime.ApplyNegativeEffect(
+            BuildLayerReduction(sourceSeatIndex: 0, targetSeatIndex: 0));
+        TalentNegativeEffectResult hiddenTarget = runtime.ApplyNegativeEffect(
+            new TalentNegativeEffect(
+                1,
+                "test_source",
+                2,
+                "network_test_hidden_public_charge",
+                TalentNegativeEffectTypes.ReducePublicChargeLayer));
+
+        runner.Check(!zeroCharge.WasBlocked && !zeroCharge.WasApplied
+                     && defenseStillAvailable.WasBlocked,
+            "a zero-charge target is rejected before it can consume composure");
+        runner.Check(!selfTarget.WasBlocked && !selfTarget.WasApplied,
+            "a public charge effect cannot target its source seat");
+        runner.Check(!hiddenTarget.WasBlocked && !hiddenTarget.WasApplied,
+            "an unrevealed charge talent cannot be targeted by a negative effect");
+    }
+
+    private static void SheathedEdgeChargesCapsAndExposesPublicTargets(RegressionRunner runner)
+    {
+        TalentMatchRuntime runtime = CreateSheathedEdgeRuntime(out GameSession session);
+
+        EndNonWinningRound(runtime, session, winnerSeatIndex: 1);
+        EndNonWinningRound(runtime, session, winnerSeatIndex: null);
+        EndNonWinningRound(runtime, session, winnerSeatIndex: 2);
+        EndNonWinningRound(runtime, session, winnerSeatIndex: 3);
+
+        IReadOnlyList<PublicChargeTarget> opponentView = runtime.GetPublicChargeTargets(1);
+        runner.Check(runtime.GetPublicCounter(0, "sheathed_edge", "edge") == 3,
+            "sheathed edge gains one layer on non-winning rounds and caps at three");
+        runner.Check(opponentView.Count == 1
+                     && opponentView[0].OwnerSeatIndex == 0
+                     && opponentView[0].TalentId == "sheathed_edge"
+                     && opponentView[0].CurrentCharge == 3,
+            "revealed active public charge is exposed to opponents as a read-only target");
+        runner.Check(runtime.GetPublicChargeTargets(0).Count == 0,
+            "public charge targeting excludes talents owned by the requesting seat");
+    }
+
+    private static void SheathedEdgeDoesNotChargeOnOwnerWinOrAbortedRound(RegressionRunner runner)
+    {
+        TalentMatchRuntime runtime = CreateSheathedEdgeRuntime(out GameSession session);
+        runtime.EndRound(new TalentRoundOutcome { WinnerSeatIndex = 0 }, session);
+        BeginReadyRound(runtime, session);
+        runtime.EndRound(new TalentRoundOutcome { IsAborted = true }, session);
+
+        runner.Check(runtime.GetPublicCounter(0, "sheathed_edge", "edge") == 0,
+            "sheathed edge does not gain charge when its owner wins or the round aborts");
+    }
+
+    private static void SheathedEdgeArmsOnlyOnTheFirstMainDecision(RegressionRunner runner)
+    {
+        TalentMatchRuntime runtime = CreateChargedSheathedEdgeRuntime(out GameSession session);
+        runtime.OpenMainDecision(ownerSeatIndex: 0, decisionId: 91);
+
+        var firstContext = new TalentActionQueryContext(
+            session, 0, TalentActivationWindow.MainTurn, decisionId: 91);
+        int availableOnFirstDecision = runtime.GetAvailableActions(0, firstContext).Count;
+        TalentActionResult armed = runtime.TryActivate(
+            0,
+            new TalentActionRequest { TalentId = "sheathed_edge", DecisionId = 91 },
+            new TalentActivationContext(
+                session, 0, TalentActivationWindow.MainTurn, decisionId: 91));
+
+        runner.Check(availableOnFirstDecision == 1,
+            "three layers can arm on the first main decision of the round");
+        runner.Check(armed.Accepted
+                     && runtime.GetPublicCounter(0, "sheathed_edge", "edge") == 0,
+            "arming spends all three layers immediately");
+
+        TalentMatchRuntime missedRuntime = CreateChargedSheathedEdgeRuntime(out GameSession missedSession);
+        missedRuntime.OpenMainDecision(0, 101);
+        missedRuntime.OpenMainDecision(0, 102);
+        var laterContext = new TalentActionQueryContext(
+            missedSession, 0, TalentActivationWindow.MainTurn, decisionId: 102);
+        TalentActionResult tooLate = missedRuntime.TryActivate(
+            0,
+            new TalentActionRequest { TalentId = "sheathed_edge", DecisionId = 102 },
+            new TalentActivationContext(
+                missedSession, 0, TalentActivationWindow.MainTurn, decisionId: 102));
+
+        runner.Check(missedRuntime.GetAvailableActions(0, laterContext).Count == 0
+                     && !tooLate.Accepted,
+            "sheathed edge cannot arm after the owner's first main decision has passed");
+    }
+
+    private static void SheathedEdgeReadOnlyResolutionConsumesOnlyAfterAcceptedWin(
+        RegressionRunner runner)
+    {
+        TalentMatchRuntime runtime = CreateArmedSheathedEdgeRuntime(out GameSession session);
+        runtime.DrainEventsForSeat(0);
+
+        TalentFanResolution first = runtime.ResolvePostLegalFan(
+            new TalentWinContext(session, 0), eligibilityFan: 8);
+        TalentFanResolution second = runtime.ResolvePostLegalFan(
+            new TalentWinContext(session, 0), eligibilityFan: 8);
+        bool candidatesStayedQuiet = runtime.DrainEventsForSeat(0)
+            .All(runtimeEvent => runtimeEvent.EventType != "armed_consumed");
+
+        runtime.ConfirmAcceptedWin(new TalentWinContext(session, 0));
+        runtime.ConfirmAcceptedWin(new TalentWinContext(session, 0));
+        int consumedEvents = runtime.DrainEventsForSeat(0)
+            .Count(runtimeEvent => runtimeEvent.EventType == "armed_consumed");
+
+        runner.Check(first.EligibilityFan == 8
+                     && first.PostLegalBonusFan == 16
+                     && first.NegativeFan == 0
+                     && first.FinalFan == 24
+                     && second.FinalFan == 24,
+            "post-legal fan resolution is read-only and repeatable for candidate and final scoring");
+        runner.Check(candidatesStayedQuiet && consumedEvents == 1,
+            "sheathed edge emits its consumed event only after an accepted win is confirmed");
+    }
+
+    private static void SheathedEdgeUnusedArmExpiresWithoutRefund(RegressionRunner runner)
+    {
+        TalentMatchRuntime runtime = CreateArmedSheathedEdgeRuntime(out GameSession session);
+        runtime.EndRound(new TalentRoundOutcome { WinnerSeatIndex = 1 }, session);
+        BeginReadyRound(runtime, session);
+
+        TalentFanResolution nextRound = runtime.ResolvePostLegalFan(
+            new TalentWinContext(session, 0), eligibilityFan: 8);
+
+        runner.Check(nextRound.PostLegalBonusFan == 0 && nextRound.FinalFan == 8,
+            "an unused sheathed edge arm expires at the next round boundary");
+        runner.Check(runtime.GetPublicCounter(0, "sheathed_edge", "edge") == 1,
+            "an expired arm earns only the normal non-winning layer and does not refund three spent layers");
+    }
+
+    private static TalentMatchRuntime CreateSheathedEdgeRuntime(out GameSession session)
+    {
+        var config = new TalentSlotConfig();
+        config.SlotTalentIds[0] = "sheathed_edge";
+        var runtime = new TalentMatchRuntime(
+            new Dictionary<int, TalentSlotConfig> { [0] = config },
+            TalentRegistry.Instance);
+        session = new GameSession(GameMode.EastOnly);
+        runtime.BeginMatch(session);
+        BeginReadyRound(runtime, session);
+        return runtime;
+    }
+
+    private static TalentMatchRuntime CreateChargedSheathedEdgeRuntime(out GameSession session)
+    {
+        TalentMatchRuntime runtime = CreateSheathedEdgeRuntime(out session);
+        for (int index = 0; index < 3; index++)
+            EndNonWinningRound(runtime, session, winnerSeatIndex: index + 1);
+        return runtime;
+    }
+
+    private static TalentMatchRuntime CreateArmedSheathedEdgeRuntime(out GameSession session)
+    {
+        TalentMatchRuntime runtime = CreateChargedSheathedEdgeRuntime(out session);
+        runtime.OpenMainDecision(0, 91);
+        TalentActionResult result = runtime.TryActivate(
+            0,
+            new TalentActionRequest { TalentId = "sheathed_edge", DecisionId = 91 },
+            new TalentActivationContext(
+                session, 0, TalentActivationWindow.MainTurn, decisionId: 91));
+        if (!result.Accepted) throw new InvalidOperationException("Could not arm sheathed edge test fixture.");
+        return runtime;
+    }
+
+    private static void EndNonWinningRound(
+        TalentMatchRuntime runtime,
+        GameSession session,
+        int? winnerSeatIndex)
+    {
+        runtime.EndRound(new TalentRoundOutcome { WinnerSeatIndex = winnerSeatIndex }, session);
+        BeginReadyRound(runtime, session);
+    }
+
     private static TalentNegativeEffect BuildLayerReduction(
         int sourceSeatIndex,
         int targetSeatIndex)
@@ -343,15 +549,36 @@ internal sealed class PriorityDefenseTalent : TalentRule
     }
 }
 
-[TalentRule("network_test_public_charge", "Public Charge", "test", TalentTier.Small, 0)]
+[TalentRule("network_test_public_charge", "Public Charge", "test", TalentTier.Small, 0,
+    RevealPolicy = TalentRevealPolicy.PublicAtMatchStart)]
 internal sealed class NetworkTestPublicChargeTalent : TalentRule, IPublicChargeTalent
 {
     public static int ReductionCount { get; private set; }
+    private static int CurrentCharge { get; set; }
 
-    public static void Reset() => ReductionCount = 0;
-
-    public void ReducePublicChargeLayer(TalentPublicChargeContext context)
+    public static void Reset()
     {
-        ReductionCount++;
+        ReductionCount = 0;
+        CurrentCharge = 1;
     }
+
+    public static void SetCharge(int charge) => CurrentCharge = charge;
+
+    public int GetCurrentCharge(TalentRuntimeState state) => CurrentCharge;
+
+    public bool TryReduceCharge(TalentRuntimeState state, int amount)
+    {
+        if (amount <= 0) return false;
+        ReductionCount++;
+        CurrentCharge = Math.Max(0, CurrentCharge - amount);
+        return true;
+    }
+}
+
+[TalentRule("network_test_hidden_public_charge", "Hidden Public Charge", "test", TalentTier.Small, 0)]
+internal sealed class NetworkTestHiddenPublicChargeTalent : TalentRule, IPublicChargeTalent
+{
+    public int GetCurrentCharge(TalentRuntimeState state) => 1;
+
+    public bool TryReduceCharge(TalentRuntimeState state, int amount) => amount > 0;
 }
