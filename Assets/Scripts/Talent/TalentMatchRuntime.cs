@@ -339,7 +339,10 @@ namespace MahjongGame.Talents
                          .OrderBy(entry => entry.Sequence))
             {
                 entry.Rule.GetAvailableActions(
-                    context.WithState(entry.State.CreateDetachedCopy(), isFirstMainDecision),
+                    context.WithState(
+                        entry.State.CreateDetachedCopy(),
+                        isFirstMainDecision,
+                        this),
                     options);
             }
             return options;
@@ -369,17 +372,6 @@ namespace MahjongGame.Talents
             if (!entry.Metadata.ActivationWindow.HasFlag(context.RequiredWindow))
                 return TalentActionResult.Reject(TalentActionErrorCodes.NotAvailable);
 
-            var queryContext = new TalentActionQueryContext(
-                _session,
-                ownerSeatIndex,
-                context.RequiredWindow,
-                context.DecisionId);
-            if (!GetAvailableActions(ownerSeatIndex, queryContext)
-                    .Any(option => string.Equals(option.TalentId, request.TalentId, StringComparison.Ordinal)))
-            {
-                return TalentActionResult.Reject(TalentActionErrorCodes.NotAvailable);
-            }
-
             return entry.Rule.TryActivate(
                        context.WithState(
                            entry.State,
@@ -387,7 +379,8 @@ namespace MahjongGame.Talents
                            IsFirstMainDecision(
                                ownerSeatIndex,
                                context.RequiredWindow,
-                               context.DecisionId)),
+                               context.DecisionId),
+                           this),
                        request)
                    ?? TalentActionResult.NotSupported();
         }
@@ -398,6 +391,39 @@ namespace MahjongGame.Talents
             RuntimeEntry entry = FindActiveEntry(ownerSeatIndex, talentId);
             if (entry == null || !entry.State.IsRevealed) return 0;
             return entry.State.GetCounter(key, TalentStateScope.Match);
+        }
+
+        public int GetPrivateCounter(int ownerSeatIndex, string talentId, string key)
+        {
+            ValidateSeatIndex(ownerSeatIndex, nameof(ownerSeatIndex));
+            RuntimeEntry entry = FindActiveEntry(ownerSeatIndex, talentId);
+            return entry?.State.GetCounter(key, TalentStateScope.Match) ?? 0;
+        }
+
+        internal PublicChargeTarget ResolvePublicChargeTarget(
+            int sourceSeatIndex,
+            int targetSeatIndex,
+            string targetTalentId)
+        {
+            if (sourceSeatIndex < 0 || sourceSeatIndex > 3
+                || targetSeatIndex < 0 || targetSeatIndex > 3
+                || sourceSeatIndex == targetSeatIndex)
+            {
+                return null;
+            }
+
+            RuntimeEntry targetEntry = FindActiveEntry(targetSeatIndex, targetTalentId);
+            if (targetEntry == null
+                || !targetEntry.State.IsRevealed
+                || !(targetEntry.Rule is IPublicChargeTalent publicChargeTarget))
+            {
+                return null;
+            }
+
+            int currentCharge = publicChargeTarget.GetCurrentCharge(targetEntry.State);
+            return currentCharge > 0
+                ? new PublicChargeTarget(targetSeatIndex, targetEntry.Rule.Id, currentCharge)
+                : null;
         }
 
         public IReadOnlyList<PublicChargeTarget> GetPublicChargeTargets(int requestingSeatIndex)

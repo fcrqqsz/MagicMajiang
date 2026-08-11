@@ -78,6 +78,19 @@ namespace MahjongGame.Talents
             EmitPublic(key, value);
         }
 
+        public void RevealWithPublicCounter(
+            string key,
+            int value,
+            TalentStateScope scope)
+        {
+            if (!State.IsRevealed)
+            {
+                State.IsRevealed = true;
+                EmitPublic("talent_revealed", 0);
+            }
+            SetPublicCounter(key, value, scope);
+        }
+
         internal static int ValidateSeatIndex(int seatIndex)
         {
             if (seatIndex < 0 || seatIndex > 3)
@@ -295,6 +308,7 @@ namespace MahjongGame.Talents
 
     public sealed class TalentActivationContext : TalentContext
     {
+        private TalentMatchRuntime _runtime;
         public new int CurrentSeatIndex => base.CurrentSeatIndex.Value;
         public TalentActivationWindow RequiredWindow { get; }
         public long DecisionId { get; }
@@ -325,7 +339,8 @@ namespace MahjongGame.Talents
         internal TalentActivationContext WithState(
             TalentRuntimeState state,
             Action<TalentRuntimeEvent> eventSink,
-            bool isFirstMainDecisionOfRound)
+            bool isFirstMainDecisionOfRound,
+            TalentMatchRuntime runtime)
         {
             TalentActivationContext context = new TalentActivationContext(
                 Session,
@@ -336,12 +351,30 @@ namespace MahjongGame.Talents
                 IsFirstMainDecisionOfRound = isFirstMainDecisionOfRound
             };
             context.ConfigureEntry(CurrentSeatIndex, state, eventSink);
+            context._runtime = runtime;
             return context;
+        }
+
+        public PublicChargeTarget ResolvePublicChargeTarget(TalentActionRequest request)
+        {
+            if (request == null) return null;
+            return _runtime?.ResolvePublicChargeTarget(
+                CurrentSeatIndex,
+                request.TargetSeatIndex,
+                request.TargetTalentId);
+        }
+
+        public TalentNegativeEffectResult ApplyNegativeEffect(TalentNegativeEffect effect)
+        {
+            if (_runtime == null)
+                throw new InvalidOperationException("Talent activation context is not bound to a runtime.");
+            return _runtime.ApplyNegativeEffect(effect);
         }
     }
 
     public sealed class TalentActionQueryContext : TalentContext
     {
+        private TalentMatchRuntime _runtime;
         public new int CurrentSeatIndex => base.CurrentSeatIndex.Value;
         public TalentActivationWindow RequiredWindow { get; }
         public long DecisionId { get; }
@@ -371,7 +404,8 @@ namespace MahjongGame.Talents
 
         internal TalentActionQueryContext WithState(
             TalentRuntimeState state,
-            bool isFirstMainDecisionOfRound)
+            bool isFirstMainDecisionOfRound,
+            TalentMatchRuntime runtime)
         {
             var context = new TalentActionQueryContext(
                 Session,
@@ -382,7 +416,14 @@ namespace MahjongGame.Talents
                 IsFirstMainDecisionOfRound = isFirstMainDecisionOfRound
             };
             context.ConfigureEntry(CurrentSeatIndex, state, eventSink: null);
+            context._runtime = runtime;
             return context;
+        }
+
+        public IReadOnlyList<PublicChargeTarget> GetPublicChargeTargets()
+        {
+            return _runtime?.GetPublicChargeTargets(CurrentSeatIndex)
+                   ?? Array.Empty<PublicChargeTarget>();
         }
     }
 

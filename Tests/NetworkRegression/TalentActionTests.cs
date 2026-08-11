@@ -10,6 +10,9 @@ internal static class TalentActionTests
         SupplementalActionValidationRejectsInvalidDecisionContexts(runner);
         SupplementalTalentAdmissionRejectsResponseWindowsBeforeRuntime(runner);
         CarriedTalentActionExecutesPolymorphically(runner);
+        InterceptionConsumesUsageBeforeTargetDefense(runner);
+        InterceptionLimitsUsageAndEnumeratesOnlyEligibleTargets(runner);
+        InterceptionRevalidatesEveryTargetEligibilityOnTheServer(runner);
         ComposureBlocksOnlyTheFirstNegativeEffectPerRound(runner);
         NegativeEffectChecksTargetDefensesByPriority(runner);
         NegativeEffectDescriptionDoesNotExposeAnApplyDelegate(runner);
@@ -144,6 +147,179 @@ internal static class TalentActionTests
             "a talent action rejects activation outside its declared window");
         runner.Check(runtime.DrainEventsForSeat(0).Any(runtimeEvent => runtimeEvent.EventType == "test_action"),
             "a polymorphic talent action can emit an owner-filtered runtime event");
+    }
+
+    private static void InterceptionConsumesUsageBeforeTargetDefense(RegressionRunner runner)
+    {
+        TalentMatchRuntime runtime = CreateInterceptionRuntime(
+            includeTargetComposure: true,
+            out GameSession session);
+        ChargeSheathedEdge(runtime, session);
+        runtime.DrainEventsForSeat(1);
+        runtime.OpenMainDecision(ownerSeatIndex: 1, decisionId: 3000000001L);
+
+        TalentActionResult blocked = runtime.TryActivate(
+            1,
+            new TalentActionRequest
+            {
+                TalentId = "interception",
+                DecisionId = 3000000001L,
+                TargetSeatIndex = 0,
+                TargetTalentId = "sheathed_edge"
+            },
+            new TalentActivationContext(
+                session, 1, TalentActivationWindow.MainTurn, decisionId: 3000000001L));
+        TalentActionResult repeated = runtime.TryActivate(
+            1,
+            new TalentActionRequest
+            {
+                TalentId = "interception",
+                DecisionId = 3000000001L,
+                TargetSeatIndex = 0,
+                TargetTalentId = "sheathed_edge"
+            },
+            new TalentActivationContext(
+                session, 1, TalentActivationWindow.MainTurn, decisionId: 3000000001L));
+        IReadOnlyList<TalentRuntimeEvent> events = runtime.DrainEventsForSeat(0);
+
+        runner.Check(blocked.Accepted,
+            "a defended interception is still an accepted use");
+        runner.Check(runtime.GetPrivateCounter(1, "interception", "uses_remaining") == 2,
+            "composure does not refund interception usage");
+        runner.Check(runtime.GetPublicCounter(0, "sheathed_edge", "edge") == 3,
+            "a blocked interception leaves the target charge unchanged");
+        runner.Check(!repeated.Accepted
+                     && repeated.ErrorCode == TalentActionErrorCodes.AlreadyUsedThisTurn,
+            "interception cannot be used twice for the same long main-decision token");
+        runner.Check(events.Any(runtimeEvent => runtimeEvent.TalentId == "interception"
+                                               && runtimeEvent.EventType == "talent_revealed"
+                                               && runtimeEvent.Visibility == TalentEventVisibility.Public)
+                     && events.Any(runtimeEvent => runtimeEvent.TalentId == "interception"
+                                                    && runtimeEvent.EventType == "uses_remaining"
+                                                    && runtimeEvent.Value == 2),
+            "the first interception use publicly reveals its remaining uses");
+    }
+
+    private static void InterceptionLimitsUsageAndEnumeratesOnlyEligibleTargets(
+        RegressionRunner runner)
+    {
+        TalentMatchRuntime runtime = CreateInterceptionRuntime(
+            includeTargetComposure: false,
+            out GameSession session);
+        ChargeSheathedEdge(runtime, session);
+        const long FirstDecision = 3000000010L;
+        runtime.OpenMainDecision(ownerSeatIndex: 1, decisionId: FirstDecision);
+
+        IReadOnlyList<TalentActionOption> options = runtime.GetAvailableActions(
+            1,
+            new TalentActionQueryContext(
+                session, 1, TalentActivationWindow.MainTurn, FirstDecision));
+        TalentActionResult invalidSelfTarget = runtime.TryActivate(
+            1,
+            new TalentActionRequest
+            {
+                TalentId = "interception",
+                DecisionId = FirstDecision,
+                TargetSeatIndex = 1,
+                TargetTalentId = "interception"
+            },
+            new TalentActivationContext(
+                session, 1, TalentActivationWindow.MainTurn, FirstDecision));
+        int usesAfterInvalidTarget = runtime.GetPrivateCounter(
+            1, "interception", "uses_remaining");
+        TalentActionResult firstUse = ActivateInterception(runtime, session, FirstDecision);
+
+        AdvanceInterceptionRound(runtime, session);
+        const long SecondDecision = 3000000011L;
+        TalentActionResult secondUse = ActivateInterception(runtime, session, SecondDecision);
+        AdvanceInterceptionRound(runtime, session);
+        const long ThirdDecision = 3000000012L;
+        TalentActionResult thirdUse = ActivateInterception(runtime, session, ThirdDecision);
+        int chargeAfterThirdUse = runtime.GetPublicCounter(0, "sheathed_edge", "edge");
+        AdvanceInterceptionRound(runtime, session);
+        const long FourthDecision = 3000000013L;
+        TalentActionResult exhausted = ActivateInterception(runtime, session, FourthDecision);
+
+        runner.Check(options.Count == 1
+                     && options[0].TalentId == "interception"
+                     && options[0].TargetSeatIndex == 0
+                     && options[0].TargetTalentId == "sheathed_edge",
+            "interception enumerates only the active revealed opposing charge target");
+        runner.Check(!invalidSelfTarget.Accepted
+                     && usesAfterInvalidTarget == 3,
+            "an invalid self target does not consume interception use before a valid target is resolved");
+        runner.Check(firstUse.Accepted && secondUse.Accepted && thirdUse.Accepted
+                     && chargeAfterThirdUse == 2,
+            "each valid interception reduces the public target charge by exactly one");
+        runner.Check(!exhausted.Accepted
+                     && exhausted.ErrorCode == TalentActionErrorCodes.InsufficientResource,
+            "interception has exactly three uses across the match");
+        runner.Check(runtime.DrainEventsForSeat(0)
+                         .Where(runtimeEvent => runtimeEvent.TalentId == "interception"
+                                                && runtimeEvent.EventType == "uses_remaining")
+                         .Select(runtimeEvent => runtimeEvent.Value)
+                         .SequenceEqual(new[] { 2, 1, 0 }),
+            "later interceptions publicly update the sticky remaining-use counter to two one and zero");
+    }
+
+    private static void InterceptionRevalidatesEveryTargetEligibilityOnTheServer(
+        RegressionRunner runner)
+    {
+        var publicTargetConfig = new TalentSlotConfig();
+        publicTargetConfig.SlotTalentIds[0] = "sheathed_edge";
+        var interceptorConfig = new TalentSlotConfig();
+        interceptorConfig.SlotTalentIds[0] = "interception";
+        var hiddenTargetConfig = new TalentSlotConfig();
+        hiddenTargetConfig.SlotTalentIds[0] = "network_test_hidden_public_charge";
+        var inactiveTargetConfig = new TalentSlotConfig();
+        inactiveTargetConfig.ReserveTalentIds[0] = "sheathed_edge";
+        var runtime = new TalentMatchRuntime(
+            new Dictionary<int, TalentSlotConfig>
+            {
+                [0] = publicTargetConfig,
+                [1] = interceptorConfig,
+                [2] = hiddenTargetConfig,
+                [3] = inactiveTargetConfig
+            },
+            TalentRegistry.Instance);
+        var session = new GameSession(GameMode.EastOnly);
+        runtime.BeginMatch(session);
+        BeginReadyRound(runtime, session);
+        ChargeSheathedEdge(runtime, session);
+
+        const long DecisionId = 3000000020L;
+        runtime.OpenMainDecision(ownerSeatIndex: 1, decisionId: DecisionId);
+        IReadOnlyList<TalentActionOption> options = runtime.GetAvailableActions(
+            1,
+            new TalentActionQueryContext(
+                session, 1, TalentActivationWindow.MainTurn, DecisionId));
+        TalentActionResult self = TryInterceptionAt(runtime, session, DecisionId, 1, "interception");
+        TalentActionResult hidden = TryInterceptionAt(
+            runtime, session, DecisionId, 2, "network_test_hidden_public_charge");
+        TalentActionResult inactive = TryInterceptionAt(runtime, session, DecisionId, 3, "sheathed_edge");
+        for (int index = 0; index < 3; index++)
+        {
+            runtime.ApplyNegativeEffect(new TalentNegativeEffect(
+                2,
+                "test_source",
+                0,
+                "sheathed_edge",
+                TalentNegativeEffectTypes.ReducePublicChargeLayer));
+        }
+        TalentActionResult emptyCharge = TryInterceptionAt(
+            runtime, session, DecisionId, 0, "sheathed_edge");
+
+        runner.Check(options.Count == 1
+                     && options[0].TargetSeatIndex == 0
+                     && options[0].TargetTalentId == "sheathed_edge",
+            "interception candidates exclude self hidden and inactive public-charge entries");
+        runner.Check(!self.Accepted && !hidden.Accepted && !inactive.Accepted && !emptyCharge.Accepted
+                     && self.ErrorCode == TalentActionErrorCodes.InvalidTarget
+                     && hidden.ErrorCode == TalentActionErrorCodes.InvalidTarget
+                     && inactive.ErrorCode == TalentActionErrorCodes.InvalidTarget
+                     && emptyCharge.ErrorCode == TalentActionErrorCodes.InvalidTarget
+                     && runtime.GetPrivateCounter(1, "interception", "uses_remaining") == 3,
+            "server target revalidation rejects self hidden inactive and empty charges without spending uses");
     }
 
     private static void ComposureBlocksOnlyTheFirstNegativeEffectPerRound(RegressionRunner runner)
@@ -459,6 +635,69 @@ internal static class TalentActionTests
         runtime.BeginMatch(session);
         BeginReadyRound(runtime, session);
         return runtime;
+    }
+
+    private static TalentMatchRuntime CreateInterceptionRuntime(
+        bool includeTargetComposure,
+        out GameSession session)
+    {
+        var targetConfig = new TalentSlotConfig();
+        targetConfig.SlotTalentIds[0] = "sheathed_edge";
+        if (includeTargetComposure)
+            targetConfig.SlotTalentIds[1] = "composure";
+        var interceptorConfig = new TalentSlotConfig();
+        interceptorConfig.SlotTalentIds[0] = "interception";
+        var runtime = new TalentMatchRuntime(
+            new Dictionary<int, TalentSlotConfig>
+            {
+                [0] = targetConfig,
+                [1] = interceptorConfig
+            },
+            TalentRegistry.Instance);
+        session = new GameSession(GameMode.EastOnly);
+        runtime.BeginMatch(session);
+        BeginReadyRound(runtime, session);
+        return runtime;
+    }
+
+    private static void ChargeSheathedEdge(TalentMatchRuntime runtime, GameSession session)
+    {
+        for (int index = 0; index < 3; index++)
+            EndNonWinningRound(runtime, session, winnerSeatIndex: 2);
+    }
+
+    private static TalentActionResult ActivateInterception(
+        TalentMatchRuntime runtime,
+        GameSession session,
+        long decisionId)
+    {
+        runtime.OpenMainDecision(ownerSeatIndex: 1, decisionId: decisionId);
+        return TryInterceptionAt(runtime, session, decisionId, 0, "sheathed_edge");
+    }
+
+    private static TalentActionResult TryInterceptionAt(
+        TalentMatchRuntime runtime,
+        GameSession session,
+        long decisionId,
+        int targetSeatIndex,
+        string targetTalentId)
+    {
+        return runtime.TryActivate(
+            1,
+            new TalentActionRequest
+            {
+                TalentId = "interception",
+                DecisionId = decisionId,
+                TargetSeatIndex = targetSeatIndex,
+                TargetTalentId = targetTalentId
+            },
+            new TalentActivationContext(
+                session, 1, TalentActivationWindow.MainTurn, decisionId));
+    }
+
+    private static void AdvanceInterceptionRound(TalentMatchRuntime runtime, GameSession session)
+    {
+        EndNonWinningRound(runtime, session, winnerSeatIndex: 2);
     }
 
     private static TalentMatchRuntime CreateChargedSheathedEdgeRuntime(out GameSession session)

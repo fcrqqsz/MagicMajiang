@@ -111,6 +111,7 @@
     <Compile Include="..\..\Assets\Scripts\Talent\Impl\DrawRewardTalent.cs" Link="DrawRewardTalent.cs" />
     <Compile Include="..\..\Assets\Scripts\Talent\Impl\HeadStartTalent.cs" Link="HeadStartTalent.cs" />
     <Compile Include="..\..\Assets\Scripts\Talent\Impl\ComposureTalent.cs" Link="ComposureTalent.cs" />
+    <Compile Include="..\..\Assets\Scripts\Talent\Impl\InterceptionTalent.cs" Link="InterceptionTalent.cs" />
     <Compile Include="..\..\Assets\Scripts\Talent\Impl\SheathedEdgeTalent.cs" Link="SheathedEdgeTalent.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\Data\SavedDeck.cs" Link="SavedDeck.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\Data\PlayerProfile.cs" Link="PlayerProfile.cs" />
