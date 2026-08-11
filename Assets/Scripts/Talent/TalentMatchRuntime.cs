@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using MahjongGame.Core;
 using MahjongGame.Core.Network;
+using UnityEngine;
 
 namespace MahjongGame.Talents
 {
@@ -231,6 +232,54 @@ namespace MahjongGame.Talents
                 context.IsAllowed = false;
                 return;
             }
+        }
+
+        public TalentNegativeEffectResult ApplyNegativeEffect(TalentNegativeEffect effect)
+        {
+            if (effect == null) throw new ArgumentNullException(nameof(effect));
+            EnsurePhase(RuntimePhase.RoundReady, nameof(ApplyNegativeEffect));
+
+            if (!string.Equals(
+                    effect.EffectType,
+                    TalentNegativeEffectTypes.ReducePublicChargeLayer,
+                    StringComparison.Ordinal))
+            {
+                Debug.LogWarning($"[TalentMatchRuntime] Rejected unknown negative effect type: {effect.EffectType}");
+                return new TalentNegativeEffectResult();
+            }
+            if (effect.Apply == null)
+            {
+                Debug.LogWarning("[TalentMatchRuntime] Rejected negative effect without a server Apply callback.");
+                return new TalentNegativeEffectResult();
+            }
+
+            ValidateSeatIndex(effect.SourceSeatIndex, nameof(effect.SourceSeatIndex));
+            ValidateSeatIndex(effect.TargetSeatIndex, nameof(effect.TargetSeatIndex));
+            foreach (RuntimeEntry entry in GetActiveTargetDefenses(effect.TargetSeatIndex))
+            {
+                TalentNegativeEffectContext context = new TalentNegativeEffectContext(
+                    entry.State,
+                    runtimeEvent => EmitEvent(entry, runtimeEvent));
+                if (!entry.Rule.TryBlockNegativeEffect(context, effect)) continue;
+
+                if (!context.HasPublicEffect)
+                {
+                    EmitEvent(entry, new TalentRuntimeEvent
+                    {
+                        EventType = "blocked_negative_effect",
+                        Visibility = TalentEventVisibility.Public,
+                        Value = 1
+                    });
+                }
+                return new TalentNegativeEffectResult
+                {
+                    WasBlocked = true,
+                    BlockingTalentId = entry.Rule.Id
+                };
+            }
+
+            effect.Apply();
+            return new TalentNegativeEffectResult { WasApplied = true };
         }
 
         public IReadOnlyList<TalentActionOption> GetAvailableActions(
@@ -476,6 +525,14 @@ namespace MahjongGame.Talents
                 .Where(entry => entry.State.IsActive
                                 && (entry.Rule.Scope == TalentScope.Global
                                     || entry.OwnerSeatIndex == currentSeatIndex))
+                .OrderByDescending(entry => entry.Rule.Priority)
+                .ThenBy(entry => entry.Sequence);
+        }
+
+        private IEnumerable<RuntimeEntry> GetActiveTargetDefenses(int targetSeatIndex)
+        {
+            return _entries
+                .Where(entry => entry.State.IsActive && entry.OwnerSeatIndex == targetSeatIndex)
                 .OrderByDescending(entry => entry.Rule.Priority)
                 .ThenBy(entry => entry.Sequence);
         }

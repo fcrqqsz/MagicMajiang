@@ -35,6 +35,9 @@ namespace MahjongGame.Talents
         public virtual void OnRoundEnded(TalentRoundContext context, TalentRoundOutcome outcome) { }
         public virtual int GetRoundStartPeekCount(TalentRoundContext context) => 0;
         public virtual void ConfigureScoring(TalentScoringContext context, ScoringOptions options) { }
+        public virtual bool TryBlockNegativeEffect(
+            TalentNegativeEffectContext context,
+            TalentNegativeEffect effect) => false;
         public virtual TalentActionResult TryActivate(
             TalentActivationContext context,
             TalentActionRequest request) => TalentActionResult.NotSupported();

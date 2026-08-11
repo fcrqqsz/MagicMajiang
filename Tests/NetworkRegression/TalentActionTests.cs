@@ -10,6 +10,9 @@ internal static class TalentActionTests
         SupplementalActionValidationRejectsInvalidDecisionContexts(runner);
         SupplementalTalentAdmissionRejectsResponseWindowsBeforeRuntime(runner);
         CarriedTalentActionExecutesPolymorphically(runner);
+        ComposureBlocksOnlyTheFirstNegativeEffectPerRound(runner);
+        NegativeEffectChecksTargetDefensesByPriority(runner);
+        NegativeEffectRejectsUnknownTypesWithoutApplying(runner);
     }
 
     private static void SupplementalActionValidationDoesNotConsumeMainDecision(RegressionRunner runner)
@@ -133,6 +136,114 @@ internal static class TalentActionTests
         runner.Check(runtime.DrainEventsForSeat(0).Any(runtimeEvent => runtimeEvent.EventType == "test_action"),
             "a polymorphic talent action can emit an owner-filtered runtime event");
     }
+
+    private static void ComposureBlocksOnlyTheFirstNegativeEffectPerRound(RegressionRunner runner)
+    {
+        var config = new TalentSlotConfig();
+        config.SlotTalentIds[0] = "composure";
+        var runtime = new TalentMatchRuntime(
+            new Dictionary<int, TalentSlotConfig> { [0] = config },
+            TalentRegistry.Instance);
+        var session = new GameSession(GameMode.Single);
+        runtime.BeginMatch(session);
+        BeginReadyRound(runtime, session);
+
+        int applyCount = 0;
+        TalentNegativeEffect effect = BuildLayerReduction(1, 0, () => applyCount++);
+        IReadOnlyList<TalentRuntimeEvent> beforeBlock = runtime.DrainEventsForSeat(1);
+        TalentNegativeEffectResult blocked = runtime.ApplyNegativeEffect(effect);
+        TalentNegativeEffectResult second = runtime.ApplyNegativeEffect(effect);
+        IReadOnlyList<TalentRuntimeEvent> afterBlock = runtime.DrainEventsForSeat(1);
+
+        runner.Check(beforeBlock.All(runtimeEvent => runtimeEvent.TalentId != "composure"),
+            "composure remains unrevealed before it blocks a negative effect");
+        runner.Check(blocked.WasBlocked && !blocked.WasApplied
+                     && blocked.BlockingTalentId == "composure",
+            "composure blocks the first negative talent effect each round");
+        runner.Check(!second.WasBlocked && second.WasApplied && applyCount == 1,
+            "the second negative effect in the same round is not blocked");
+        runner.Check(afterBlock.Any(runtimeEvent => runtimeEvent.TalentId == "composure"
+                                                   && runtimeEvent.EventType == "blocked_negative_effect"
+                                                   && runtimeEvent.Visibility == TalentEventVisibility.Public
+                                                   && runtimeEvent.Value == 1),
+            "composure becomes public and records its consumed round state when it blocks");
+
+        runtime.EndRound(new TalentRoundOutcome { IsAborted = true }, session);
+        BeginReadyRound(runtime, session);
+        TalentNegativeEffectResult refreshed = runtime.ApplyNegativeEffect(effect);
+
+        runner.Check(refreshed.WasBlocked && !refreshed.WasApplied,
+            "composure refreshes at the next round boundary");
+    }
+
+    private static void NegativeEffectRejectsUnknownTypesWithoutApplying(RegressionRunner runner)
+    {
+        var runtime = new TalentMatchRuntime(
+            new Dictionary<int, TalentSlotConfig> { [0] = new TalentSlotConfig() },
+            TalentRegistry.Instance);
+        var session = new GameSession(GameMode.Single);
+        runtime.BeginMatch(session);
+        BeginReadyRound(runtime, session);
+
+        bool wasApplied = false;
+        TalentNegativeEffectResult result = runtime.ApplyNegativeEffect(new TalentNegativeEffect
+        {
+            SourceSeatIndex = 1,
+            TargetSeatIndex = 0,
+            EffectType = "ChangeConcealedHand",
+            Apply = () => wasApplied = true
+        });
+
+        runner.Check(!result.WasBlocked && !result.WasApplied && !wasApplied,
+            "negative effects reject unknown types before their callback can run");
+    }
+
+    private static void NegativeEffectChecksTargetDefensesByPriority(RegressionRunner runner)
+    {
+        PriorityDefenseTalent.Reset();
+        var config = new TalentSlotConfig();
+        config.SlotTalentIds[0] = "composure";
+        config.SlotTalentIds[1] = "network_test_priority_defense";
+        var runtime = new TalentMatchRuntime(
+            new Dictionary<int, TalentSlotConfig> { [0] = config },
+            TalentRegistry.Instance);
+        var session = new GameSession(GameMode.Single);
+        runtime.BeginMatch(session);
+        BeginReadyRound(runtime, session);
+
+        int applyCount = 0;
+        TalentNegativeEffectResult result = runtime.ApplyNegativeEffect(
+            BuildLayerReduction(1, 0, () => applyCount++));
+
+        runner.Check(PriorityDefenseTalent.BlockAttempts == 1
+                     && result.WasBlocked
+                     && result.BlockingTalentId == "composure"
+                     && applyCount == 0,
+            "negative effects check target defenses in priority order before the first block stops application");
+    }
+
+    private static TalentNegativeEffect BuildLayerReduction(
+        int sourceSeatIndex,
+        int targetSeatIndex,
+        Action apply)
+    {
+        return new TalentNegativeEffect
+        {
+            SourceSeatIndex = sourceSeatIndex,
+            SourceTalentId = "test_source",
+            TargetSeatIndex = targetSeatIndex,
+            TargetTalentId = "composure",
+            EffectType = "ReducePublicChargeLayer",
+            Apply = apply
+        };
+    }
+
+    private static void BeginReadyRound(TalentMatchRuntime runtime, GameSession session)
+    {
+        runtime.BeginRound(new TalentRoundContext(session));
+        runtime.ApplyWallBuilding(new TalentWallContext(session, new List<TileData>()));
+        runtime.ResolvePostShuffle(new TalentPostShuffleContext(session, new List<TileData>()));
+    }
 }
 
 [TalentRule("network_test_talent_action", "Action Test", "test", TalentTier.Small, 0,
@@ -152,5 +263,23 @@ internal sealed class ActionTalentTestRule : TalentRule
             Visibility = TalentEventVisibility.OwnerOnly
         });
         return TalentActionResult.Success();
+    }
+}
+
+[TalentRule("network_test_priority_defense", "Priority Defense", "test", TalentTier.Small, 0)]
+internal sealed class PriorityDefenseTalent : TalentRule
+{
+    public static int BlockAttempts { get; private set; }
+
+    public override int Priority => 10;
+
+    public static void Reset() => BlockAttempts = 0;
+
+    public override bool TryBlockNegativeEffect(
+        TalentNegativeEffectContext context,
+        TalentNegativeEffect effect)
+    {
+        BlockAttempts++;
+        return false;
     }
 }
