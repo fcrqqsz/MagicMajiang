@@ -27,6 +27,7 @@ namespace MahjongGame.Core.Network
         public bool SceneReady;
         public bool IsLoadoutLocked;
         public TrustedPlayerLoadout Loadout;
+        public int CurrentTotalAlienation;
         public StableSeatController Controller;
     }
 
@@ -40,6 +41,10 @@ namespace MahjongGame.Core.Network
         private readonly NetworkDecisionTracker _decisionTracker = new NetworkDecisionTracker();
         private readonly HashSet<string> _expiredPlayerIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         private TalentMatchRuntime _talentRuntime;
+        private SideboardDecisionTracker _sideboardTracker;
+        private long _nextSideboardDecisionId = 1;
+
+        private const int SideboardDurationSeconds = 45;
 
         public string RoomId { get; }
         public GameMode GameMode { get; }
@@ -94,7 +99,8 @@ namespace MahjongGame.Core.Network
                     IsAi = false,
                     IsOnline = true,
                     ControlState = RoomSeatControlState.OnlineHuman,
-                    Loadout = trustedLoadout
+                    Loadout = trustedLoadout,
+                    CurrentTotalAlienation = trustedLoadout.TotalAlienation
                 };
                 seatIndex = i;
                 State = RoomState.WaitingForMatchReady;
@@ -142,6 +148,7 @@ namespace MahjongGame.Core.Network
             seat.Controller?.MarkOffline();
             if (State == RoomState.LoadingGameScene) seat.SceneReady = true;
             if (RoomLifecyclePolicy.ShouldAutoReadyOfflineSeat(State)) seat.MatchReady = true;
+            if (State == RoomState.WaitingForSideboard) LockSideboardOriginal(seat.SeatIndex, "disconnected");
             shouldCloseRoom = RoomLifecyclePolicy.ShouldCloseWhenNoHumanOnline(OnlineHumanCount);
             return true;
         }
@@ -154,6 +161,7 @@ namespace MahjongGame.Core.Network
             if (seat == null || seat.IsAi) return false;
 
             seatIndex = seat.SeatIndex;
+            if (State == RoomState.WaitingForSideboard) LockSideboardOriginal(seat.SeatIndex, "disconnected");
             if (State == RoomState.WaitingForPlayers || State == RoomState.WaitingForMatchReady)
             {
                 _expiredPlayerIds.Add(seat.PlayerId);
@@ -202,6 +210,13 @@ namespace MahjongGame.Core.Network
             int recoveredSeatIndex = seat.SeatIndex;
             seatIndex = recoveredSeatIndex;
             recovery = seat.MessageStream.DeliverReconnectState(endpoint, lastSeq, hasProjection, () => BuildSnapshot(recoveredSeatIndex));
+            if (_sideboardTracker != null
+                && (State == RoomState.WaitingForSideboard
+                    || (State == RoomState.WaitingForNextRound
+                        && SideboardPhasePolicy.ShouldOpen(GameMode, Session.TotalRoundsPlayed))))
+            {
+                SendCurrentSideboardStateToSeat(recoveredSeatIndex);
+            }
             return true;
         }
 
@@ -392,6 +407,76 @@ namespace MahjongGame.Core.Network
             return accepted;
         }
 
+        public bool SubmitSideboard(int seatIndex, SideboardSubmitMessage message, out string errorCode)
+        {
+            errorCode = null;
+            if (seatIndex < 0 || seatIndex >= _seats.Length || _seats[seatIndex] == null || _seats[seatIndex].IsAi)
+            {
+                errorCode = SideboardErrorCodes.InvalidSelection;
+                return false;
+            }
+            if (_sideboardTracker != null
+                && message != null
+                && message.decisionId == _sideboardTracker.DecisionId
+                && _sideboardTracker.IsLocked(seatIndex))
+            {
+                errorCode = SideboardErrorCodes.AlreadyLocked;
+                return false;
+            }
+            if (State != RoomState.WaitingForSideboard || _sideboardTracker == null)
+            {
+                errorCode = SideboardErrorCodes.WrongPhase;
+                return false;
+            }
+            if (message == null || message.decisionId != _sideboardTracker.DecisionId)
+            {
+                errorCode = SideboardErrorCodes.StaleDecision;
+                return false;
+            }
+
+            RoomSeat seat = _seats[seatIndex];
+            if (!SideboardLoadoutPolicy.TryValidate(
+                    seat.Loadout,
+                    message.activeTalentIds,
+                    AlienationPreset,
+                    TalentRegistry.Instance,
+                    out string[] normalized,
+                    out int totalAlienation,
+                    out _))
+            {
+                _sideboardTracker.LockOriginal(seatIndex, "invalid");
+                SendSideboardLocked(seatIndex);
+                BroadcastSideboardProgress();
+                FinishSideboardIfAllLocked();
+                errorCode = SideboardErrorCodes.InvalidSelection;
+                return false;
+            }
+
+            _talentRuntime.ReplaceActiveSet(seatIndex, normalized);
+            if (!_sideboardTracker.TrySubmit(seatIndex, normalized, out errorCode)) return false;
+            seat.CurrentTotalAlienation = totalAlienation;
+            SendSideboardLocked(seatIndex);
+            BroadcastSideboardProgress();
+            FinishSideboardIfAllLocked();
+            return true;
+        }
+
+        public void ProcessSideboardDeadline(DateTime utcNow)
+        {
+            if (State != RoomState.WaitingForSideboard || _sideboardTracker == null) return;
+            long nowUnixMilliseconds = new DateTimeOffset(utcNow.ToUniversalTime()).ToUnixTimeMilliseconds();
+            if (nowUnixMilliseconds < _sideboardTracker.DeadlineUnixMilliseconds) return;
+
+            for (int seatIndex = 0; seatIndex < _seats.Length; seatIndex++)
+            {
+                if (_sideboardTracker.IsLocked(seatIndex)) continue;
+                _sideboardTracker.LockOriginal(seatIndex, "timeout");
+                SendSideboardLocked(seatIndex);
+            }
+            BroadcastSideboardProgress();
+            FinishSideboardIfAllLocked();
+        }
+
         public RoomSeatMessage[] GetSeatSnapshot()
         {
             return Enumerable.Range(0, 4).Select(GetSeatMessage).ToArray();
@@ -425,7 +510,7 @@ namespace MahjongGame.Core.Network
                 RoomState = State,
                 GameMode = GameMode,
                 AlienationPreset = AlienationPreset,
-                OwnTotalAlienation = _seats[requestingSeatIndex]?.Loadout?.TotalAlienation ?? 0,
+                OwnTotalAlienation = _seats[requestingSeatIndex]?.CurrentTotalAlienation ?? 0,
                 Session = Session,
                 Seats = new RoomSnapshotSeatSource[4],
                 Hands = new List<TileData>[4],
@@ -463,7 +548,9 @@ namespace MahjongGame.Core.Network
                 source.Hands[i] = GameServer?.GetHandSnapshot(i) ?? new List<TileData>();
                 source.Melds[i] = GameServer?.GetMeldSnapshot(i) ?? new List<Meld>();
                 source.Rivers[i] = GameServer?.GetRiverSnapshot(i) ?? new List<TileData>();
-                source.ScoringOptions[i] = GameServer?.GetScoringOptionsSnapshot(i) ?? new ScoringOptions();
+                source.ScoringOptions[i] = State == RoomState.InRound
+                    ? GameServer?.GetScoringOptionsSnapshot(i) ?? new ScoringOptions()
+                    : new ScoringOptions();
                 source.PeekWallTiles[i] = GameServer?.GetPeekWallSnapshot(i) ?? new List<TileData>();
             }
 
@@ -490,6 +577,7 @@ namespace MahjongGame.Core.Network
         {
             if (State == RoomState.Closed) return;
             State = RoomState.Closed;
+            _sideboardTracker = null;
             if (GameServer != null)
             {
                 GameServer.OnRoundFinished -= OnRoundFinished;
@@ -518,7 +606,8 @@ namespace MahjongGame.Core.Network
                 MatchReady = true,
                 SceneReady = true,
                 IsLoadoutLocked = loadoutLocked,
-                Loadout = PlayerLoadoutCodec.CloneTrustedLoadout(loadout) ?? PlayerLoadoutCodec.CreateStandardLoadout()
+                Loadout = PlayerLoadoutCodec.CloneTrustedLoadout(loadout) ?? PlayerLoadoutCodec.CreateStandardLoadout(),
+                CurrentTotalAlienation = loadout?.TotalAlienation ?? 0
             };
         }
 
@@ -654,9 +743,13 @@ namespace MahjongGame.Core.Network
                     return;
                 }
 
-                foreach (var seat in _seats.Where(s => s != null && !s.IsAi))
-                    seat.MatchReady = RoomLifecyclePolicy.ShouldAutoReadyNextRoundSeat(seat.IsOnline);
-                State = RoomState.WaitingForNextRound;
+                if (SideboardPhasePolicy.ShouldOpen(GameMode, Session.TotalRoundsPlayed))
+                {
+                    BeginSideboard();
+                    return;
+                }
+
+                EnterWaitingForNextRound();
             }
             catch (Exception error)
             {
@@ -720,6 +813,124 @@ namespace MahjongGame.Core.Network
                     });
                 }
             }
+        }
+
+        private void BeginSideboard()
+        {
+            var originals = new IReadOnlyCollection<string>[4];
+            for (int seatIndex = 0; seatIndex < originals.Length; seatIndex++)
+                originals[seatIndex] = _talentRuntime.GetActiveTalentIds(seatIndex).ToArray();
+
+            long deadline = DateTimeOffset.UtcNow
+                .AddSeconds(SideboardDurationSeconds)
+                .ToUnixTimeMilliseconds();
+            _sideboardTracker = new SideboardDecisionTracker(
+                _nextSideboardDecisionId++,
+                deadline,
+                originals);
+            State = RoomState.WaitingForSideboard;
+
+            for (int seatIndex = 0; seatIndex < _seats.Length; seatIndex++)
+            {
+                RoomSeat seat = _seats[seatIndex];
+                if (seat.IsAi)
+                {
+                    _sideboardTracker.LockOriginal(seatIndex, "ai_default");
+                }
+                else if (!seat.IsOnline)
+                {
+                    _sideboardTracker.LockOriginal(seatIndex, "disconnected");
+                    SendSideboardLocked(seatIndex);
+                }
+                else
+                {
+                    SendSideboardStarted(seatIndex);
+                }
+            }
+
+            BroadcastSideboardProgress();
+            FinishSideboardIfAllLocked();
+        }
+
+        private void SendSideboardStarted(int seatIndex)
+        {
+            RoomSeat seat = _seats[seatIndex];
+            TrySendToHumanSeat(seatIndex, "SideboardStarted", new SideboardStartedMessage
+            {
+                decisionId = _sideboardTracker.DecisionId,
+                deadlineUnixMilliseconds = _sideboardTracker.DeadlineUnixMilliseconds,
+                carriedMainTalentIds = (seat.Loadout.TalentConfig.SlotTalentIds ?? Array.Empty<string>()).ToArray(),
+                carriedReserveTalentIds = (seat.Loadout.TalentConfig.ReserveTalentIds ?? Array.Empty<string>()).ToArray(),
+                currentActiveTalentIds = _sideboardTracker.GetOriginalActiveTalentIds(seatIndex).ToArray(),
+                alienationLimit = AlienationBudgetPolicy.GetLimit(AlienationPreset),
+                currentTotalAlienation = seat.CurrentTotalAlienation
+            });
+        }
+
+        private void SendSideboardLocked(int seatIndex)
+        {
+            RoomSeat seat = _seats[seatIndex];
+            if (seat == null || seat.IsAi || !_sideboardTracker.IsLocked(seatIndex)) return;
+            TrySendToHumanSeat(seatIndex, "SideboardLocked", new SideboardLockedMessage
+            {
+                decisionId = _sideboardTracker.DecisionId,
+                acceptedSelection = _sideboardTracker.WasSelectionAccepted(seatIndex),
+                reason = _sideboardTracker.GetLockReason(seatIndex),
+                ownTotalAlienation = seat.CurrentTotalAlienation
+            });
+        }
+
+        private void SendCurrentSideboardStateToSeat(int seatIndex)
+        {
+            if (_sideboardTracker == null) return;
+            if (_sideboardTracker.IsLocked(seatIndex)) SendSideboardLocked(seatIndex);
+            else SendSideboardStarted(seatIndex);
+            SendSideboardProgressToSeat(seatIndex);
+        }
+
+        private void LockSideboardOriginal(int seatIndex, string reason)
+        {
+            if (_sideboardTracker == null || _sideboardTracker.IsLocked(seatIndex)) return;
+            _sideboardTracker.LockOriginal(seatIndex, reason);
+            SendSideboardLocked(seatIndex);
+            BroadcastSideboardProgress();
+            FinishSideboardIfAllLocked();
+        }
+
+        private void BroadcastSideboardProgress()
+        {
+            if (_sideboardTracker == null) return;
+            foreach (RoomSeat seat in _seats.Where(candidate => candidate != null && !candidate.IsAi))
+                SendSideboardProgressToSeat(seat.SeatIndex);
+        }
+
+        private void SendSideboardProgressToSeat(int seatIndex)
+        {
+            TrySendToHumanSeat(seatIndex, "SideboardProgress", new SideboardProgressMessage
+            {
+                decisionId = _sideboardTracker.DecisionId,
+                isComplete = _sideboardTracker.AllLocked,
+                seats = Enumerable.Range(0, _seats.Length)
+                    .Select(index => new SideboardSeatLockStateMessage
+                    {
+                        seatIndex = index,
+                        locked = _sideboardTracker.IsLocked(index)
+                    })
+                    .ToArray()
+            });
+        }
+
+        private void FinishSideboardIfAllLocked()
+        {
+            if (_sideboardTracker?.AllLocked != true) return;
+            EnterWaitingForNextRound();
+        }
+
+        private void EnterWaitingForNextRound()
+        {
+            foreach (RoomSeat seat in _seats.Where(candidate => candidate != null && !candidate.IsAi))
+                seat.MatchReady = RoomLifecyclePolicy.ShouldAutoReadyNextRoundSeat(seat.IsOnline);
+            State = RoomState.WaitingForNextRound;
         }
 
         private RoomSeat FindHumanSeat(string playerId, string connectionId)

@@ -114,6 +114,49 @@ namespace MahjongGame.Core.Network.Messages
     public class ReadyMessage { public int phase; }
 
     [Serializable]
+    public sealed class SideboardStartedMessage
+    {
+        public long decisionId;
+        public long deadlineUnixMilliseconds;
+        public string[] carriedMainTalentIds;
+        public string[] carriedReserveTalentIds;
+        public string[] currentActiveTalentIds;
+        public int alienationLimit;
+        public int currentTotalAlienation;
+    }
+
+    [Serializable]
+    public sealed class SideboardSubmitMessage
+    {
+        public long decisionId;
+        public string[] activeTalentIds;
+    }
+
+    [Serializable]
+    public sealed class SideboardLockedMessage
+    {
+        public long decisionId;
+        public bool acceptedSelection;
+        public string reason;
+        public int ownTotalAlienation;
+    }
+
+    [Serializable]
+    public sealed class SideboardSeatLockStateMessage
+    {
+        public int seatIndex;
+        public bool locked;
+    }
+
+    [Serializable]
+    public sealed class SideboardProgressMessage
+    {
+        public long decisionId;
+        public bool isComplete;
+        public SideboardSeatLockStateMessage[] seats;
+    }
+
+    [Serializable]
     public class RoomSeatMessage
     {
         public int seatIndex;

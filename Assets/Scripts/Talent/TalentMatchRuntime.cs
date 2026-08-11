@@ -423,6 +423,15 @@ namespace MahjongGame.Talents
                 entry.State.IsActive = activeIds.Contains(entry.Rule.Id);
         }
 
+        public IReadOnlyList<string> GetActiveTalentIds(int ownerSeatIndex)
+        {
+            ValidateSeatIndex(ownerSeatIndex, nameof(ownerSeatIndex));
+            return _entries
+                .Where(entry => entry.OwnerSeatIndex == ownerSeatIndex && entry.State.IsActive)
+                .Select(entry => entry.Rule.Id)
+                .ToArray();
+        }
+
         internal PublicChargeTarget ResolvePublicChargeTarget(
             int sourceSeatIndex,
             int targetSeatIndex,

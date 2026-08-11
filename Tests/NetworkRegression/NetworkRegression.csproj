@@ -16,6 +16,7 @@
     <Compile Include="ActionValidationTests.cs" />
     <Compile Include="TalentFoundationTests.cs" />
     <Compile Include="TalentActionTests.cs" />
+    <Compile Include="SideboardTests.cs" />
     <Compile Include="AuthoritativePublicTileTransitionTests.cs" />
     <Compile Include="UnityEngineStubs.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\ActionValidator.cs" Link="ActionValidator.cs" />
@@ -49,6 +50,8 @@
     <Compile Include="..\..\Assets\Scripts\Core\Network\RoomErrorPresentationPolicy.cs" Link="RoomErrorPresentationPolicy.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\NetworkMessageLimits.cs" Link="NetworkMessageLimits.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\NetworkDecisionTracker.cs" Link="NetworkDecisionTracker.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\Network\SideboardDecisionTracker.cs" Link="SideboardDecisionTracker.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\Network\SideboardLoadoutPolicy.cs" Link="SideboardLoadoutPolicy.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\TalentActionAdmissionPolicy.cs" Link="TalentActionAdmissionPolicy.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\NetworkDecisionClient.cs" Link="NetworkDecisionClient.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\NetworkActionSubmissionPolicy.cs" Link="NetworkActionSubmissionPolicy.cs" />

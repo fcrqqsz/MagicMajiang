@@ -6,6 +6,12 @@ if (args.Length == 1 && string.Equals(args[0], "talent-actions", StringCompariso
     return runner.Complete();
 }
 
+if (args.Length == 1 && string.Equals(args[0], "sideboard", StringComparison.OrdinalIgnoreCase))
+{
+    SideboardTests.Run(runner);
+    return runner.Complete();
+}
+
 IdentityConnectionTests.Run(runner);
 RoomSessionTests.Run(runner);
 NetworkAuthorityBoundaryTests.Run(runner);
@@ -13,6 +19,7 @@ SnapshotReconnectTests.Run(runner);
 ActionValidationTests.Run(runner);
 TalentFoundationTests.Run(runner);
 TalentActionTests.Run(runner);
+SideboardTests.Run(runner);
 AuthoritativePublicTileTransitionTests.Run(runner);
 
 return runner.Complete();

@@ -82,6 +82,7 @@ namespace MahjongGame.Core.Network
                     case "CreateRoom": HandleCreateRoom(connectionId, endpoint, MessageSerializer.DeserializePayload<CreateRoomMessage>(envelope.data)); break;
                     case "JoinRoom": HandleJoinRoom(connectionId, endpoint, MessageSerializer.DeserializePayload<JoinRoomMessage>(envelope.data)); break;
                     case "Ready": HandleReady(connectionId, endpoint, MessageSerializer.DeserializePayload<ReadyMessage>(envelope.data)); break;
+                    case "SideboardSubmit": HandleSideboardSubmit(connectionId, endpoint, MessageSerializer.DeserializePayload<SideboardSubmitMessage>(envelope.data)); break;
                     case "Action": HandleAction(connectionId, endpoint, MessageSerializer.DeserializePayload<ClientActionMessage>(envelope.data)); break;
                     default: SendError(connectionId, endpoint, "UnsupportedMessage", $"Message type '{envelope.type}' is not valid here."); break;
                 }
@@ -124,6 +125,8 @@ namespace MahjongGame.Core.Network
         /// <summary>Expires connections whose process or network vanished without a WebSocket close event.</summary>
         public void Tick(DateTime utcNow)
         {
+            foreach (Room room in _rooms.Values.ToArray()) room.ProcessSideboardDeadline(utcNow);
+
             foreach (var connectionId in _connections.GetExpiredAuthenticatedConnections(utcNow))
             {
                 if (_connections.TryGet(connectionId, out var record))
@@ -214,6 +217,19 @@ namespace MahjongGame.Core.Network
             if (!room.SubmitAction(seatIndex, message, out var errorCode))
                 SendError(connectionId, endpoint, string.IsNullOrEmpty(errorCode) ? NetworkErrorCodes.InvalidAction : errorCode,
                     "Action is not valid for the current authoritative decision.");
+        }
+
+        private void HandleSideboardSubmit(string connectionId, GameEndpoint endpoint, SideboardSubmitMessage message)
+        {
+            if (!TryGetRoomMember(connectionId, endpoint, out Room room, out int seatIndex)) return;
+            if (!room.SubmitSideboard(seatIndex, message, out string errorCode))
+            {
+                SendError(
+                    connectionId,
+                    endpoint,
+                    string.IsNullOrEmpty(errorCode) ? SideboardErrorCodes.InvalidSelection : errorCode,
+                    "The sideboard submission is not valid for the current halftime decision.");
+            }
         }
 
         private void HandleLeaveRoom(string connectionId, GameEndpoint endpoint, long generation)

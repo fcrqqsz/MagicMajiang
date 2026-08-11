@@ -8,6 +8,7 @@ namespace MahjongGame.Core.Network
         InRound,
         WaitingForNextRound,
         SessionCompleted,
-        Closed
+        Closed,
+        WaitingForSideboard
     }
 }
