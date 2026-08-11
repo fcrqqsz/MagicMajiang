@@ -388,7 +388,7 @@ namespace MahjongGame.Talents
         public int GetPublicCounter(int ownerSeatIndex, string talentId, string key)
         {
             ValidateSeatIndex(ownerSeatIndex, nameof(ownerSeatIndex));
-            RuntimeEntry entry = FindActiveEntry(ownerSeatIndex, talentId);
+            RuntimeEntry entry = FindCarriedEntry(ownerSeatIndex, talentId);
             if (entry == null || !entry.State.IsRevealed) return 0;
             return entry.State.GetCounter(key, TalentStateScope.Match);
         }
@@ -396,8 +396,31 @@ namespace MahjongGame.Talents
         public int GetPrivateCounter(int ownerSeatIndex, string talentId, string key)
         {
             ValidateSeatIndex(ownerSeatIndex, nameof(ownerSeatIndex));
-            RuntimeEntry entry = FindActiveEntry(ownerSeatIndex, talentId);
+            RuntimeEntry entry = FindCarriedEntry(ownerSeatIndex, talentId);
             return entry?.State.GetCounter(key, TalentStateScope.Match) ?? 0;
+        }
+
+        public void ReplaceActiveSet(int ownerSeatIndex, IEnumerable<string> activeTalentIds)
+        {
+            ValidateSeatIndex(ownerSeatIndex, nameof(ownerSeatIndex));
+            if (activeTalentIds == null)
+                throw new ArgumentNullException(nameof(activeTalentIds));
+
+            HashSet<string> activeIds = new HashSet<string>(
+                activeTalentIds.Where(id => !string.IsNullOrWhiteSpace(id)),
+                StringComparer.Ordinal);
+            foreach (string talentId in activeIds)
+            {
+                if (FindCarriedEntry(ownerSeatIndex, talentId) == null)
+                {
+                    throw new ArgumentException(
+                        $"Seat {ownerSeatIndex} does not carry talent id: {talentId}",
+                        nameof(activeTalentIds));
+                }
+            }
+
+            foreach (RuntimeEntry entry in _entries.Where(entry => entry.OwnerSeatIndex == ownerSeatIndex))
+                entry.State.IsActive = activeIds.Contains(entry.Rule.Id);
         }
 
         internal PublicChargeTarget ResolvePublicChargeTarget(
@@ -679,6 +702,14 @@ namespace MahjongGame.Talents
             if (string.IsNullOrWhiteSpace(talentId)) return null;
             return _entries.FirstOrDefault(entry => entry.OwnerSeatIndex == ownerSeatIndex
                                                     && entry.State.IsActive
+                                                    && string.Equals(entry.Rule.Id, talentId,
+                                                        StringComparison.Ordinal));
+        }
+
+        private RuntimeEntry FindCarriedEntry(int ownerSeatIndex, string talentId)
+        {
+            if (string.IsNullOrWhiteSpace(talentId)) return null;
+            return _entries.FirstOrDefault(entry => entry.OwnerSeatIndex == ownerSeatIndex
                                                     && string.Equals(entry.Rule.Id, talentId,
                                                         StringComparison.Ordinal));
         }

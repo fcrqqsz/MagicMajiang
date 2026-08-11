@@ -13,6 +13,8 @@ internal static class TalentActionTests
         InterceptionConsumesUsageBeforeTargetDefense(runner);
         InterceptionLimitsUsageAndEnumeratesOnlyEligibleTargets(runner);
         InterceptionRevalidatesEveryTargetEligibilityOnTheServer(runner);
+        InactiveCarriedTalentKeepsOwnerPrivateCounter(runner);
+        InactiveRevealedInterceptionKeepsStickyPublicCounter(runner);
         ComposureBlocksOnlyTheFirstNegativeEffectPerRound(runner);
         NegativeEffectChecksTargetDefensesByPriority(runner);
         NegativeEffectDescriptionDoesNotExposeAnApplyDelegate(runner);
@@ -320,6 +322,50 @@ internal static class TalentActionTests
                      && emptyCharge.ErrorCode == TalentActionErrorCodes.InvalidTarget
                      && runtime.GetPrivateCounter(1, "interception", "uses_remaining") == 3,
             "server target revalidation rejects self hidden inactive and empty charges without spending uses");
+    }
+
+    private static void InactiveCarriedTalentKeepsOwnerPrivateCounter(RegressionRunner runner)
+    {
+        var config = new TalentSlotConfig();
+        config.ReserveTalentIds[0] = "interception";
+        var runtime = new TalentMatchRuntime(
+            new Dictionary<int, TalentSlotConfig> { [1] = config },
+            TalentRegistry.Instance);
+        runtime.BeginMatch(new GameSession(GameMode.Single));
+
+        runner.Check(runtime.GetPrivateCounter(1, "interception", "uses_remaining") == 3,
+            "an inactive carried interception retains its owner-visible match counter");
+    }
+
+    private static void InactiveRevealedInterceptionKeepsStickyPublicCounter(
+        RegressionRunner runner)
+    {
+        TalentMatchRuntime runtime = CreateInterceptionRuntime(
+            includeTargetComposure: false,
+            out GameSession session);
+        ChargeSheathedEdge(runtime, session);
+        const long DecisionId = 3000000030L;
+        TalentActionResult used = ActivateInterception(runtime, session, DecisionId);
+        runtime.DrainEventsForSeat(0);
+
+        runtime.ReplaceActiveSet(1, new string[0]);
+        IReadOnlyList<TalentRuntimeEvent> afterDeactivation = runtime.DrainEventsForSeat(0);
+        int privateWhileInactive = runtime.GetPrivateCounter(1, "interception", "uses_remaining");
+        int publicWhileInactive = runtime.GetPublicCounter(1, "interception", "uses_remaining");
+        TalentActionResult inactiveAction = TryInterceptionAt(
+            runtime, session, DecisionId + 1, 0, "sheathed_edge");
+
+        runtime.ReplaceActiveSet(1, new[] { "interception" });
+        IReadOnlyList<TalentRuntimeEvent> afterReactivation = runtime.DrainEventsForSeat(0);
+
+        runner.Check(used.Accepted && privateWhileInactive == 2 && publicWhileInactive == 2,
+            "an inactive revealed interception preserves owner and public counter projections");
+        runner.Check(!inactiveAction.Accepted
+                     && inactiveAction.ErrorCode == TalentActionErrorCodes.NotCarriedOrInactive,
+            "deactivated carried talents remain unavailable to actions");
+        runner.Check(afterDeactivation.Count == 0 && afterReactivation.Count == 0
+                     && runtime.GetPublicCounter(1, "interception", "uses_remaining") == 2,
+            "activation-set changes do not emit inactive or automatic reactivation updates");
     }
 
     private static void ComposureBlocksOnlyTheFirstNegativeEffectPerRound(RegressionRunner runner)
