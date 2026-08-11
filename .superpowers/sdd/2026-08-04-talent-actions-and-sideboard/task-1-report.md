@@ -92,3 +92,38 @@ Result: exit 0. Git printed only CRLF conversion warnings for pre-existing track
 ## Concerns
 
 - The standalone NetworkRegression project stubs `GameServer`, so its compile-time coverage includes the Room-facing method signature but does not compile the real Unity `GameServer.cs`. The focused runtime/tracker contracts and the complete existing NetworkRegression suite passed; Unity editor/Dedicated Server compilation was not run because it was outside the task's requested verification commands.
+
+## Fix Round 1 — Restrict formal admission to main turns
+
+### Review finding and verification
+
+The review finding was reproduced from the committed implementation: `GameServer.SubmitNetworkTalentAction` used the active decision's phase as `TryValidateSupplementalAction`'s required phase. That makes the phase equality check tautological and maps both response kinds to `TalentActivationWindow.Response`, allowing an eligible response-seat request to reach runtime.
+
+The fix introduces the narrow `TalentActionAdmissionPolicy` used by the formal GameServer entrance. Its only admission path calls `TryValidateSupplementalAction` with the fixed `NetworkDecisionPhase.MainTurn`; GameServer also constructs `TalentActivationContext` with the policy's fixed `TalentActivationWindow.MainTurn`. Therefore a response or rob-kong action returns before runtime lookup/activation and cannot consume the base decision.
+
+### RED
+
+Command:
+
+```powershell
+pwsh -NoLogo -NoProfile -Command "dotnet run --project Tests\NetworkRegression\NetworkRegression.csproj --no-restore -- talent-actions"
+```
+
+Initial result: expected `CS2001` because the new formal policy source had not been created. After the test-targeted policy shell was added, the same command failed as intended with two `CS0117` errors: `TalentActionAdmissionPolicy` did not define `TryValidateMainTurn`.
+
+### GREEN
+
+Command:
+
+```powershell
+pwsh -NoLogo -NoProfile -Command "dotnet run --project Tests\NetworkRegression\NetworkRegression.csproj --no-restore -- talent-actions"
+```
+
+Result: exit 0, `Network regression tests passed.` The focused test opens real response and rob-kong decisions for eligible seat 1, calls the production formal admission policy, checks `WrongPhase`, and reaches neither test harness's runtime branch.
+
+### Scope and deferred minor
+
+- Added `Assets/Scripts/Core/Network/TalentActionAdmissionPolicy.cs` and its Unity `.meta`, linked into the standalone regression project.
+- Updated `GameServer.cs` to use only the policy's fixed main-turn admission/window.
+- Added the focused response/rob-kong regression test.
+- The duplicate direct `Room.BroadcastTalentEventsAtSafeBoundary()` was deliberately left unchanged. `GameServer.OnTalentEventsAvailable` is synchronously subscribed by Room during `StartRound`, so the direct call is likely redundant, but the standalone GameServer stub cannot exercise the event delivery order. This minor was deferred rather than altering it without an adequate behavior test.

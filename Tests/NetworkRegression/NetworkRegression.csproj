@@ -49,6 +49,7 @@
     <Compile Include="..\..\Assets\Scripts\Core\Network\RoomErrorPresentationPolicy.cs" Link="RoomErrorPresentationPolicy.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\NetworkMessageLimits.cs" Link="NetworkMessageLimits.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\NetworkDecisionTracker.cs" Link="NetworkDecisionTracker.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\Network\TalentActionAdmissionPolicy.cs" Link="TalentActionAdmissionPolicy.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\NetworkDecisionClient.cs" Link="NetworkDecisionClient.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\NetworkActionSubmissionPolicy.cs" Link="NetworkActionSubmissionPolicy.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\RoomGameSnapshot.cs" Link="RoomGameSnapshot.cs" />

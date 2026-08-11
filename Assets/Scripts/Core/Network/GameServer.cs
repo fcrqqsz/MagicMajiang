@@ -754,26 +754,16 @@ namespace MahjongGame.Core.Network
                 return false;
             }
 
-            NetworkDecisionContext activeDecision = _decisionTracker?.Active;
-            if (activeDecision == null)
-            {
-                result = TalentActionResult.Reject(NetworkErrorCodes.NoActiveDecision);
-                return false;
-            }
-
-            if (!_decisionTracker.TryValidateSupplementalAction(
+            if (!TalentActionAdmissionPolicy.TryValidateMainTurn(
+                    _decisionTracker,
                     message.decisionId,
                     boundSeatIndex,
-                    activeDecision.Phase,
                     out string decisionError))
             {
                 result = TalentActionResult.Reject(decisionError);
                 return false;
             }
 
-            TalentActivationWindow window = activeDecision.Phase == NetworkDecisionPhase.MainTurn
-                ? TalentActivationWindow.MainTurn
-                : TalentActivationWindow.Response;
             result = _talentRuntime.TryActivate(
                 boundSeatIndex,
                 new TalentActionRequest
@@ -782,7 +772,10 @@ namespace MahjongGame.Core.Network
                     TargetSeatIndex = message.targetSeatIndex,
                     TargetTalentId = message.targetTalentId
                 },
-                new TalentActivationContext(_session, boundSeatIndex, window));
+                new TalentActivationContext(
+                    _session,
+                    boundSeatIndex,
+                    TalentActionAdmissionPolicy.RequiredActivationWindow));
             if (result.Accepted)
                 OnTalentEventsAvailable?.Invoke();
             return result.Accepted;

@@ -8,6 +8,7 @@ internal static class TalentActionTests
     {
         SupplementalActionValidationDoesNotConsumeMainDecision(runner);
         SupplementalActionValidationRejectsInvalidDecisionContexts(runner);
+        SupplementalTalentAdmissionRejectsResponseWindowsBeforeRuntime(runner);
         CarriedTalentActionExecutesPolymorphically(runner);
     }
 
@@ -66,6 +67,34 @@ internal static class TalentActionTests
     }
 
     private static long FutureDeadline() => DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() + 10000;
+
+    private static void SupplementalTalentAdmissionRejectsResponseWindowsBeforeRuntime(RegressionRunner runner)
+    {
+        var responseTracker = new NetworkDecisionTracker();
+        NetworkDecisionContext response = responseTracker.OpenResponse(
+            0, new TileData(Suit.Man, 3, 0), new[] { 1 }, FutureDeadline());
+        bool responseRuntimeExecuted = false;
+        if (TalentActionAdmissionPolicy.TryValidateMainTurn(
+                responseTracker, response.DecisionId, 1, out string responseError))
+        {
+            responseRuntimeExecuted = true;
+        }
+
+        var robKongTracker = new NetworkDecisionTracker();
+        NetworkDecisionContext robKong = robKongTracker.OpenRobKong(
+            0, new TileData(Suit.Man, 3, 0), new[] { 1 }, FutureDeadline());
+        bool robKongRuntimeExecuted = false;
+        if (TalentActionAdmissionPolicy.TryValidateMainTurn(
+                robKongTracker, robKong.DecisionId, 1, out string robKongError))
+        {
+            robKongRuntimeExecuted = true;
+        }
+
+        runner.Check(!responseRuntimeExecuted && responseError == NetworkErrorCodes.WrongPhase,
+            "formal talent admission rejects a response-window request before runtime execution");
+        runner.Check(!robKongRuntimeExecuted && robKongError == NetworkErrorCodes.WrongPhase,
+            "formal talent admission rejects a rob-kong request before runtime execution");
+    }
 
     private static void CarriedTalentActionExecutesPolymorphically(RegressionRunner runner)
     {
