@@ -264,6 +264,7 @@ namespace MahjongGame.Core.Network
                 {
                     var message = MessageSerializer.DeserializePayload<DiscardedMessage>(envelope.data);
                     if (message == null || message.playerId < 0 || message.playerId >= 4) return;
+                    ClearCachedTalentActions(snapshot);
                     EnsureRivers(snapshot);
                     var river = GetRiver(snapshot, message.playerId);
                     river.tiles = (river.tiles ?? Array.Empty<SimpleTileData>())
@@ -295,6 +296,7 @@ namespace MahjongGame.Core.Network
                 {
                     var message = MessageSerializer.DeserializePayload<AddedKongDeclaredMessage>(envelope.data);
                     if (message == null || message.playerId < 0 || message.playerId >= 4) return;
+                    ClearCachedTalentActions(snapshot);
                     snapshot.activeDecision = CloneDecision(message.decision) ?? new SnapshotDecision
                     {
                         decisionId = message.decisionId,
@@ -317,13 +319,13 @@ namespace MahjongGame.Core.Network
                     ApplyResolvedMeld(snapshot, message);
                     snapshot.activeDecision = null;
                     snapshot.mainTurnDrawnTile = null;
-                    EnsurePrivateSeat(snapshot).availableTalentActions = Array.Empty<SnapshotTalentActionOption>();
+                    ClearCachedTalentActions(snapshot);
                     return;
                 }
                 case "Timeout":
                     snapshot.activeDecision = null;
                     snapshot.mainTurnDrawnTile = null;
-                    EnsurePrivateSeat(snapshot).availableTalentActions = Array.Empty<SnapshotTalentActionOption>();
+                    ClearCachedTalentActions(snapshot);
                     return;
                 case "PlayerWin":
                 {
@@ -346,6 +348,7 @@ namespace MahjongGame.Core.Network
                     };
                     snapshot.activeDecision = null;
                     snapshot.mainTurnDrawnTile = null;
+                    ClearCachedTalentActions(snapshot);
                     return;
                 }
                 case "DrawGame":
@@ -364,6 +367,7 @@ namespace MahjongGame.Core.Network
                     };
                     snapshot.activeDecision = null;
                     snapshot.mainTurnDrawnTile = null;
+                    ClearCachedTalentActions(snapshot);
                     return;
                 }
                 case "SessionEnd":
@@ -376,6 +380,7 @@ namespace MahjongGame.Core.Network
                     snapshot.result = result;
                     snapshot.activeDecision = null;
                     snapshot.mainTurnDrawnTile = null;
+                    ClearCachedTalentActions(snapshot);
                     return;
                 }
             }
@@ -557,6 +562,9 @@ namespace MahjongGame.Core.Network
                 sideboard = new SnapshotSideboardState { seatLocked = new bool[4] }
             };
         }
+
+        private static void ClearCachedTalentActions(RoomGameSnapshot snapshot) =>
+            EnsurePrivateSeat(snapshot).availableTalentActions = Array.Empty<SnapshotTalentActionOption>();
 
         private static SnapshotPrivateSeat EnsurePrivateSeat(RoomGameSnapshot snapshot)
         {

@@ -106,11 +106,13 @@ namespace MahjongGame.Core.Network
                 case "Discarded":
                     var discMsg = MessageSerializer.DeserializePayload<DiscardedMessage>(envelope.data);
                     _activeDecisionId = discMsg?.decisionId ?? 0;
+                    ClearTalentActionsPresentation(clearDecisionId: false);
                     _localClient.OnOtherPlayerDiscarded(discMsg.playerId, discMsg.tile?.ToTileData());
                     break;
                 case "AddedKongDeclared":
                     var addedKongMsg = MessageSerializer.DeserializePayload<AddedKongDeclaredMessage>(envelope.data);
                     _activeDecisionId = addedKongMsg?.decisionId ?? 0;
+                    ClearTalentActionsPresentation(clearDecisionId: false);
                     _localClient.OnAddedKongDeclared(addedKongMsg.playerId, addedKongMsg.tile?.ToTileData());
                     break;
                 case "ActionResolved":
@@ -187,9 +189,10 @@ namespace MahjongGame.Core.Network
             TalentActionsChanged?.Invoke(projection.DecisionId, projection.AvailableActions);
         }
 
-        private void ClearTalentActionsPresentation()
+        private void ClearTalentActionsPresentation(bool clearDecisionId = true)
         {
-            _activeDecisionId = 0;
+            if (clearDecisionId) _activeDecisionId = 0;
+            TalentPickerResetRequested?.Invoke();
             TalentActionsChanged?.Invoke(0, System.Array.Empty<TalentActionOption>());
         }
 

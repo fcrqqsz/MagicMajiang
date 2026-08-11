@@ -10,6 +10,17 @@ namespace UnityEngine
     public sealed class SerializeField : System.Attribute { }
     public sealed class HideInInspector : System.Attribute { }
 
+    public sealed class GameObject
+    {
+        public GameObject(string name) { }
+        public T AddComponent<T>() where T : new() => new T();
+    }
+
+    public static class Time
+    {
+        public static float unscaledTime { get; set; }
+    }
+
     public static class Mathf
     {
         public static int Min(int left, int right) => System.Math.Min(left, right);
@@ -33,6 +44,59 @@ namespace UnityEngine
 
         public static string ToJson(object value) => System.Text.Json.JsonSerializer.Serialize(value, Options);
         public static T FromJson<T>(string json) => System.Text.Json.JsonSerializer.Deserialize<T>(json, Options);
+    }
+}
+
+namespace WebSocketSharp
+{
+    public enum WebSocketState
+    {
+        Connecting,
+        Open,
+        Closing,
+        Closed
+    }
+}
+
+namespace MahjongGame.Systems
+{
+    public sealed class ProfileManager
+    {
+        public static ProfileManager Instance { get; } = new ProfileManager();
+        public MahjongGame.Core.Network.Data.PlayerProfile CurrentProfile { get; set; } =
+            new MahjongGame.Core.Network.Data.PlayerProfile();
+    }
+}
+
+namespace MahjongGame.Core.Network.Transport
+{
+    public sealed class WebSocketClient
+    {
+        public static WebSocketClient Instance { get; private set; }
+        public WebSocketSharp.WebSocketState ReadyState { get; private set; } = WebSocketSharp.WebSocketState.Open;
+        public readonly System.Collections.Generic.List<string> SentMessages = new();
+
+        public event System.Action OnConnected;
+        public event System.Action<string> OnMessageReceived;
+        public event System.Action<string> OnDisconnected;
+
+        public WebSocketClient() => Instance = this;
+        public void Connect(string address) { ReadyState = WebSocketSharp.WebSocketState.Open; OnConnected?.Invoke(); }
+        public void SendNetworkMessage(string message) => SentMessages.Add(message);
+        public void Disconnect() { ReadyState = WebSocketSharp.WebSocketState.Closed; OnDisconnected?.Invoke(string.Empty); }
+        public void Receive(string message) => OnMessageReceived?.Invoke(message);
+        public static void ResetForTests() => Instance = null;
+    }
+}
+
+namespace MahjongGame.Core.Network
+{
+    public sealed class PlayerPrefsClientReconnectTicketStore : IClientReconnectTicketStore
+    {
+        private readonly InMemoryClientReconnectTicketStore _inner = new();
+        public void Save(ClientReconnectTicket ticket) => _inner.Save(ticket);
+        public bool TryLoad(out ClientReconnectTicket ticket) => _inner.TryLoad(out ticket);
+        public void Clear() => _inner.Clear();
     }
 }
 

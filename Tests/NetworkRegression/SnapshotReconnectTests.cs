@@ -17,6 +17,8 @@ internal static class SnapshotReconnectTests
         TestRuntimeSnapshotProjectionUsesRuleApprovedPrivateValues(runner);
         TestTalentRecoveryPresentationUsesOnlyAuthoritativeMainDecision(runner);
         TestTalentProjectionOrderingAndSeatIsolation(runner);
+        TestClientRoomServiceClearsTalentActionsAtDecisionBoundaries(runner);
+        TestTerminalRoundMessagesClearCachedTalentActions(runner);
         TestAlienationSnapshotPrivacy(runner);
         TestWinningHandNormalization(runner);
         TestWinningHandSnapshotCodec(runner);
@@ -330,6 +332,156 @@ internal static class SnapshotReconnectTests
                      && foreignTurn.AvailableActions.Length == 0,
             "recovery never restores talent actions for another seat's decision");
     }
+
+    private static void TestClientRoomServiceClearsTalentActionsAtDecisionBoundaries(RegressionRunner runner)
+    {
+        using (ClientRoomService service = CreateClientRoomServiceWithMainTalentDecision())
+        {
+            int acceptedCount = 0;
+            int cachedActionsAtAcceptedBoundary = -1;
+            service.AcceptedSequenceEnvelope += envelope =>
+            {
+                acceptedCount++;
+                cachedActionsAtAcceptedBoundary =
+                    service.GameState.Snapshot.privateSeat.availableTalentActions.Length;
+            };
+
+            var discarded = new DiscardedMessage
+            {
+                decisionId = 73,
+                playerId = 0,
+                tile = new SimpleTileData { suit = (int)Suit.Man, value = 1, isValid = true }
+            };
+            string envelope = MessageSerializer.Serialize("Discarded", 1, discarded);
+            WebSocketClient.Instance.Receive(envelope);
+            WebSocketClient.Instance.Receive(envelope);
+
+            runner.Check(acceptedCount == 1
+                         && cachedActionsAtAcceptedBoundary == 0
+                         && service.AvailableTalentActions.Length == 0
+                         && service.GameState.Snapshot.privateSeat.availableTalentActions.Length == 0,
+                "ClientRoomService applies a discarded boundary once and clears cached talent actions before AcceptedSequenceEnvelope");
+        }
+
+        using (ClientRoomService service = CreateClientRoomServiceWithMainTalentDecision())
+        {
+            int acceptedCount = 0;
+            int cachedActionsAtAcceptedBoundary = -1;
+            service.AcceptedSequenceEnvelope += envelope =>
+            {
+                acceptedCount++;
+                cachedActionsAtAcceptedBoundary =
+                    service.GameState.Snapshot.privateSeat.availableTalentActions.Length;
+            };
+
+            WebSocketClient.Instance.Receive(MessageSerializer.Serialize(
+                "AddedKongDeclared", 1, new AddedKongDeclaredMessage
+                {
+                    decisionId = 74,
+                    playerId = 0,
+                    tile = new SimpleTileData { suit = (int)Suit.Pin, value = 5, isValid = true }
+                }));
+
+            runner.Check(acceptedCount == 1
+                         && cachedActionsAtAcceptedBoundary == 0
+                         && service.AvailableTalentActions.Length == 0
+                         && service.GameState.Snapshot.privateSeat.availableTalentActions.Length == 0
+                         && service.GameState.Snapshot.activeDecision.phase == (int)NetworkDecisionPhase.RobKong,
+                "ClientRoomService clears cached talent actions before publishing an accepted added-kong boundary");
+        }
+
+        using (ClientRoomService service = CreateClientRoomServiceWithMainTalentDecision())
+        {
+            int acceptedCount = 0;
+            service.AcceptedSequenceEnvelope += _ => acceptedCount++;
+            WebSocketClient.Instance.Receive(MessageSerializer.Serialize(
+                "Discarded", 2, new DiscardedMessage
+                {
+                    decisionId = 73,
+                    playerId = 1,
+                    tile = new SimpleTileData { suit = (int)Suit.Sou, value = 9, isValid = true }
+                }));
+
+            runner.Check(service.IsResyncRequired
+                         && acceptedCount == 0
+                         && service.AvailableTalentActions.Length == 1
+                         && service.GameState.Snapshot.privateSeat.availableTalentActions.Length == 1
+                         && service.GameState.Snapshot.activeDecision.decisionId == 72,
+                "a gap from another seat requests resync without prematurely clearing the current talent actions");
+        }
+
+        WebSocketClient.ResetForTests();
+    }
+
+    private static ClientRoomService CreateClientRoomServiceWithMainTalentDecision()
+    {
+        WebSocketClient.ResetForTests();
+        var service = new ClientRoomService("ws://test", new InMemoryClientReconnectTicketStore());
+        WebSocketClient.Instance.Receive(MessageSerializer.Serialize("ReconnectState", 0, new ReconnectStateMessage
+        {
+            baselineSeq = 0,
+            snapshot = CreateMainTurnTalentSnapshot(),
+            missedMessages = Array.Empty<NetworkMessageEnvelope>()
+        }));
+        return service;
+    }
+
+    private static void TestTerminalRoundMessagesClearCachedTalentActions(RegressionRunner runner)
+    {
+        var cases = new (string Type, object Payload)[]
+        {
+            ("PlayerWin", new PlayerWinMessage
+            {
+                winnerId = 0,
+                scores = new int[4],
+                fanDetails = Array.Empty<string>()
+            }),
+            ("DrawGame", new DrawGameMessage { scores = new int[4] }),
+            ("SessionEnd", new SessionEndMessage { scores = new int[4] })
+        };
+
+        bool allCleared = true;
+        foreach ((string type, object payload) in cases)
+        {
+            var state = new ClientGameState();
+            state.ApplySnapshot(CreateMainTurnTalentSnapshot(), 0);
+            ClientSequenceDisposition disposition = state.ApplyEnvelope(
+                MessageSerializer.DeserializeEnvelope(MessageSerializer.Serialize(type, 1, payload)));
+            allCleared &= disposition == ClientSequenceDisposition.Accepted
+                          && state.Snapshot.privateSeat.availableTalentActions.Length == 0;
+        }
+
+        runner.Check(allCleared,
+            "round and session terminal messages clear cached talent actions with the basic decision");
+    }
+
+    private static RoomGameSnapshot CreateMainTurnTalentSnapshot() => new RoomGameSnapshot
+    {
+        roomId = "client-room-service-boundary",
+        roomState = (int)RoomState.InRound,
+        requestingSeatIndex = 0,
+        activeDecision = new SnapshotDecision
+        {
+            decisionId = 72,
+            phase = (int)NetworkDecisionPhase.MainTurn,
+            actingSeatIndex = 0
+        },
+        seats = Enumerable.Range(0, 4).Select(index => new RoomSnapshotSeat
+        {
+            seatIndex = index,
+            concealedTileCount = 13
+        }).ToArray(),
+        privateSeat = new SnapshotPrivateSeat
+        {
+            seatIndex = 0,
+            concealedHand = Array.Empty<SimpleTileData>(),
+            availableTalentActions = new[]
+            {
+                new SnapshotTalentActionOption { talentId = "sheathed_edge" }
+            }
+        },
+        rivers = EmptyRivers()
+    };
 
     private static void TestAlienationSnapshotPrivacy(RegressionRunner runner)
     {

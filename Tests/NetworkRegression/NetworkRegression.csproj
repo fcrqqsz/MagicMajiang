@@ -61,6 +61,8 @@
     <Compile Include="..\..\Assets\Scripts\Core\Network\WinningHandSnapshotCodec.cs" Link="WinningHandSnapshotCodec.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\WinResultNormalizer.cs" Link="WinResultNormalizer.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\ClientGameState.cs" Link="ClientGameState.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\Network\ClientRoomService.cs" Link="ClientRoomService.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\Network\ClientRecoveryProgress.cs" Link="ClientRecoveryProgress.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\ClientProjectionLineage.cs" Link="ClientProjectionLineage.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\RemotePlayerClient.cs" Link="RemotePlayerClient.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\ClientRoomState.cs" Link="ClientRoomState.cs" />
