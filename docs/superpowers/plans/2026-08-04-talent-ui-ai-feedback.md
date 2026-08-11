@@ -11,7 +11,12 @@
 ## Global Constraints
 
 - 开始前必须完成 `docs/superpowers/plans/2026-08-04-room-authority-remove-local-mode.md` 的 Completion Gate。
-- 开始前必须完成 `docs/superpowers/plans/2026-08-04-talent-foundation-and-alienation.md` 与 `docs/superpowers/plans/2026-08-04-talent-actions-and-sideboard.md` 的 Completion Gate。
+- 开始前必须完成 `docs/superpowers/plans/2026-08-04-talent-foundation-and-alienation.md` 的 Completion Gate，以及 `docs/superpowers/plans/2026-08-04-talent-actions-and-sideboard.md` 的 Plan 2 Code Checkpoint。
+- 阶段执行、验证、合并和真人验收边界以 `docs/superpowers/specs/2026-08-12-talent-phase2-3-validation-boundary-design.md` 为准。
+- 必须在第二阶段使用的同一功能分支 `codex/talent-actions-ui-unified` 上继续开发；第二阶段的生产接线在本计划完成 UI 后统一接受真实集成验证。
+- Task 1–7 只执行自动化测试、编译和静态检查，不在单个任务内宣称 Unity、Dedicated Server 或真人视觉/交互验证通过；所有人工检查集中到最终候选集成任务。
+- 完整自动关口和全分支审查通过后，先把候选版本合并到 `master`，保留功能分支，再从 `master` 重建客户端与 Dedicated Server 进行真人验收。
+- 合并到 `master` 只表示生成真人验收候选版本，不等于完成；失败项必须回到保留的功能分支修复、复审、再次合并、重建和重验。
 - 不新增客户端本地 AI、离线构筑或第二套天赋决策路径；一真人测试统一使用 `Room` 的 AI 补位席位。
 - 采用已确认 UI 方向：牌桌上对手天赋靠近席位，本家天赋条靠近手牌，主动按钮并入现有 `ActionPanel`；中场是全屏战术页；牌库编辑器只显示当前 40/80/120 预览档位的一根异化值条。
 - 所有界面使用 UI Toolkit；USS 字体只引用 `Assets/Font/MSYH_UITK.asset`，共用 `PanelSettings` 保持绑定 `SuperMajiangTextSettings.asset`。
@@ -187,7 +192,7 @@ public static class AlienationGaugePolicy
 
 `MainLobby.uxml` 在 GameMode selector 下增加 `AlienationPresetSelector`；`LobbyController.OnMatchmakingClicked` 把选择传给 `ClientRoomService.CreateRoom(gameMode, preset, nickname)`。房间页显示公共“异化档位：标准 80”和私有“本家异化：45 / 80”，移除对手席的精确异化标签。
 
-- [ ] **Step 8: Run tests and visual smoke check, then commit**
+- [ ] **Step 8: Run automated checks and commit**
 
 Run:
 
@@ -197,7 +202,7 @@ pwsh -NoLogo -NoProfile -Command "rg -n 'totalAlienation|acceptedTotalAlienation
 pwsh -NoLogo -NoProfile -Command "git diff --check"
 ```
 
-在 Unity 中打开大厅，依次验证 40/80/120 文案、九槽选择、超限仍可保存、旧存档备选为空。第二条 `rg` 只允许命中本家字段，不允许用 `seat.totalAlienation` 展示他人。
+第二条 `rg` 只允许命中本家字段，不允许用 `seat.totalAlienation` 展示他人。40/80/120 文案、九槽选择、超限保存和旧存档视觉行为统一移到最终 `master` 候选版本人工验收，不在本任务宣称通过。
 
 Commit:
 
@@ -283,9 +288,9 @@ public sealed class TalentFeedItem
 
 同一 `EventId` 重复到达不重复播放，controller 保存最后展示 ID；切场景/销毁时清理 callbacks 和 tween。
 
-- [ ] **Step 6: Verify four-seat privacy in local fixtures**
+- [ ] **Step 6: Verify four-seat privacy in automated fixtures**
 
-使用同一服务端 source 生成四份快照，分别断言每席看见自己的 active 状态、只看见他人已揭示条目。Unity Play Mode 手工切换本地席位模拟数据，确认 chip 位置不遮挡风位、分数、牌山剩余数和操作按钮。
+使用同一服务端 source 生成四份快照，分别断言每席看见自己的 active 状态、只看见他人已揭示条目。chip 位置不遮挡风位、分数、牌山剩余数和操作按钮的视觉检查统一移到最终 `master` 候选版本人工验收。
 
 - [ ] **Step 7: Run regression and commit**
 
@@ -361,9 +366,9 @@ picker 中未发送的目标选择不写入 `ClientGameState`。网络恢复、d
 
 同一天赋请求在等待 resolved 时只禁用该 talent button；其他补充动作和基础麻将按钮按服务端 options 保持。错误返回恢复按钮并显示简短提示。`StaleDecision`/`DecisionExpired` 直接清空整个 action panel，等待权威快照/新 decision。
 
-- [ ] **Step 6: Run regression and Unity interaction check, then commit**
+- [ ] **Step 6: Run automated regression and commit**
 
-在 Play Mode 验证：武装藏锋后仍能出牌；取消截流目标不影响出牌；截流被定心挡住后基础按钮仍在；重连时所有 picker 关闭但待出牌恢复。
+自动化 policy 与状态投影测试覆盖：武装藏锋后基础动作仍保留；取消截流不提交请求；失败返回只恢复对应按钮；恢复快照清空 picker 并保留有效基础决策。真实 Play Mode 交互统一移到最终 `master` 候选版本人工验收。
 
 ```powershell
 pwsh -NoLogo -NoProfile -Command "dotnet run --project Tests/NetworkRegression/NetworkRegression.csproj --no-restore"
@@ -442,9 +447,9 @@ Expected: 缺少 draft policy。
 
 退出房间/场景时注销 `ClientRoomService` 事件，避免下一场误开旧面板。
 
-- [ ] **Step 6: Perform four-client visual verification and commit**
+- [ ] **Step 6: Run automated sideboard UI-state checks and commit**
 
-按 `docs/network_verification.md` 启动 Dedicated Server 与至少两个真人客户端，其余 AI：第 4 局后确认同步进入中场；一人换装、一人超时、一人断线，确认均能结束；重连者不能重选；其他席只看到锁定状态。
+用纯 C# draft policy、客户端投影和消息应用测试覆盖有效锁定、非法草稿、超时/断线结果、重连只读等待及他席仅见 locked 状态。Dedicated Server 多真人中场验证统一移到最终 `master` 候选版本人工验收。
 
 ```powershell
 pwsh -NoLogo -NoProfile -Command "dotnet run --project Tests/NetworkRegression/NetworkRegression.csproj --no-restore"
@@ -517,9 +522,9 @@ public sealed class TalentFanBreakdownMessage
 
 原有 81 番种详细列表保持不变。藏锋条目在天赋增益下显示“藏锋 +16”，快人一步显示“快人一步 +2”；不要把二者混入同一个不透明的总数。
 
-- [ ] **Step 5: Verify win, loss, draw, and reconnect layouts**
+- [ ] **Step 5: Verify win, loss, draw, and reconnect presentation states**
 
-胜者/放铳者结算显示相同权威 breakdown；流局没有 fan 时隐藏整个区域；整场总榜不重复显示上一小局 breakdown。用极长番种列表确认新增区域不会挤掉手牌缩略图和继续按钮。
+用纯 presentation policy 与 controller fixture 验证：胜者/放铳者使用同一权威 breakdown；流局没有 fan 时隐藏整个区域；整场总榜不重复显示上一小局 breakdown。极长番种列表、手牌缩略图和继续按钮的实际布局检查统一移到最终 `master` 候选版本人工验收。
 
 - [ ] **Step 6: Run regression and commit**
 
@@ -618,7 +623,7 @@ pwsh -NoLogo -NoProfile -Command "git add Assets/Scripts/Core/Agents Assets/Scri
 
 ---
 
-### Task 7: Add playtest telemetry and perform the release verification pass
+### Task 7: Add playtest telemetry and prepare the unified verification pass
 
 **Files:**
 
@@ -700,7 +705,7 @@ public static string Serialize(TalentTelemetryRecord record) =>
 - 警戒线：平均每席摸牌显著高于 10、单天赋胜率偏离总体超过 10 个百分点、天赋正番中位数超过基础番、控制导致基础计划完全不可执行；
 - 每轮只改一个成本/数值变量，保留版本号和对照样本。
 
-- [ ] **Step 5: Run automated verification**
+- [ ] **Step 5: Run task-level automated verification**
 
 ```powershell
 pwsh -NoLogo -NoProfile -Command "dotnet run --project Tests/NetworkRegression/NetworkRegression.csproj --no-restore"
@@ -709,21 +714,9 @@ pwsh -NoLogo -NoProfile -Command "rg -n 'TODO|TBD|FIXME|NotImplementedException'
 pwsh -NoLogo -NoProfile -Command "git diff --check"
 ```
 
-Expected: 测试与构建成功；placeholder 扫描只允许引用历史文档中的文字，不允许本功能代码命中；diff 无空白错误。
+Expected: 测试与构建成功；placeholder 扫描只允许引用历史文档中的文字，不允许本功能代码命中；diff 无空白错误。此步骤不执行 Unity、Dedicated Server 或真人验收。
 
-- [ ] **Step 6: Run Unity and Dedicated Server verification**
-
-1. Unity 打开项目，无 C#、UXML、USS import 错误。
-2. AI 补位在线房间 Single：现有六天赋、三新天赋各走至少一次关键效果。
-3. Dedicated Server HalfGame：四席不同构筑，第 4 局中场，含断线/重连、超时、AI 托管。
-4. 主回合打开截流 picker 后断线：恢复待出牌，不恢复 picker。
-5. Peek 私有牌、exact alienation、未揭示天赋不串席。
-6. 结算正确拆分基础番、天赋增益、天赋压制、最终番。
-7. 全部动态 UI 在 16:9 与项目支持的最窄分辨率下不遮挡核心牌桌。
-
-把执行日期、构建版本、通过/失败证据记录到 `docs/network_verification.md` 的本次验证记录区；失败项必须修复并重跑相关范围后才能宣称完成。
-
-- [ ] **Step 7: Commit the verification assets**
+- [ ] **Step 6: Commit telemetry and playtest assets**
 
 ```powershell
 pwsh -NoLogo -NoProfile -Command "git add Assets/Scripts/Talent Assets/Scripts/Core Assets/UI Tests/NetworkRegression docs; git commit -m 'feat: add talent playtest telemetry and verification'"
@@ -731,8 +724,127 @@ pwsh -NoLogo -NoProfile -Command "git add Assets/Scripts/Talent Assets/Scripts/C
 
 ---
 
+### Task 8: Run unified production integration, merge the candidate, and verify on master
+
+**Files:**
+
+- Modify: `Tests/NetworkRegression/RoomSessionTests.cs`
+- Modify: `Tests/NetworkRegression/TalentPresentationTests.cs`
+- Modify: `Tests/NetworkRegression/AiTalentPolicyTests.cs`
+- Modify: `Tests/NetworkRegression/Program.cs`
+- Modify: `Tests/NetworkRegression/NetworkRegression.csproj`
+- Modify: `docs/network_verification.md`
+- Modify only when a failing integration test requires it: `Assets/Scripts/Core/Network/Room.cs`
+- Modify only when a failing integration test requires it: `Assets/Scripts/Core/Network/GameServer.cs`
+- Modify only when a failing integration test requires it: `Assets/Scripts/Talent/TalentMatchRuntime.cs`
+
+**Interfaces:**
+
+- Consumes: 第二阶段的补充动作、三项锚点天赋、中场备牌、快照和协议生产接线，以及本计划 Task 1–7 的 UI、AI、telemetry 和 presentation policies。
+- Produces: 合并前统一自动化证据、`master` 候选构建、真人验收记录和最终可删除功能分支的完成证据。
+
+- [ ] **Step 1: Add the deferred production-path integration regressions**
+
+新增测试必须使用正式 `Room`、`GameServer`、`TalentMatchRuntime`、`SeatMessageStream` 和客户端投影路径，不以只验证 stub、源码文本或单独 policy 代替。至少覆盖：
+
+1. 真人补充天赋动作成功后，同一 `decisionId` 的基础出牌仍可提交，deadline 和基本动作提交位未被天赋动作关闭；
+2. `藏锋` 武装与合法胡牌结算、`截流` 命中、`定心` 阻挡在真实 runtime 事件和快照中各只发生一次；
+3. HalfGame 完成第 4 小局后只进入一次中场，有效提交、非法提交、AI 原方案、真人超时和断线锁回都能使全席最终结束中场；
+4. 中场重连只恢复 `ownLocked` 只读状态，不恢复未提交草稿，也不泄露他席 active 集合和精确异化值；
+5. 天赋 resolved、公开事件、私有投影和中场消息均经过席位有序流，重复/乱序 envelope 不重复应用。
+
+- [ ] **Step 2: Run the focused regressions and confirm they expose integration gaps**
+
+```powershell
+pwsh -NoLogo -NoProfile -Command "dotnet run --project Tests/NetworkRegression/NetworkRegression.csproj --no-restore"
+```
+
+Expected: 若第二阶段或 Task 1–7 的生产接线存在缺口，测试以具体行为断言失败；若全部首次通过，报告必须逐项指出覆盖的正式生产路径，不能仅以“测试通过”替代路径证据。
+
+- [ ] **Step 3: Fix only integration defects demonstrated by Step 2**
+
+每个失败先定位到正式链路中的最早错误边界，再做最小修复。不得在此任务新增玩法、调整天赋数值、改变已确认 UI 或用客户端推导补偿服务端缺失状态。修复后重跑对应 focused case，再运行整个 NetworkRegression。
+
+- [ ] **Step 4: Run the pre-merge automated gate**
+
+```powershell
+pwsh -NoLogo -NoProfile -Command "dotnet run --project Tests/NetworkRegression/NetworkRegression.csproj --no-restore"
+pwsh -NoLogo -NoProfile -Command "dotnet build Tests/NetworkRegression/NetworkRegression.csproj --no-restore"
+pwsh -NoLogo -NoProfile -Command "dotnet build Assembly-CSharp.csproj --no-restore"
+pwsh -NoLogo -NoProfile -Command "rg -n 'TODO|TBD|FIXME|NotImplementedException' Assets/Scripts/Talent Assets/Scripts/Core/Network Assets/Scripts/Core/Agents Assets/UI docs/talent_playtest_protocol.md"
+pwsh -NoLogo -NoProfile -Command "rg -n 'if\s*\([^\n]*TalentId|switch\s*\([^\n]*TalentId' Assets/Scripts/Core/Network/Room.cs Assets/Scripts/Core/Network/GameServer.cs"
+pwsh -NoLogo -NoProfile -Command "git diff --check"
+pwsh -NoLogo -NoProfile -Command "git status --short"
+```
+
+Expected: 回归和两个构建均为 0 错误；placeholder 与 ID 效果分支扫描无产品代码命中；diff 检查无输出；状态只包含本任务预期文件。
+
+- [ ] **Step 5: Commit integration evidence and pass whole-branch review**
+
+```powershell
+pwsh -NoLogo -NoProfile -Command "git add Assets/Scripts/Core/Network Assets/Scripts/Talent Tests/NetworkRegression; git commit -m 'test: verify talent production integration'"
+```
+
+对第二、三阶段共同分支从分叉点到 HEAD 做一次全分支审查。所有 Critical / Important 必须修复、覆盖、复审并提交；未完成该审查不得生成 `master` 候选版本。
+
+- [ ] **Step 6: Merge the verified candidate to master without deleting the feature branch**
+
+前置条件：功能分支工作区干净、自动关口通过、全分支审查无未解决 Critical / Important。
+
+```powershell
+pwsh -NoLogo -NoProfile -Command "git checkout master"
+pwsh -NoLogo -NoProfile -Command "git pull --ff-only"
+pwsh -NoLogo -NoProfile -Command "git merge --no-edit codex/talent-actions-ui-unified"
+pwsh -NoLogo -NoProfile -Command "git status --short --branch"
+```
+
+Expected: 合并成功且工作区干净。此时禁止删除 `codex/talent-actions-ui-unified`；合并只生成真人验收候选版本，不代表 Plan 3 完成。
+
+- [ ] **Step 7: Rebuild the client and Dedicated Server from master**
+
+在原 Unity 项目 checkout 确认当前分支为 `master`，执行 `Assets > Refresh` 并等待编译完成。使用 `Tools > Build > Dedicated Server (Windows)` 重建服务端；使用项目当前 Windows 客户端构建配置重建客户端。不得复用合并前功能分支构建产物。
+
+同时在 `master` 重新运行：
+
+```powershell
+pwsh -NoLogo -NoProfile -Command "dotnet run --project Tests/NetworkRegression/NetworkRegression.csproj --no-restore"
+pwsh -NoLogo -NoProfile -Command "dotnet build Assembly-CSharp.csproj --no-restore"
+```
+
+- [ ] **Step 8: Run the unified post-merge human acceptance matrix**
+
+从 `master` 构建启动 Dedicated Server 和正常游戏客户端，逐项验证：
+
+1. 大厅和牌库编辑器：40/80/120 文案、6 主 + 3 备选、超限仍可保存、创建房间档位、旧存档备选为空；
+2. 一真人 + 三 AI Single：现有六天赋和三项锚点天赋各完成至少一次关键效果；
+3. 主回合交互：藏锋成功/失败不关闭基础出牌，截流选择和取消不影响普通动作，定心阻挡后按钮与权威状态一致；
+4. 至少两真人 + AI HalfGame：第 4 小局后同步进入中场，覆盖有效换装、非法提交、超时、断线、AI 选择和重连只读等待；
+5. 断线恢复：打开截流 picker 后断线，只恢复有效待出牌，不恢复 picker；
+6. 隐私：Peek、精确异化值、未揭示天赋和中场 active 集合不串席；
+7. 结算：基础番、天赋增益、天赋压制、最终番和极长番种列表均正确，手牌缩略图与继续按钮不被遮挡；
+8. 布局：16:9 与项目支持的最窄分辨率下，天赋条、对手 chip、效果 feed、操作按钮和中场页面不遮挡核心牌桌。
+
+- [ ] **Step 9: Use the retained feature branch for every acceptance failure**
+
+若 Step 7 或 Step 8 失败：保留 `master` 当前候选，不直接在 `master` 写产品修复；切回 `codex/talent-actions-ui-unified`，先添加能自动化的失败回归，再修复、运行自动关口、提交并复审，然后再次合并 `master`、重建和重跑受影响的完整人工场景。每轮修复都必须记录候选 `master` commit 和验证结果。
+
+- [ ] **Step 10: Record final evidence and remove the merged feature branch**
+
+全部人工场景通过后，在 `docs/network_verification.md` 记录日期、最终 `master` commit、客户端与服务端构建标识、自动命令结果、真人席位组合和每项人工结果。提交该证据后确认功能分支已完全合并，再删除分支：
+
+```powershell
+pwsh -NoLogo -NoProfile -Command "git add docs/network_verification.md; git commit -m 'docs: record talent vertical slice verification'"
+pwsh -NoLogo -NoProfile -Command "git branch --merged master"
+pwsh -NoLogo -NoProfile -Command "git branch -d codex/talent-actions-ui-unified"
+pwsh -NoLogo -NoProfile -Command "git status --short --branch"
+```
+
+---
+
 ## Plan 3 Completion Gate
 
+- [ ] 第二、三阶段共同功能分支已通过统一生产路径集成回归、全分支审查和合并前自动关口。
+- [ ] 候选版本已合并到 `master`，客户端和 Dedicated Server 均从该 `master` commit 重新构建；没有复用功能分支旧产物。
 - [ ] 一真人加三 AI 的 Single 与 HalfGame 都只通过 Dedicated Server `Room` 运行，不存在客户端本地天赋路径。
 - [ ] 牌库编辑器完整显示 6 主 + 3 备选，并用单根 gauge 预览 40/80/120 当前档位。
 - [ ] 超预算构筑可保存但有明确警告，服务器仍拒绝超限进房。
@@ -742,5 +854,8 @@ pwsh -NoLogo -NoProfile -Command "git add Assets/Scripts/Talent Assets/Scripts/C
 - [ ] 结算清楚拆分基础番、天赋增益、天赋压制和最终番。
 - [ ] AI 构筑在三档均合法，决策只用允许信息并走真人同款校验。
 - [ ] telemetry 不包含隐私数据，playtest protocol 可直接执行。
-- [ ] .NET 回归、构建、Unity 编译、Dedicated Server 半庄验证和布局检查全部有证据通过。
+- [ ] .NET 回归、真实生产链路集成、构建、Unity 编译、Dedicated Server 半庄验证和布局检查全部有证据通过。
+- [ ] 真人验收的日期、最终 `master` commit、构建标识、席位组合和逐项结果已记录在 `docs/network_verification.md`。
+- [ ] 任一真人验收失败均在保留的功能分支修复、复审、再次合并并从 `master` 重建重验；没有直接在 `master` 写未审查的产品修复。
+- [ ] `codex/talent-actions-ui-unified` 仅在全部合并后真人验收通过且验证证据提交后删除。
 - [ ] 工作区无占位实现、无 UGUI/Canvas 新依赖、无未预期改动。

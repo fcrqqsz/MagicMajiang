@@ -12,6 +12,11 @@
 
 - 开始前必须完成 `docs/superpowers/plans/2026-08-04-room-authority-remove-local-mode.md` 的 Completion Gate。
 - 开始前必须完成 `docs/superpowers/plans/2026-08-04-talent-foundation-and-alienation.md` 的 Completion Gate。
+- 阶段执行、验证、合并和真人验收边界以 `docs/superpowers/specs/2026-08-12-talent-phase2-3-validation-boundary-design.md` 为准。
+- 本计划与第三阶段持续使用同一功能分支 `codex/talent-actions-ui-unified`；本计划完成后不得合并 `master`，必须直接在该分支继续第三阶段。
+- 本计划不新增临时 UI、调试面板、快捷键或编辑器直开入口；正式主动技能、中场备牌和异化档位 UI 全部由第三阶段实现。
+- 本计划仍须完成 `Room` / `GameServer` / `TalentMatchRuntime` 的正式生产接线，但新增验收只覆盖纯 C# policy、tracker、规则、状态机、协议模型和组件边界，不新增 WebSocket 全链路或真实 `Room -> GameServer -> TalentMatchRuntime` 集成验收。
+- 仍运行现有完整 NetworkRegression 与编译以防旧功能回归；Unity、Dedicated Server、真人联机和新增生产链路端到端验证统一推迟到第三阶段。
 - `Room` 持有 runtime、sideboard tracker 和跨局状态；客户端与 `GameManager` 只提交请求、消费按席投影，不设置天赋生效集合。
 - `talentId` 只负责在玩家已携带的 runtime entry 中定位实例；`GameServer`/`Room` 不得根据 ID 解释、分支或执行效果。
 - 天赋补充动作只复用当前决策的身份与时限，不占用普通动作提交位，也不延长原决策 deadline。
@@ -832,16 +837,18 @@ public sealed class SnapshotSideboardState
 
 天赋 resolved、公开 event、私有 runtime projection 必须经过各席 `SeatMessageStream`。增加乱序/重复 envelope 回归，确认 `ClientRoomService` 去重后只应用一次，且私有计数不会串席。
 
-- [ ] **Step 7: Run final Plan 2 verification and commit**
+- [ ] **Step 7: Run the final Plan 2 code-checkpoint verification and commit**
 
 ```powershell
 pwsh -NoLogo -NoProfile -Command "dotnet run --project Tests/NetworkRegression/NetworkRegression.csproj --no-restore"
 pwsh -NoLogo -NoProfile -Command "dotnet build Tests/NetworkRegression/NetworkRegression.csproj --no-restore"
 pwsh -NoLogo -NoProfile -Command "rg -n 'if\s*\([^\n]*TalentId|switch\s*\([^\n]*TalentId' Assets/Scripts/Core/Network/Room.cs Assets/Scripts/Core/Network/GameServer.cs"
 pwsh -NoLogo -NoProfile -Command "git diff --check"
+pwsh -NoLogo -NoProfile -Command "git branch --show-current"
+pwsh -NoLogo -NoProfile -Command "git status --short"
 ```
 
-Expected: 回归与构建通过；最后一个 `rg` 无效果分支命中；diff 检查无输出。
+Expected: 现有回归与构建通过；`rg` 无效果分支命中；diff 检查无输出；当前分支为 `codex/talent-actions-ui-unified`；状态只包含本任务预期文件。此步骤不宣称新增能力已通过联机集成或人工验收。
 
 Commit:
 
@@ -851,7 +858,7 @@ pwsh -NoLogo -NoProfile -Command "git add Assets/Scripts/Core/Network Assets/Scr
 
 ---
 
-## Plan 2 Completion Gate
+## Plan 2 Code Checkpoint
 
 - [ ] `Room` 是 runtime、sideboard tracker 和跨局天赋状态的唯一 owner，客户端不直接修改生效集合。
 - [ ] 补充天赋动作成功后，当前基本主回合仍可正常出牌，deadline 不变。
@@ -862,5 +869,8 @@ pwsh -NoLogo -NoProfile -Command "git add Assets/Scripts/Core/Network Assets/Scr
 - [ ] 半庄/全庄只在第 4 小局后进入一次 45 秒中场，其他模式不进入。
 - [ ] 中场断线/超时锁回原激活方案，重连不能重新选择。
 - [ ] 对手快照不泄露 active 状态、精确异化值或未揭示天赋。
-- [ ] 全部网络回归、构建、源码分支守卫和 `git diff --check` 通过。
+- [ ] 新增行为由纯 C# policy、tracker、规则、状态机、协议模型和组件边界测试覆盖；本阶段没有新增真实生产链路集成验收。
+- [ ] 现有 NetworkRegression、构建、源码分支守卫和 `git diff --check` 通过。
 - [ ] 不存在占位注释、未实现异常、空方法或假成功返回。
+- [ ] 检查点报告明确列出 WebSocket 全链路、真实 `Room -> GameServer -> TalentMatchRuntime`、Unity、Dedicated Server 和真人验证均推迟到第三阶段，未将其描述为已通过。
+- [ ] 当前仍位于 `codex/talent-actions-ui-unified`；本计划没有合并 `master`、没有删除功能分支，并直接转入第三阶段。
