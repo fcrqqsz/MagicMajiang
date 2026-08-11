@@ -426,6 +426,14 @@ namespace MahjongGame.Talents
             TalentWinContext context,
             int eligibilityFan)
         {
+            return ResolvePostLegalFan(context, eligibilityFan, counterfactualOptions: null);
+        }
+
+        internal TalentFanResolution ResolvePostLegalFan(
+            TalentWinContext context,
+            int eligibilityFan,
+            ScoringOptions counterfactualOptions)
+        {
             if (context == null) throw new ArgumentNullException(nameof(context));
             EnsureReadyRound(context, nameof(ResolvePostLegalFan));
 
@@ -433,6 +441,12 @@ namespace MahjongGame.Talents
             var requestedPenalties = new List<int>();
             foreach (RuntimeEntry entry in GetActiveEntriesForSeat(context.CurrentSeatIndex))
             {
+                if (ReferenceEquals(
+                        entry,
+                        counterfactualOptions?.ExcludedTalentEntryIdentity))
+                {
+                    continue;
+                }
                 TalentWinContext bound = context.BindWin(
                     entry.OwnerSeatIndex,
                     entry.State.CreateDetachedCopy(),
@@ -477,6 +491,7 @@ namespace MahjongGame.Talents
             RuntimeEntry excludedEntry)
         {
             ScoringOptions options = new ScoringOptions();
+            options.ExcludedTalentEntryIdentity = excludedEntry;
             foreach (RuntimeEntry entry in GetActiveEntriesForSeat(context.CurrentSeatIndex))
             {
                 if (ReferenceEquals(entry, excludedEntry)) continue;
@@ -523,7 +538,6 @@ namespace MahjongGame.Talents
             TalentScoringContext scoringContext = new TalentScoringContext(
                 _session,
                 context.CurrentSeatIndex);
-            ScoringOptions acceptedOptions = BuildScoringOptions(scoringContext, excludedEntry: null);
             foreach (RuntimeEntry entry in GetActiveEntriesForSeat(context.CurrentSeatIndex))
             {
                 if (entry.State.IsRevealed
@@ -533,7 +547,6 @@ namespace MahjongGame.Talents
                 }
 
                 ScoringOptions withoutEntry = BuildScoringOptions(scoringContext, entry);
-                if (HaveEqualValues(acceptedOptions, withoutEntry)) continue;
 
                 TalentWinEvaluation counterfactual = context.EvaluateWithOptions(withoutEntry);
                 if (counterfactual != null
@@ -698,12 +711,6 @@ namespace MahjongGame.Talents
                 entry.State,
                 runtimeEvent => EmitEvent(entry, runtimeEvent),
                 scoreDeltaSink);
-        }
-
-        private static bool HaveEqualValues(ScoringOptions left, ScoringOptions right)
-        {
-            return left.BonusFan == right.BonusFan
-                   && left.RelaxedPureStraight == right.RelaxedPureStraight;
         }
 
         private TalentContext BindContext(TalentContext context, RuntimeEntry entry)

@@ -1277,7 +1277,8 @@ namespace MahjongGame.Core.Network
                     TalentFanResolution counterfactualResolution =
                         _talentRuntime.ResolvePostLegalFan(
                             new TalentWinContext(_session, pid),
-                            counterfactualFan);
+                            counterfactualFan,
+                            counterfactualOptions);
                     return new TalentWinEvaluation(
                         true,
                         counterfactualResolution.FinalFan);

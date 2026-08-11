@@ -35,6 +35,7 @@ internal static class TalentFoundationTests
         ScoringEvaluationCannotMutateAuthoritativeStateOrEmit(runner);
         ExistingSixTalentsExecuteAcrossTwoRounds(runner);
         ModifiedTileAndAcceptedWinRevealOnlyAtPublicBoundaries(runner);
+        PurePostLegalModifiersRevealThroughEntryExcludedCounterfactuals(runner);
         NetworkRuntimeIntegrationHasNoStableTalentIdLiterals(runner);
         LoadoutDecodingEnforcesRoomAlienationPresets(runner);
         ProfileSettingsNormalizeUnknownAlienationPreset(runner);
@@ -792,6 +793,91 @@ internal static class TalentFoundationTests
             "GameServer must not execute stable talent ids through source-level effect branches");
     }
 
+    private static void PurePostLegalModifiersRevealThroughEntryExcludedCounterfactuals(
+        RegressionRunner runner)
+    {
+        var cases = new[]
+        {
+            new
+            {
+                TalentId = "network_test_hidden_post_legal_bonus",
+                AcceptedFan = 12,
+                ReadAuthoritativeCounter = (Func<int>)(() =>
+                    HiddenPostLegalBonusTalent.AuthoritativeCallsAtRoundEnd),
+                Reset = (Action)HiddenPostLegalBonusTalent.Reset
+            },
+            new
+            {
+                TalentId = "network_test_hidden_post_legal_penalty",
+                AcceptedFan = 5,
+                ReadAuthoritativeCounter = (Func<int>)(() =>
+                    HiddenPostLegalPenaltyTalent.AuthoritativeCallsAtRoundEnd),
+                Reset = (Action)HiddenPostLegalPenaltyTalent.Reset
+            }
+        };
+
+        foreach (var testCase in cases)
+        {
+            testCase.Reset();
+            GameSession session = new GameSession(GameMode.Single);
+            TalentMatchRuntime runtime = CreateRuntime(mainIds: new[] { testCase.TalentId });
+            runtime.BeginMatch(session);
+            BeginReadyRound(runtime, session);
+
+            TalentFanResolution acceptedResolution = runtime.ResolvePostLegalFan(
+                new TalentWinContext(session, 0),
+                eligibilityFan: 8);
+            var accepted = new TalentWinEvaluation(
+                isLegal: true,
+                finalFan: acceptedResolution.FinalFan);
+            runtime.ResolveAcceptedWinVisibility(new TalentAcceptedWinContext(
+                session,
+                0,
+                accepted,
+                withoutEntryOptions =>
+                {
+                    TalentFanResolution counterfactual = runtime.ResolvePostLegalFan(
+                        new TalentWinContext(session, 0),
+                        eligibilityFan: 8,
+                        withoutEntryOptions);
+                    return new TalentWinEvaluation(true, counterfactual.FinalFan);
+                }));
+
+            IReadOnlyList<TalentRuntimeEvent>[] firstEvents = Enumerable.Range(0, 4)
+                .Select(runtime.DrainEventsForSeat)
+                .ToArray();
+            runtime.ResolveAcceptedWinVisibility(new TalentAcceptedWinContext(
+                session,
+                0,
+                accepted,
+                withoutEntryOptions =>
+                {
+                    TalentFanResolution counterfactual = runtime.ResolvePostLegalFan(
+                        new TalentWinContext(session, 0),
+                        eligibilityFan: 8,
+                        withoutEntryOptions);
+                    return new TalentWinEvaluation(true, counterfactual.FinalFan);
+                }));
+            bool secondResolutionStayedQuiet = Enumerable.Range(0, 4)
+                .All(seatIndex => runtime.DrainEventsForSeat(seatIndex).Count == 0);
+
+            runtime.EndRound(new TalentRoundOutcome { WinnerSeatIndex = 0 }, session);
+
+            runner.Check(acceptedResolution.FinalFan == testCase.AcceptedFan,
+                $"{testCase.TalentId} changes the accepted post-legal final fan");
+            runner.Check(firstEvents.All(events => events.Count == 1
+                                                   && events[0].TalentId == testCase.TalentId
+                                                   && events[0].EventType == "talent_revealed"),
+                $"{testCase.TalentId} reveals exactly once when its excluded counterfactual changes final fan");
+            runner.Check(secondResolutionStayedQuiet,
+                $"{testCase.TalentId} does not reveal twice on repeated accepted-win visibility resolution");
+            runner.Check(testCase.ReadAuthoritativeCounter() == 0
+                         && firstEvents.All(events => events.All(runtimeEvent =>
+                             runtimeEvent.EventType != "post_legal_candidate_side_effect")),
+                $"{testCase.TalentId} candidate and counterfactual evaluation stay detached and event-free");
+        }
+    }
+
     private static TalentMatchRuntime CreateRuntime(
         string[] mainIds = null,
         string[] reserveIds = null)
@@ -974,6 +1060,54 @@ internal sealed class ScoringSideEffectTestTalent : TalentRule
         AuthoritativeRoundFlagAtRoundEnd = context.State.GetFlag(
             "scoring_touched",
             TalentStateScope.Round);
+    }
+}
+
+[TalentRule("network_test_hidden_post_legal_bonus", "Hidden Post-Legal Bonus", "test",
+    TalentTier.Small, 0, TalentPhase.Scoring,
+    RevealPolicy = TalentRevealPolicy.HiddenUntilPublicEffect)]
+internal sealed class HiddenPostLegalBonusTalent : TalentRule
+{
+    public static int AuthoritativeCallsAtRoundEnd { get; private set; }
+
+    public static void Reset() => AuthoritativeCallsAtRoundEnd = -1;
+
+    public override int GetPostLegalFanBonus(TalentWinContext context)
+    {
+        context.State.IncrementCounter("post_legal_calls", TalentStateScope.Match);
+        context.EmitPublic("post_legal_candidate_side_effect", 1);
+        return 4;
+    }
+
+    public override void OnRoundEnded(TalentRoundContext context, TalentRoundOutcome outcome)
+    {
+        AuthoritativeCallsAtRoundEnd = context.State.GetCounter(
+            "post_legal_calls",
+            TalentStateScope.Match);
+    }
+}
+
+[TalentRule("network_test_hidden_post_legal_penalty", "Hidden Post-Legal Penalty", "test",
+    TalentTier.Small, 0, TalentPhase.Scoring,
+    RevealPolicy = TalentRevealPolicy.HiddenUntilPublicEffect)]
+internal sealed class HiddenPostLegalPenaltyTalent : TalentRule
+{
+    public static int AuthoritativeCallsAtRoundEnd { get; private set; }
+
+    public static void Reset() => AuthoritativeCallsAtRoundEnd = -1;
+
+    public override int GetPostLegalFanPenalty(TalentWinContext context)
+    {
+        context.State.IncrementCounter("post_legal_calls", TalentStateScope.Match);
+        context.EmitPublic("post_legal_candidate_side_effect", 1);
+        return -3;
+    }
+
+    public override void OnRoundEnded(TalentRoundContext context, TalentRoundOutcome outcome)
+    {
+        AuthoritativeCallsAtRoundEnd = context.State.GetCounter(
+            "post_legal_calls",
+            TalentStateScope.Match);
     }
 }
 
