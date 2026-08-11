@@ -247,14 +247,16 @@ namespace MahjongGame.Talents
                 Debug.LogWarning($"[TalentMatchRuntime] Rejected unknown negative effect type: {effect.EffectType}");
                 return new TalentNegativeEffectResult();
             }
-            if (effect.Apply == null)
+            ValidateSeatIndex(effect.SourceSeatIndex, nameof(effect.SourceSeatIndex));
+            ValidateSeatIndex(effect.TargetSeatIndex, nameof(effect.TargetSeatIndex));
+            RuntimeEntry targetEntry = FindActiveEntry(effect.TargetSeatIndex, effect.TargetTalentId);
+            if (targetEntry == null || !(targetEntry.Rule is IPublicChargeTalent publicChargeTarget))
             {
-                Debug.LogWarning("[TalentMatchRuntime] Rejected negative effect without a server Apply callback.");
+                Debug.LogWarning(
+                    "[TalentMatchRuntime] Rejected negative effect without an active public-charge target.");
                 return new TalentNegativeEffectResult();
             }
 
-            ValidateSeatIndex(effect.SourceSeatIndex, nameof(effect.SourceSeatIndex));
-            ValidateSeatIndex(effect.TargetSeatIndex, nameof(effect.TargetSeatIndex));
             foreach (RuntimeEntry entry in GetActiveTargetDefenses(effect.TargetSeatIndex))
             {
                 TalentNegativeEffectContext context = new TalentNegativeEffectContext(
@@ -278,7 +280,9 @@ namespace MahjongGame.Talents
                 };
             }
 
-            effect.Apply();
+            publicChargeTarget.ReducePublicChargeLayer(new TalentPublicChargeContext(
+                targetEntry.OwnerSeatIndex,
+                targetEntry.State));
             return new TalentNegativeEffectResult { WasApplied = true };
         }
 
