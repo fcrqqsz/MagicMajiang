@@ -324,6 +324,8 @@ internal static class SideboardTests
         disconnectedRoom.HandleDisconnect(
             "dev:host", "host", disconnectedEndpoint, DateTime.UtcNow, TimeSpan.FromMinutes(1),
             out _, out _);
+        RoomGameSnapshot disconnectedSnapshot = disconnectedRoom.BuildSnapshot(0);
+        string disconnectedSnapshotJson = UnityEngine.JsonUtility.ToJson(disconnectedSnapshot.sideboard);
         disconnectedRoom.SubmitSideboard(1, new SideboardSubmitMessage
         {
             decisionId = disconnectedDecisionId,
@@ -343,6 +345,12 @@ internal static class SideboardTests
 
         runner.Check(disconnectedRoom.State == RoomState.WaitingForNextRound
                      && reconnected
+                     && disconnectedSnapshot.sideboard.isActive
+                     && disconnectedSnapshot.sideboard.decisionId == disconnectedDecisionId
+                     && disconnectedSnapshot.sideboard.ownLocked
+                     && disconnectedSnapshot.sideboard.seatLocked.SequenceEqual(new[] { true, false, true, true })
+                     && !disconnectedSnapshotJson.Contains("Talent", System.StringComparison.OrdinalIgnoreCase)
+                     && !disconnectedSnapshotJson.Contains("draft", System.StringComparison.OrdinalIgnoreCase)
                      && restoredLock?.acceptedSelection == false
                      && restoredLock.reason == "disconnected"
                      && restoredProgress?.isComplete == true

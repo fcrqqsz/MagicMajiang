@@ -70,6 +70,9 @@ namespace MahjongGame.Talents.Impl
         public int GetCurrentCharge(TalentRuntimeState state) =>
             state.GetCounter(ChargeKey, TalentStateScope.Match);
 
+        public override int GetSnapshotPrivateValue(TalentRuntimeState state) =>
+            GetCurrentCharge(state);
+
         public bool TryReduceCharge(TalentRuntimeState state, int amount)
         {
             int current = GetCurrentCharge(state);

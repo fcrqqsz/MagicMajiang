@@ -48,6 +48,8 @@ namespace MahjongGame.Talents
         public virtual TalentActionResult TryActivate(
             TalentActivationContext context,
             TalentActionRequest request) => TalentActionResult.NotSupported();
+        /// <summary>Returns the one rule-approved integer safe for the owning seat's snapshot.</summary>
+        public virtual int GetSnapshotPrivateValue(TalentRuntimeState state) => 0;
         public virtual int GetPostLegalFanBonus(TalentWinContext context) => 0;
         public virtual int GetPostLegalFanPenalty(TalentWinContext context) => 0;
         public virtual void OnAcceptedWin(TalentWinContext context) { }

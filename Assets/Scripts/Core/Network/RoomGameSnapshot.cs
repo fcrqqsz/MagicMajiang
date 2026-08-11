@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using MahjongGame.Core;
 using MahjongGame.Core.Network.Messages;
+using MahjongGame.Talents;
 
 namespace MahjongGame.Core.Network
 {
@@ -23,6 +24,9 @@ namespace MahjongGame.Core.Network
         public ScoringOptions[] ScoringOptions;
         public List<TileData>[] PeekWallTiles;
         public NetworkDecisionContext ActiveDecision;
+        public RoomSnapshotTalentSource[] Talents;
+        public IReadOnlyList<TalentActionOption> AvailableTalentActions;
+        public RoomSnapshotSideboardSource Sideboard;
         /// <summary>The authoritative draw that opened the current main decision, if any.</summary>
         public TileData MainTurnDrawnTile;
         public int WinnerId = -1;
@@ -43,6 +47,26 @@ namespace MahjongGame.Core.Network
         public bool IsOnline;
         public string DisplayName;
         public string Controller;
+    }
+
+    public sealed class RoomSnapshotTalentSource
+    {
+        public int OwnerSeatIndex;
+        public string TalentId;
+        public bool IsActive;
+        public bool IsRevealed;
+        public int PrivateValue;
+        public string LastPublicEventType;
+        public int LastPublicValue;
+    }
+
+    public sealed class RoomSnapshotSideboardSource
+    {
+        public bool IsActive;
+        public long DecisionId;
+        public long DeadlineUnixMilliseconds;
+        public bool OwnLocked;
+        public bool[] SeatLocked;
     }
 
     /// <summary>Builds a per-seat snapshot and deliberately contains no deck or talent configuration fields.</summary>
@@ -67,6 +91,7 @@ namespace MahjongGame.Core.Network
                 alienationPreset = (int)source.AlienationPreset,
                 requestingSeatIndex = requestingSeatIndex,
                 seats = BuildSeats(source, requestingSeatIndex),
+                knownTalents = BuildKnownTalents(source, requestingSeatIndex),
                 roundNumber = GetProjectedRoundNumber(session, isCompletedSession),
                 prevalentWind = session != null ? (int)GetProjectedPrevalentWind(session, isCompletedSession) : 0,
                 requestingSeatWind = session != null ? (int)GetSeatWind(requestingSeatIndex, projectedDealerIndex) : 0,
@@ -79,7 +104,9 @@ namespace MahjongGame.Core.Network
                     concealedHand = ToSimpleTiles(GetAt(source.Hands, requestingSeatIndex)),
                     melds = ToMeldSnapshots(GetAt(source.Melds, requestingSeatIndex)),
                     scoringOptions = ToScoringOptions(GetAt(source.ScoringOptions, requestingSeatIndex)),
-                    peekWallTiles = ToSimpleTiles(GetAt(source.PeekWallTiles, requestingSeatIndex))
+                    peekWallTiles = ToSimpleTiles(GetAt(source.PeekWallTiles, requestingSeatIndex)),
+                    ownTalents = BuildOwnTalents(source, requestingSeatIndex),
+                    availableTalentActions = BuildTalentActionOptions(source.AvailableTalentActions)
                 },
                 rivers = Enumerable.Range(0, 4)
                     .Select(seatIndex => new SeatRiverSnapshot
@@ -93,6 +120,7 @@ namespace MahjongGame.Core.Network
                 mainTurnDrawnTile = IsRequestingSeatMainTurn(source.ActiveDecision, requestingSeatIndex)
                     ? ToSimpleTile(source.MainTurnDrawnTile)
                     : null,
+                sideboard = BuildSideboard(source.Sideboard),
                 result = new RoundResultSnapshot
                 {
                     winnerId = source.WinnerId,
@@ -176,6 +204,69 @@ namespace MahjongGame.Core.Network
             };
         }
 
+        private static SnapshotKnownTalent[] BuildKnownTalents(
+            RoomGameSnapshotSource source,
+            int requestingSeatIndex)
+        {
+            return (source.Talents ?? Array.Empty<RoomSnapshotTalentSource>())
+                .Where(talent => talent != null
+                                 && talent.OwnerSeatIndex != requestingSeatIndex
+                                 && talent.IsRevealed
+                                 && !string.IsNullOrWhiteSpace(talent.TalentId))
+                .Select(talent => new SnapshotKnownTalent
+                {
+                    ownerSeatIndex = talent.OwnerSeatIndex,
+                    talentId = talent.TalentId,
+                    isKnown = true,
+                    lastPublicEventType = talent.LastPublicEventType,
+                    lastPublicValue = talent.LastPublicValue
+                })
+                .ToArray();
+        }
+
+        private static SnapshotOwnTalent[] BuildOwnTalents(
+            RoomGameSnapshotSource source,
+            int requestingSeatIndex)
+        {
+            return (source.Talents ?? Array.Empty<RoomSnapshotTalentSource>())
+                .Where(talent => talent != null
+                                 && talent.OwnerSeatIndex == requestingSeatIndex
+                                 && !string.IsNullOrWhiteSpace(talent.TalentId))
+                .Select(talent => new SnapshotOwnTalent
+                {
+                    talentId = talent.TalentId,
+                    isActive = talent.IsActive,
+                    privateValue = talent.PrivateValue
+                })
+                .ToArray();
+        }
+
+        private static SnapshotTalentActionOption[] BuildTalentActionOptions(
+            IReadOnlyList<TalentActionOption> options)
+        {
+            return (options ?? Array.Empty<TalentActionOption>())
+                .Where(option => option != null && !string.IsNullOrWhiteSpace(option.TalentId))
+                .Select(option => new SnapshotTalentActionOption
+                {
+                    talentId = option.TalentId,
+                    targetSeatIndex = option.TargetSeatIndex,
+                    targetTalentId = option.TargetTalentId
+                })
+                .ToArray();
+        }
+
+        private static SnapshotSideboardState BuildSideboard(RoomSnapshotSideboardSource source)
+        {
+            return new SnapshotSideboardState
+            {
+                isActive = source?.IsActive ?? false,
+                decisionId = source?.DecisionId ?? 0,
+                deadlineUnixMilliseconds = source?.DeadlineUnixMilliseconds ?? 0,
+                ownLocked = source?.OwnLocked ?? false,
+                seatLocked = source?.SeatLocked?.ToArray() ?? Array.Empty<bool>()
+            };
+        }
+
         public static SnapshotDecision CreateDecisionSnapshot(NetworkDecisionContext decision)
         {
             if (decision == null) return null;
@@ -235,6 +326,7 @@ namespace MahjongGame.Core.Network.Messages
         public int alienationPreset;
         public int requestingSeatIndex;
         public RoomSnapshotSeat[] seats;
+        public SnapshotKnownTalent[] knownTalents;
         public int roundNumber;
         public int prevalentWind;
         public int requestingSeatWind;
@@ -245,6 +337,7 @@ namespace MahjongGame.Core.Network.Messages
         public int remainingWallCount;
         public SnapshotDecision activeDecision;
         public SimpleTileData mainTurnDrawnTile;
+        public SnapshotSideboardState sideboard;
         public RoundResultSnapshot result;
     }
 
@@ -277,6 +370,44 @@ namespace MahjongGame.Core.Network.Messages
         public SnapshotMeld[] melds;
         public SnapshotScoringOptions scoringOptions;
         public SimpleTileData[] peekWallTiles;
+        public SnapshotOwnTalent[] ownTalents;
+        public SnapshotTalentActionOption[] availableTalentActions;
+    }
+
+    [Serializable]
+    public sealed class SnapshotKnownTalent
+    {
+        public int ownerSeatIndex;
+        public string talentId;
+        public bool isKnown;
+        public string lastPublicEventType;
+        public int lastPublicValue;
+    }
+
+    [Serializable]
+    public sealed class SnapshotOwnTalent
+    {
+        public string talentId;
+        public bool isActive;
+        public int privateValue;
+    }
+
+    [Serializable]
+    public sealed class SnapshotTalentActionOption
+    {
+        public string talentId;
+        public int targetSeatIndex = -1;
+        public string targetTalentId;
+    }
+
+    [Serializable]
+    public sealed class SnapshotSideboardState
+    {
+        public bool isActive;
+        public long decisionId;
+        public long deadlineUnixMilliseconds;
+        public bool ownLocked;
+        public bool[] seatLocked;
     }
 
     [Serializable]

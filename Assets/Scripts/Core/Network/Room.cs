@@ -394,7 +394,6 @@ namespace MahjongGame.Core.Network
 
             bool accepted = GameServer.SubmitNetworkTalentAction(seatIndex, message, out TalentActionResult result);
             errorCode = result?.ErrorCode;
-            if (accepted) BroadcastTalentEventsAtSafeBoundary();
 
             TrySendToHumanSeat(seatIndex, "TalentActionResolved", new TalentActionResolvedMessage
             {
@@ -520,6 +519,21 @@ namespace MahjongGame.Core.Network
                 PeekWallTiles = new List<TileData>[4],
                 RemainingWallCount = GameServer?.RemainingWallCount ?? 0,
                 ActiveDecision = GameServer?.ActiveDecision,
+                Talents = (_talentRuntime?.GetSnapshotEntries() ?? Array.Empty<TalentSnapshotEntry>())
+                    .Select(entry => new RoomSnapshotTalentSource
+                    {
+                        OwnerSeatIndex = entry.OwnerSeatIndex,
+                        TalentId = entry.TalentId,
+                        IsActive = entry.IsActive,
+                        IsRevealed = entry.IsRevealed,
+                        PrivateValue = entry.PrivateValue,
+                        LastPublicEventType = entry.LastPublicEventType,
+                        LastPublicValue = entry.LastPublicValue
+                    })
+                    .ToArray(),
+                AvailableTalentActions = GameServer?.GetAvailableTalentActionsSnapshot(requestingSeatIndex)
+                    ?? Array.Empty<TalentActionOption>(),
+                Sideboard = BuildSideboardSnapshotSource(requestingSeatIndex),
                 MainTurnDrawnTile = GameServer?.LastDrawnTile,
                 WinnerId = GameServer?.WinnerId ?? Session.LastWinnerId,
                 WinFan = GameServer?.WinFan ?? Session.LastFanCount,
@@ -555,6 +569,21 @@ namespace MahjongGame.Core.Network
             }
 
             return RoomGameSnapshotBuilder.Build(source, requestingSeatIndex);
+        }
+
+        private RoomSnapshotSideboardSource BuildSideboardSnapshotSource(int requestingSeatIndex)
+        {
+            if (_sideboardTracker == null) return null;
+            return new RoomSnapshotSideboardSource
+            {
+                IsActive = State == RoomState.WaitingForSideboard,
+                DecisionId = _sideboardTracker.DecisionId,
+                DeadlineUnixMilliseconds = _sideboardTracker.DeadlineUnixMilliseconds,
+                OwnLocked = _sideboardTracker.IsLocked(requestingSeatIndex),
+                SeatLocked = Enumerable.Range(0, _seats.Length)
+                    .Select(_sideboardTracker.IsLocked)
+                    .ToArray()
+            };
         }
 
         public void Broadcast(string type, object payload)
@@ -812,6 +841,30 @@ namespace MahjongGame.Core.Network
                         isScoreDelta = runtimeEvent.IsScoreDelta
                     });
                 }
+
+                seat.MessageStream.Send("TalentPrivateState", new TalentPrivateStateMessage
+                {
+                    ownerSeatIndex = seat.SeatIndex,
+                    talents = _talentRuntime.GetSnapshotEntries()
+                        .Where(entry => entry.OwnerSeatIndex == seat.SeatIndex)
+                        .Select(entry => new SnapshotOwnTalent
+                        {
+                            talentId = entry.TalentId,
+                            isActive = entry.IsActive,
+                            privateValue = entry.PrivateValue
+                        })
+                        .ToArray(),
+                    availableTalentActions = (GameServer?.GetAvailableTalentActionsSnapshot(seat.SeatIndex)
+                                              ?? Array.Empty<TalentActionOption>())
+                        .Where(option => option != null && !string.IsNullOrWhiteSpace(option.TalentId))
+                        .Select(option => new SnapshotTalentActionOption
+                        {
+                            talentId = option.TalentId,
+                            targetSeatIndex = option.TargetSeatIndex,
+                            targetTalentId = option.TargetTalentId
+                        })
+                        .ToArray()
+                });
             }
         }
 

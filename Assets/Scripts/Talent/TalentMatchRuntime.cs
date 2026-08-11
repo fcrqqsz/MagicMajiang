@@ -432,6 +432,31 @@ namespace MahjongGame.Talents
                 .ToArray();
         }
 
+        public IReadOnlyList<TalentSnapshotEntry> GetSnapshotEntries()
+        {
+            return _entries
+                .OrderBy(entry => entry.Sequence)
+                .Select(entry =>
+                {
+                    TalentRuntimeEvent lastPublicEvent = _events
+                        .LastOrDefault(runtimeEvent => runtimeEvent.OwnerSeatIndex == entry.OwnerSeatIndex
+                                                       && string.Equals(runtimeEvent.TalentId, entry.Rule.Id,
+                                                           StringComparison.Ordinal)
+                                                       && runtimeEvent.Visibility == TalentEventVisibility.Public);
+                    return new TalentSnapshotEntry
+                    {
+                        OwnerSeatIndex = entry.OwnerSeatIndex,
+                        TalentId = entry.Rule.Id,
+                        IsActive = entry.State.IsActive,
+                        IsRevealed = entry.State.IsRevealed,
+                        PrivateValue = entry.Rule.GetSnapshotPrivateValue(entry.State.CreateDetachedCopy()),
+                        LastPublicEventType = lastPublicEvent?.EventType,
+                        LastPublicValue = lastPublicEvent?.Value ?? 0
+                    };
+                })
+                .ToArray();
+        }
+
         internal PublicChargeTarget ResolvePublicChargeTarget(
             int sourceSeatIndex,
             int targetSeatIndex,

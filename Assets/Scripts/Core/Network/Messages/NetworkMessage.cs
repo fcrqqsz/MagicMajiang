@@ -269,6 +269,14 @@ namespace MahjongGame.Core.Network.Messages
     }
 
     [Serializable]
+    public sealed class TalentPrivateStateMessage
+    {
+        public int ownerSeatIndex;
+        public SnapshotOwnTalent[] talents;
+        public SnapshotTalentActionOption[] availableTalentActions;
+    }
+
+    [Serializable]
     public sealed class TalentActionMessage
     {
         public long decisionId;

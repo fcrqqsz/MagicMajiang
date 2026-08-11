@@ -2,6 +2,7 @@ using MahjongGame.Core;
 using MahjongGame.Core.Network;
 using MahjongGame.Core.Network.Messages;
 using MahjongGame.Core.Network.Transport;
+using MahjongGame.Talents;
 using MahjongGame.UI;
 
 internal static class SnapshotReconnectTests
@@ -12,6 +13,10 @@ internal static class SnapshotReconnectTests
         TestAddedKongPublicCommitUsesAuthoritativeTile(runner);
         TestDecisionTracker(runner);
         TestSnapshotPrivacyAndSerialization(runner);
+        TestAuthoritativeTalentSnapshotFiltering(runner);
+        TestRuntimeSnapshotProjectionUsesRuleApprovedPrivateValues(runner);
+        TestTalentRecoveryPresentationUsesOnlyAuthoritativeMainDecision(runner);
+        TestTalentProjectionOrderingAndSeatIsolation(runner);
         TestAlienationSnapshotPrivacy(runner);
         TestWinningHandNormalization(runner);
         TestWinningHandSnapshotCodec(runner);
@@ -33,6 +38,297 @@ internal static class SnapshotReconnectTests
         TestRobKongDecisionPhase(runner);
         TestRobKongDeclarationProjection(runner);
         TestRobKongRemoteNotification(runner);
+    }
+
+    private static void TestRuntimeSnapshotProjectionUsesRuleApprovedPrivateValues(RegressionRunner runner)
+    {
+        var loadouts = Enumerable.Range(0, 4).ToDictionary(
+            seatIndex => seatIndex,
+            seatIndex => new TalentSlotConfig
+            {
+                SlotTalentIds = seatIndex == 0
+                    ? new[] { "sheathed_edge", null, null, null, null, null }
+                    : new string[TalentSlotConfig.MainSlotCount],
+                ReserveTalentIds = seatIndex == 0
+                    ? new[] { "interception", null, null }
+                    : new string[TalentSlotConfig.ReserveSlotCount]
+            });
+        var session = new GameSession(GameMode.HalfGame);
+        var runtime = new TalentMatchRuntime(loadouts, TalentRegistry.Instance);
+        runtime.BeginMatch(session);
+        runtime.BeginRound(new TalentRoundContext(session));
+        runtime.ApplyWallBuilding(new TalentWallContext(session, new List<TileData>()));
+        runtime.ResolvePostShuffle(new TalentPostShuffleContext(session, new List<TileData>()));
+        runtime.EndRound(new TalentRoundOutcome { WinnerSeatIndex = 1 }, session);
+
+        TalentSnapshotEntry[] entries = runtime.GetSnapshotEntries().Where(entry => entry.OwnerSeatIndex == 0).ToArray();
+        runner.Check(entries.Single(entry => entry.TalentId == "interception").PrivateValue == 3
+                     && entries.Single(entry => entry.TalentId == "sheathed_edge").PrivateValue == 1,
+            "runtime snapshot privateValue exposes only each rule's approved single counter projection");
+    }
+
+    private static void TestAuthoritativeTalentSnapshotFiltering(RegressionRunner runner)
+    {
+        var source = CreateEmptySnapshotSource("talent-snapshot", RoomState.InRound);
+        source.ActiveDecision = new NetworkDecisionTracker().OpenMainTurn(0, 987654321);
+        source.Talents = new[]
+        {
+            new RoomSnapshotTalentSource
+            {
+                OwnerSeatIndex = 0,
+                TalentId = "interception",
+                IsActive = true,
+                IsRevealed = true,
+                PrivateValue = 2,
+                LastPublicEventType = "uses_remaining",
+                LastPublicValue = 2
+            },
+            new RoomSnapshotTalentSource
+            {
+                OwnerSeatIndex = 0,
+                TalentId = "peek",
+                IsActive = false,
+                IsRevealed = false,
+                PrivateValue = 0
+            },
+            new RoomSnapshotTalentSource
+            {
+                OwnerSeatIndex = 1,
+                TalentId = "sheathed_edge",
+                IsActive = false,
+                IsRevealed = true,
+                PrivateValue = 91,
+                LastPublicEventType = "edge",
+                LastPublicValue = 3
+            },
+            new RoomSnapshotTalentSource
+            {
+                OwnerSeatIndex = 2,
+                TalentId = "interception",
+                IsActive = true,
+                IsRevealed = false,
+                PrivateValue = 77
+            }
+        };
+        source.AvailableTalentActions = new[]
+        {
+            new TalentActionOption
+            {
+                TalentId = "interception",
+                TargetSeatIndex = 1,
+                TargetTalentId = "sheathed_edge"
+            }
+        };
+        source.Sideboard = new RoomSnapshotSideboardSource
+        {
+            IsActive = false,
+            DecisionId = 44,
+            DeadlineUnixMilliseconds = 555,
+            OwnLocked = true,
+            SeatLocked = new[] { true, false, true, true }
+        };
+
+        RoomGameSnapshot owner = RoomGameSnapshotBuilder.Build(source, 0);
+        RoomGameSnapshot opponent = RoomGameSnapshotBuilder.Build(source, 1);
+        string ownerJson = UnityEngine.JsonUtility.ToJson(owner);
+        string knownJson = UnityEngine.JsonUtility.ToJson(owner.knownTalents);
+
+        runner.Check(owner.activeDecision?.decisionId == 1
+                     && owner.activeDecision.phase == (int)NetworkDecisionPhase.MainTurn
+                     && owner.privateSeat.ownTalents.Length == 2
+                     && owner.privateSeat.ownTalents.Single(talent => talent.talentId == "interception").isActive
+                     && owner.privateSeat.ownTalents.Single(talent => talent.talentId == "interception").privateValue == 2
+                     && owner.privateSeat.availableTalentActions.Single().targetTalentId == "sheathed_edge"
+                     && owner.knownTalents.Length == 1
+                     && owner.knownTalents[0].ownerSeatIndex == 1
+                     && owner.knownTalents[0].lastPublicValue == 3,
+            "a main-turn reconnect snapshot restores only authoritative decision, own talent state, known reveals, and recomputed actions");
+        runner.Check(!ownerJson.Contains("transientTalentSelection", StringComparison.Ordinal)
+                     && !knownJson.Contains("isActive", StringComparison.OrdinalIgnoreCase)
+                     && !ownerJson.Contains("\"privateValue\":91", StringComparison.Ordinal)
+                     && !ownerJson.Contains("\"privateValue\":77", StringComparison.Ordinal)
+                     && opponent.privateSeat.ownTalents.Single().talentId == "sheathed_edge"
+                     && opponent.privateSeat.ownTalents.Single().privateValue == 91,
+            "talent snapshots never serialize picker drafts, opponent active flags, hidden talents, or opponent private values");
+    }
+
+    private static void TestTalentProjectionOrderingAndSeatIsolation(RegressionRunner runner)
+    {
+        var state = new ClientGameState();
+        state.ApplySnapshot(new RoomGameSnapshot
+        {
+            requestingSeatIndex = 0,
+            scores = new int[4],
+            seats = Enumerable.Range(0, 4).Select(index => new RoomSnapshotSeat { seatIndex = index }).ToArray(),
+            privateSeat = new SnapshotPrivateSeat
+            {
+                seatIndex = 0,
+                ownTalents = new[]
+                {
+                    new SnapshotOwnTalent { talentId = "interception", isActive = true, privateValue = 3 }
+                },
+                availableTalentActions = Array.Empty<SnapshotTalentActionOption>()
+            },
+            knownTalents = Array.Empty<SnapshotKnownTalent>(),
+            sideboard = new SnapshotSideboardState { seatLocked = new bool[4] },
+            rivers = EmptyRivers()
+        }, 0);
+
+        NetworkMessageEnvelope reveal = MessageSerializer.DeserializeEnvelope(MessageSerializer.Serialize(
+            "TalentRuntimeEvent", 1, new TalentRuntimeEventMessage
+            {
+                eventId = 10,
+                ownerSeatIndex = 1,
+                talentId = "sheathed_edge",
+                eventType = "edge",
+                visibility = (int)TalentEventVisibility.Public,
+                value = 3
+            }));
+        ClientSequenceDisposition accepted = state.ApplyEnvelope(reveal);
+        ClientSequenceDisposition duplicate = state.ApplyEnvelope(
+            MessageSerializer.DeserializeEnvelope(MessageSerializer.Serialize(
+                "TalentRuntimeEvent", 1, new TalentRuntimeEventMessage
+                {
+                    eventId = 11,
+                    ownerSeatIndex = 1,
+                    talentId = "sheathed_edge",
+                    eventType = "edge",
+                    visibility = (int)TalentEventVisibility.Public,
+                    value = 99
+                })));
+        ClientSequenceDisposition wrongOwner = state.ApplyEnvelope(
+            MessageSerializer.DeserializeEnvelope(MessageSerializer.Serialize(
+                "TalentPrivateState", 2, new TalentPrivateStateMessage
+                {
+                    ownerSeatIndex = 2,
+                    talents = new[]
+                    {
+                        new SnapshotOwnTalent { talentId = "interception", isActive = true, privateValue = 88 }
+                    }
+                })));
+        ClientSequenceDisposition privateUpdate = state.ApplyEnvelope(
+            MessageSerializer.DeserializeEnvelope(MessageSerializer.Serialize(
+                "TalentPrivateState", 3, new TalentPrivateStateMessage
+                {
+                    ownerSeatIndex = 0,
+                    talents = new[]
+                    {
+                        new SnapshotOwnTalent { talentId = "interception", isActive = true, privateValue = 2 }
+                    }
+                })));
+
+        runner.Check(accepted == ClientSequenceDisposition.Accepted
+                     && duplicate == ClientSequenceDisposition.IgnoredDuplicate
+                     && wrongOwner == ClientSequenceDisposition.Accepted
+                     && privateUpdate == ClientSequenceDisposition.Accepted
+                     && state.Snapshot.knownTalents.Single().lastPublicValue == 3
+                     && state.Snapshot.privateSeat.ownTalents.Single().privateValue == 2,
+            "ordered talent projection applies a public event once and ignores another seat's private runtime state");
+
+        var gapState = new ClientGameState();
+        gapState.ApplySnapshot(new RoomGameSnapshot
+        {
+            requestingSeatIndex = 0,
+            seats = Enumerable.Range(0, 4).Select(index => new RoomSnapshotSeat { seatIndex = index }).ToArray(),
+            privateSeat = new SnapshotPrivateSeat
+            {
+                seatIndex = 0,
+                ownTalents = new[]
+                {
+                    new SnapshotOwnTalent { talentId = "interception", isActive = true, privateValue = 3 }
+                }
+            },
+            rivers = EmptyRivers()
+        }, 0);
+        ClientSequenceDisposition gap = gapState.ApplyEnvelope(
+            MessageSerializer.DeserializeEnvelope(MessageSerializer.Serialize(
+                "TalentPrivateState", 2, new TalentPrivateStateMessage
+                {
+                    ownerSeatIndex = 0,
+                    talents = new[]
+                    {
+                        new SnapshotOwnTalent { talentId = "interception", isActive = true, privateValue = 1 }
+                    }
+                })));
+        runner.Check(gap == ClientSequenceDisposition.ResyncRequired
+                     && gapState.Snapshot.privateSeat.ownTalents.Single().privateValue == 3,
+            "an out-of-order private talent envelope requests resync without applying the private value");
+    }
+
+    private static void TestTalentRecoveryPresentationUsesOnlyAuthoritativeMainDecision(RegressionRunner runner)
+    {
+        var snapshot = new RoomGameSnapshot
+        {
+            requestingSeatIndex = 0,
+            activeDecision = new SnapshotDecision
+            {
+                decisionId = 72,
+                phase = (int)NetworkDecisionPhase.MainTurn,
+                actingSeatIndex = 0
+            },
+            seats = Enumerable.Range(0, 4).Select(index => new RoomSnapshotSeat { seatIndex = index }).ToArray(),
+            privateSeat = new SnapshotPrivateSeat
+            {
+                seatIndex = 0,
+                availableTalentActions = new[]
+                {
+                    new SnapshotTalentActionOption
+                    {
+                        talentId = "interception",
+                        targetSeatIndex = 1,
+                        targetTalentId = "sheathed_edge"
+                    }
+                }
+            },
+            sideboard = new SnapshotSideboardState
+            {
+                isActive = true,
+                decisionId = 9,
+                ownLocked = true,
+                seatLocked = new[] { true, false, true, true }
+            },
+            rivers = EmptyRivers()
+        };
+        var game = new ClientGameState();
+        game.ApplySnapshot(snapshot, 0);
+        ClientTalentRecoveryProjection projection = game.CreateTalentRecoveryProjection();
+        var room = new ClientRoomState();
+        room.ApplyRecoverySnapshot(snapshot);
+
+        runner.Check(projection.CloseTransientPicker
+                     && projection.DecisionId == 72
+                     && projection.AvailableActions.Single().TargetTalentId == "sheathed_edge"
+                     && room.Sideboard.ownLocked
+                     && room.Sideboard.seatLocked.SequenceEqual(new[] { true, false, true, true }),
+            "recovery closes local talent pickers and exposes only authoritative main-turn actions and sideboard locks");
+
+        ClientSequenceDisposition resolved = game.ApplyEnvelope(
+            MessageSerializer.DeserializeEnvelope(MessageSerializer.Serialize(
+                "ActionResolved", 1, new ActionResolvedMessage { playerId = 0 })));
+        var locked = new SideboardLockedMessage
+        {
+            decisionId = 9,
+            acceptedSelection = true,
+            ownTotalAlienation = 55
+        };
+        ClientSequenceDisposition lockedApplied = game.ApplyEnvelope(
+            MessageSerializer.DeserializeEnvelope(MessageSerializer.Serialize("SideboardLocked", 2, locked)));
+        room.ApplySideboardLocked(locked);
+        runner.Check(resolved == ClientSequenceDisposition.Accepted
+                     && game.AvailableTalentActions.Length == 0
+                     && game.CreateTalentRecoveryProjection().AvailableActions.Length == 0
+                     && lockedApplied == ClientSequenceDisposition.Accepted
+                     && game.Snapshot.privateSeat.ownTotalAlienation == 55
+                     && room.OwnTotalAlienation == 55,
+            "decision completion clears cached talent actions and a live sideboard lock updates the authoritative own total");
+
+        snapshot.activeDecision.actingSeatIndex = 1;
+        game.ApplySnapshot(snapshot, 0);
+        ClientTalentRecoveryProjection foreignTurn = game.CreateTalentRecoveryProjection();
+        runner.Check(foreignTurn.CloseTransientPicker
+                     && foreignTurn.DecisionId == 0
+                     && foreignTurn.AvailableActions.Length == 0,
+            "recovery never restores talent actions for another seat's decision");
     }
 
     private static void TestAlienationSnapshotPrivacy(RegressionRunner runner)
@@ -1214,6 +1510,27 @@ internal static class SnapshotReconnectTests
 
     private static List<TileData>[] EmptyTileLists() =>
         Enumerable.Range(0, 4).Select(_ => new List<TileData>()).ToArray();
+
+    private static RoomGameSnapshotSource CreateEmptySnapshotSource(string roomId, RoomState roomState) =>
+        new RoomGameSnapshotSource
+        {
+            RoomId = roomId,
+            RoomState = roomState,
+            GameMode = GameMode.HalfGame,
+            Session = new GameSession(GameMode.HalfGame),
+            Seats = Enumerable.Range(0, 4).Select(index => new RoomSnapshotSeatSource
+            {
+                SeatIndex = index,
+                IsOccupied = true,
+                IsOnline = true,
+                Controller = "OnlineHuman"
+            }).ToArray(),
+            Hands = EmptyTileLists(),
+            Melds = EmptyMeldLists(),
+            Rivers = EmptyTileLists(),
+            ScoringOptions = Enumerable.Range(0, 4).Select(_ => new ScoringOptions()).ToArray(),
+            PeekWallTiles = EmptyTileLists()
+        };
 
     private static List<Meld>[] EmptyMeldLists() =>
         Enumerable.Range(0, 4).Select(_ => new List<Meld>()).ToArray();

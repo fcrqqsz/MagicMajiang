@@ -57,6 +57,8 @@ namespace MahjongGame.Core.Network
         public string ConnectionRecoveryReason { get; private set; }
         public bool CanSubmitCommands => !_pendingReconnect && !IsResyncRequired && !IsConnectionRecoveryRequired;
         public ClientGameState GameState => _gameState;
+        public SnapshotSideboardState Sideboard => _roomState.Sideboard;
+        public TalentActionOption[] AvailableTalentActions => _gameState.AvailableTalentActions;
         /// <summary>Monotonic presentation token for a completed full-snapshot recovery.</summary>
         public int RecoveryPresentationVersion { get; private set; }
 
@@ -263,6 +265,18 @@ namespace MahjongGame.Core.Network
                         SeatSnapshotChanged?.Invoke(Seats);
                     break;
                 case "RoomReady": _roomState.SetRoomState((int)RoomState.LoadingGameScene); RoomReady?.Invoke(); break;
+                case "SideboardStarted":
+                    _roomState.ApplySideboardStarted(
+                        MessageSerializer.DeserializePayload<SideboardStartedMessage>(envelope.data));
+                    break;
+                case "SideboardLocked":
+                    _roomState.ApplySideboardLocked(
+                        MessageSerializer.DeserializePayload<SideboardLockedMessage>(envelope.data));
+                    break;
+                case "SideboardProgress":
+                    _roomState.ApplySideboardProgress(
+                        MessageSerializer.DeserializePayload<SideboardProgressMessage>(envelope.data));
+                    break;
                 case "SessionEnd": CompleteSessionRoomState(); break;
                 case "RoomClosed":
                     var closed = MessageSerializer.DeserializePayload<RoomClosedMessage>(envelope.data);

@@ -65,5 +65,8 @@ namespace MahjongGame.Talents.Impl
                 TalentNegativeEffectTypes.ReducePublicChargeLayer));
             return TalentActionResult.Success();
         }
+
+        public override int GetSnapshotPrivateValue(TalentRuntimeState state) =>
+            state.GetCounter(UsesKey, TalentStateScope.Match);
     }
 }

@@ -3,6 +3,7 @@ using System.Linq;
 using UnityEngine;
 using MahjongGame.Core.Network.Messages;
 using MahjongGame.Core.Network.Transport;
+using MahjongGame.Talents;
 using MahjongGame.UI;
 
 namespace MahjongGame.Core.Network
@@ -12,6 +13,11 @@ namespace MahjongGame.Core.Network
         private Agents.IPlayerClient _localClient;
         private readonly ClientRoomService _roomService;
         private long _activeDecisionId;
+
+        public event System.Action TalentPickerResetRequested;
+        public event System.Action<long, IReadOnlyList<TalentActionOption>> TalentActionsChanged;
+        public event System.Action<TalentRuntimeEventMessage> TalentRuntimeEventReceived;
+        public event System.Action<TalentActionResolvedMessage> TalentActionResolvedReceived;
 
         public RemoteServerProxy(Agents.IPlayerClient localClient, ClientRoomService roomService)
         {
@@ -109,20 +115,35 @@ namespace MahjongGame.Core.Network
                     break;
                 case "ActionResolved":
                     var resolvedMsg = MessageSerializer.DeserializePayload<ActionResolvedMessage>(envelope.data);
-                    _activeDecisionId = 0;
+                    ClearTalentActionsPresentation();
                     _localClient.OnActionResolved(resolvedMsg.playerId, (ClientActionType)resolvedMsg.actionType, resolvedMsg.tile?.ToTileData(), resolvedMsg.chiCombinations);
                     break;
                 case "Timeout":
                     var timeoutMsg = MessageSerializer.DeserializePayload<TimeoutMessage>(envelope.data);
-                    _activeDecisionId = 0;
+                    ClearTalentActionsPresentation();
                     _localClient.OnTimeout(timeoutMsg.tile?.ToTileData());
+                    break;
+                case "TalentRuntimeEvent":
+                    var runtimeEvent = MessageSerializer.DeserializePayload<TalentRuntimeEventMessage>(envelope.data);
+                    if (runtimeEvent != null) TalentRuntimeEventReceived?.Invoke(runtimeEvent);
+                    break;
+                case "TalentPrivateState":
+                    ClientTalentRecoveryProjection liveTalentProjection =
+                        _roomService.GameState.CreateTalentRecoveryProjection();
+                    TalentActionsChanged?.Invoke(
+                        liveTalentProjection.DecisionId,
+                        liveTalentProjection.AvailableActions);
+                    break;
+                case "TalentActionResolved":
+                    var talentResolved = MessageSerializer.DeserializePayload<TalentActionResolvedMessage>(envelope.data);
+                    if (talentResolved != null) TalentActionResolvedReceived?.Invoke(talentResolved);
                     break;
                 case "PlayerWin":
                     var winMsg = MessageSerializer.DeserializePayload<PlayerWinMessage>(envelope.data);
                     if (winMsg == null) break;
                     var winResult = WinResultNormalizer.Normalize(
                         winMsg.winKind, winMsg.isSelfDraw, winMsg.loserId);
-                    _activeDecisionId = 0;
+                    ClearTalentActionsPresentation();
                     SyncSessionAfterRound(winMsg.scores, winMsg.completedRounds);
                     _localClient.OnPlayerWin(winMsg.winnerId, winMsg.totalFan, winMsg.fanDetails?.ToList(),
                         winResult.IsSelfDraw, winResult.Kind, winResult.LoserId,
@@ -131,13 +152,13 @@ namespace MahjongGame.Core.Network
                 case "DrawGame":
                     var drawMsg = MessageSerializer.DeserializePayload<DrawGameMessage>(envelope.data);
                     if (drawMsg == null) break;
-                    _activeDecisionId = 0;
+                    ClearTalentActionsPresentation();
                     SyncSessionAfterRound(drawMsg.scores, drawMsg.completedRounds);
                     _localClient.OnDrawGame();
                     break;
                 case "SessionEnd":
                     var endMsg = MessageSerializer.DeserializePayload<SessionEndMessage>(envelope.data);
-                    _activeDecisionId = 0;
+                    ClearTalentActionsPresentation();
                     _localClient.OnSessionEnd(endMsg.scores);
                     break;
                 // Room-control messages are consumed by ClientRoomService on the same WebSocket.
@@ -148,6 +169,9 @@ namespace MahjongGame.Core.Network
                 case "RoomReady":
                 case "RoomClosed":
                 case "RoomError":
+                case "SideboardStarted":
+                case "SideboardLocked":
+                case "SideboardProgress":
                     break;
                 default:
                     Debug.LogWarning($"[RemoteServerProxy] Unhandled message type: {envelope.type}");
@@ -157,7 +181,16 @@ namespace MahjongGame.Core.Network
 
         private void HandleReconnectSnapshot(RoomGameSnapshot snapshot)
         {
-            _activeDecisionId = snapshot?.activeDecision?.decisionId ?? 0;
+            ClientTalentRecoveryProjection projection = _roomService.GameState.CreateTalentRecoveryProjection();
+            _activeDecisionId = projection.DecisionId;
+            if (projection.CloseTransientPicker) TalentPickerResetRequested?.Invoke();
+            TalentActionsChanged?.Invoke(projection.DecisionId, projection.AvailableActions);
+        }
+
+        private void ClearTalentActionsPresentation()
+        {
+            _activeDecisionId = 0;
+            TalentActionsChanged?.Invoke(0, System.Array.Empty<TalentActionOption>());
         }
 
         private void SyncSessionAfterRound(int[] scores, int completedRounds)

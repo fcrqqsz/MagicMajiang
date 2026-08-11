@@ -30,4 +30,15 @@ namespace MahjongGame.Talents
             };
         }
     }
+
+    public sealed class TalentSnapshotEntry
+    {
+        public int OwnerSeatIndex { get; set; }
+        public string TalentId { get; set; }
+        public bool IsActive { get; set; }
+        public bool IsRevealed { get; set; }
+        public int PrivateValue { get; set; }
+        public string LastPublicEventType { get; set; }
+        public int LastPublicValue { get; set; }
+    }
 }

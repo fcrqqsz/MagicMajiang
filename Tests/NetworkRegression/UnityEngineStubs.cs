@@ -181,6 +181,10 @@ namespace MahjongGame.Core.Network
             return false;
         }
 
+        public System.Collections.Generic.IReadOnlyList<MahjongGame.Talents.TalentActionOption>
+            GetAvailableTalentActionsSnapshot(int seatIndex) =>
+            System.Array.Empty<MahjongGame.Talents.TalentActionOption>();
+
         public System.Collections.Generic.List<MahjongGame.Core.TileData> GetHandSnapshot(int seatIndex) => new();
         public System.Collections.Generic.List<MahjongGame.Core.Meld> GetMeldSnapshot(int seatIndex) => new();
         public System.Collections.Generic.List<MahjongGame.Core.TileData> GetRiverSnapshot(int seatIndex) => new();

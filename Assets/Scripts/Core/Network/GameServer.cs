@@ -381,6 +381,7 @@ namespace MahjongGame.Core.Network
                     currentPlayer.OnTurnWithoutDraw();
                 }
                 _skipNextDraw = false;
+                OnTalentEventsAvailable?.Invoke();
 
                 // 2. 等待当前玩家出牌或自摸、暗杠（带超时）
                 TileData _autoDiscardCache = null;
@@ -784,6 +785,28 @@ namespace MahjongGame.Core.Network
             if (result.Accepted)
                 OnTalentEventsAvailable?.Invoke();
             return result.Accepted;
+        }
+
+        public IReadOnlyList<TalentActionOption> GetAvailableTalentActionsSnapshot(int seatIndex)
+        {
+            NetworkDecisionContext decision = ActiveDecision;
+            if (decision == null
+                || !TalentActionAdmissionPolicy.TryValidateMainTurn(
+                    _decisionTracker,
+                    decision.DecisionId,
+                    seatIndex,
+                    out _))
+            {
+                return Array.Empty<TalentActionOption>();
+            }
+
+            return _talentRuntime.GetAvailableActions(
+                seatIndex,
+                new TalentActionQueryContext(
+                    _session,
+                    seatIndex,
+                    TalentActionAdmissionPolicy.RequiredActivationWindow,
+                    decision.DecisionId));
         }
 
         private void CompleteHuResponseCollection()

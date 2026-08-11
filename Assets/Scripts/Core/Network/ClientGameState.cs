@@ -2,9 +2,17 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using MahjongGame.Core.Network.Messages;
+using MahjongGame.Talents;
 
 namespace MahjongGame.Core.Network
 {
+    public sealed class ClientTalentRecoveryProjection
+    {
+        public bool CloseTransientPicker { get; set; }
+        public long DecisionId { get; set; }
+        public TalentActionOption[] AvailableActions { get; set; } = Array.Empty<TalentActionOption>();
+    }
+
     /// <summary>
     /// Pure client-side projection of authoritative room game data. It owns no Unity
     /// scene objects, timers, animations, or network connection behavior.
@@ -16,6 +24,22 @@ namespace MahjongGame.Core.Network
         public int LastSequence { get; private set; }
         public bool IsResyncRequired { get; private set; }
         public RoomGameSnapshot Snapshot => CloneSnapshot(_snapshot);
+        public TalentActionOption[] AvailableTalentActions =>
+            IsOwnMainDecision(_snapshot?.activeDecision)
+                ? ToTalentActionOptions(_snapshot?.privateSeat?.availableTalentActions)
+                : Array.Empty<TalentActionOption>();
+
+        public ClientTalentRecoveryProjection CreateTalentRecoveryProjection()
+        {
+            SnapshotDecision decision = _snapshot?.activeDecision;
+            bool isOwnMainDecision = IsOwnMainDecision(decision);
+            return new ClientTalentRecoveryProjection
+            {
+                CloseTransientPicker = true,
+                DecisionId = isOwnMainDecision ? decision.decisionId : 0,
+                AvailableActions = isOwnMainDecision ? AvailableTalentActions : Array.Empty<TalentActionOption>()
+            };
+        }
 
         /// <summary>Clears a completed or abandoned room projection before another room stream is accepted.</summary>
         public void Reset()
@@ -142,17 +166,66 @@ namespace MahjongGame.Core.Network
                 case "TalentRuntimeEvent":
                 {
                     var message = MessageSerializer.DeserializePayload<TalentRuntimeEventMessage>(envelope.data);
-                    if (message == null
-                        || !message.isScoreDelta
-                        || message.ownerSeatIndex < 0
-                        || message.ownerSeatIndex >= 4)
+                    if (message == null || message.ownerSeatIndex < 0 || message.ownerSeatIndex >= 4) return;
+
+                    if (message.visibility == (int)TalentEventVisibility.Public
+                        && message.ownerSeatIndex != snapshot.requestingSeatIndex
+                        && !string.IsNullOrWhiteSpace(message.talentId))
                     {
-                        return;
+                        UpsertKnownTalent(snapshot, message);
                     }
 
-                    snapshot.scores ??= new int[4];
-                    if (snapshot.scores.Length == 4)
+                    if (message.isScoreDelta)
+                    {
+                        snapshot.scores ??= new int[4];
+                        if (snapshot.scores.Length == 4)
                         snapshot.scores[message.ownerSeatIndex] += message.value;
+                    }
+                    return;
+                }
+                case "TalentPrivateState":
+                {
+                    var message = MessageSerializer.DeserializePayload<TalentPrivateStateMessage>(envelope.data);
+                    if (message == null || message.ownerSeatIndex != snapshot.requestingSeatIndex) return;
+                    SnapshotPrivateSeat privateSeat = EnsurePrivateSeat(snapshot);
+                    privateSeat.ownTalents = CloneOwnTalents(message.talents);
+                    privateSeat.availableTalentActions = CloneTalentActionOptions(message.availableTalentActions);
+                    return;
+                }
+                case "SideboardStarted":
+                {
+                    var message = MessageSerializer.DeserializePayload<SideboardStartedMessage>(envelope.data);
+                    if (message == null) return;
+                    SnapshotSideboardState sideboard = EnsureSideboard(snapshot);
+                    sideboard.isActive = true;
+                    sideboard.decisionId = message.decisionId;
+                    sideboard.deadlineUnixMilliseconds = message.deadlineUnixMilliseconds;
+                    sideboard.ownLocked = false;
+                    return;
+                }
+                case "SideboardLocked":
+                {
+                    var message = MessageSerializer.DeserializePayload<SideboardLockedMessage>(envelope.data);
+                    if (message == null) return;
+                    SnapshotSideboardState sideboard = EnsureSideboard(snapshot);
+                    sideboard.decisionId = message.decisionId;
+                    sideboard.ownLocked = true;
+                    EnsurePrivateSeat(snapshot).ownTotalAlienation = message.ownTotalAlienation;
+                    return;
+                }
+                case "SideboardProgress":
+                {
+                    var message = MessageSerializer.DeserializePayload<SideboardProgressMessage>(envelope.data);
+                    if (message == null) return;
+                    SnapshotSideboardState sideboard = EnsureSideboard(snapshot);
+                    sideboard.decisionId = message.decisionId;
+                    sideboard.isActive = !message.isComplete;
+                    sideboard.seatLocked = new bool[4];
+                    foreach (SideboardSeatLockStateMessage seat in message.seats ?? Array.Empty<SideboardSeatLockStateMessage>())
+                    {
+                        if (seat != null && seat.seatIndex >= 0 && seat.seatIndex < 4)
+                            sideboard.seatLocked[seat.seatIndex] = seat.locked;
+                    }
                     return;
                 }
                 case "TileDrawn":
@@ -244,11 +317,13 @@ namespace MahjongGame.Core.Network
                     ApplyResolvedMeld(snapshot, message);
                     snapshot.activeDecision = null;
                     snapshot.mainTurnDrawnTile = null;
+                    EnsurePrivateSeat(snapshot).availableTalentActions = Array.Empty<SnapshotTalentActionOption>();
                     return;
                 }
                 case "Timeout":
                     snapshot.activeDecision = null;
                     snapshot.mainTurnDrawnTile = null;
+                    EnsurePrivateSeat(snapshot).availableTalentActions = Array.Empty<SnapshotTalentActionOption>();
                     return;
                 case "PlayerWin":
                 {
@@ -477,7 +552,9 @@ namespace MahjongGame.Core.Network
                 requestingSeatIndex = -1,
                 seats = Enumerable.Range(0, 4).Select(index => new RoomSnapshotSeat { seatIndex = index }).ToArray(),
                 privateSeat = new SnapshotPrivateSeat { seatIndex = -1 },
-                rivers = CreateEmptyRivers()
+                rivers = CreateEmptyRivers(),
+                knownTalents = Array.Empty<SnapshotKnownTalent>(),
+                sideboard = new SnapshotSideboardState { seatLocked = new bool[4] }
             };
         }
 
@@ -486,6 +563,39 @@ namespace MahjongGame.Core.Network
             if (snapshot.privateSeat == null)
                 snapshot.privateSeat = new SnapshotPrivateSeat { seatIndex = snapshot.requestingSeatIndex };
             return snapshot.privateSeat;
+        }
+
+        private static SnapshotSideboardState EnsureSideboard(RoomGameSnapshot snapshot)
+        {
+            snapshot.sideboard ??= new SnapshotSideboardState { seatLocked = new bool[4] };
+            return snapshot.sideboard;
+        }
+
+        private bool IsOwnMainDecision(SnapshotDecision decision) =>
+            decision != null
+            && decision.decisionId > 0
+            && decision.phase == (int)NetworkDecisionPhase.MainTurn
+            && decision.actingSeatIndex == _snapshot.requestingSeatIndex;
+
+        private static void UpsertKnownTalent(RoomGameSnapshot snapshot, TalentRuntimeEventMessage message)
+        {
+            var talents = (snapshot.knownTalents ?? Array.Empty<SnapshotKnownTalent>()).ToList();
+            SnapshotKnownTalent known = talents.FirstOrDefault(talent => talent != null
+                && talent.ownerSeatIndex == message.ownerSeatIndex
+                && string.Equals(talent.talentId, message.talentId, StringComparison.Ordinal));
+            if (known == null)
+            {
+                known = new SnapshotKnownTalent
+                {
+                    ownerSeatIndex = message.ownerSeatIndex,
+                    talentId = message.talentId,
+                    isKnown = true
+                };
+                talents.Add(known);
+            }
+            known.lastPublicEventType = message.eventType;
+            known.lastPublicValue = message.value;
+            snapshot.knownTalents = talents.ToArray();
         }
 
         private static void EnsureRivers(RoomGameSnapshot snapshot)
@@ -550,6 +660,7 @@ namespace MahjongGame.Core.Network
                 alienationPreset = snapshot.alienationPreset,
                 requestingSeatIndex = snapshot.requestingSeatIndex,
                 seats = (snapshot.seats ?? Array.Empty<RoomSnapshotSeat>()).Select(CloneSeat).ToArray(),
+                knownTalents = CloneKnownTalents(snapshot.knownTalents),
                 roundNumber = snapshot.roundNumber,
                 prevalentWind = snapshot.prevalentWind,
                 requestingSeatWind = snapshot.requestingSeatWind,
@@ -560,6 +671,7 @@ namespace MahjongGame.Core.Network
                 remainingWallCount = snapshot.remainingWallCount,
                 activeDecision = CloneDecision(snapshot.activeDecision),
                 mainTurnDrawnTile = CloneTile(snapshot.mainTurnDrawnTile),
+                sideboard = CloneSideboard(snapshot.sideboard),
                 result = CloneResult(snapshot.result)
             };
         }
@@ -603,9 +715,55 @@ namespace MahjongGame.Core.Network
                     bonusFan = seat.scoringOptions.bonusFan,
                     relaxedPureStraight = seat.scoringOptions.relaxedPureStraight
                 },
-                peekWallTiles = CloneTiles(seat.peekWallTiles)
+                peekWallTiles = CloneTiles(seat.peekWallTiles),
+                ownTalents = CloneOwnTalents(seat.ownTalents),
+                availableTalentActions = CloneTalentActionOptions(seat.availableTalentActions)
             };
         }
+
+        private static SnapshotKnownTalent[] CloneKnownTalents(SnapshotKnownTalent[] talents) =>
+            (talents ?? Array.Empty<SnapshotKnownTalent>()).Select(talent => talent == null ? null : new SnapshotKnownTalent
+            {
+                ownerSeatIndex = talent.ownerSeatIndex,
+                talentId = talent.talentId,
+                isKnown = talent.isKnown,
+                lastPublicEventType = talent.lastPublicEventType,
+                lastPublicValue = talent.lastPublicValue
+            }).ToArray();
+
+        private static SnapshotOwnTalent[] CloneOwnTalents(SnapshotOwnTalent[] talents) =>
+            (talents ?? Array.Empty<SnapshotOwnTalent>()).Select(talent => talent == null ? null : new SnapshotOwnTalent
+            {
+                talentId = talent.talentId,
+                isActive = talent.isActive,
+                privateValue = talent.privateValue
+            }).ToArray();
+
+        private static SnapshotTalentActionOption[] CloneTalentActionOptions(SnapshotTalentActionOption[] options) =>
+            (options ?? Array.Empty<SnapshotTalentActionOption>()).Select(option => option == null ? null : new SnapshotTalentActionOption
+            {
+                talentId = option.talentId,
+                targetSeatIndex = option.targetSeatIndex,
+                targetTalentId = option.targetTalentId
+            }).ToArray();
+
+        private static TalentActionOption[] ToTalentActionOptions(SnapshotTalentActionOption[] options) =>
+            (options ?? Array.Empty<SnapshotTalentActionOption>()).Where(option => option != null).Select(option => new TalentActionOption
+            {
+                TalentId = option.talentId,
+                TargetSeatIndex = option.targetSeatIndex,
+                TargetTalentId = option.targetTalentId
+            }).ToArray();
+
+        private static SnapshotSideboardState CloneSideboard(SnapshotSideboardState sideboard) =>
+            sideboard == null ? null : new SnapshotSideboardState
+            {
+                isActive = sideboard.isActive,
+                decisionId = sideboard.decisionId,
+                deadlineUnixMilliseconds = sideboard.deadlineUnixMilliseconds,
+                ownLocked = sideboard.ownLocked,
+                seatLocked = sideboard.seatLocked?.ToArray() ?? Array.Empty<bool>()
+            };
 
         private static SnapshotMeld[] CloneMelds(SnapshotMeld[] melds)
         {

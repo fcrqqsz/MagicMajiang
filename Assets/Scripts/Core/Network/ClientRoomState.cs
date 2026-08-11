@@ -65,6 +65,8 @@ namespace MahjongGame.Core.Network
         public string ResultRoomId { get; private set; }
         public int ResultSeatIndex { get; private set; } = -1;
         public RoomSeatMessage[] ResultSeats { get; private set; } = Array.Empty<RoomSeatMessage>();
+        private SnapshotSideboardState _sideboard = CreateEmptySideboard();
+        public SnapshotSideboardState Sideboard => CloneSideboard(_sideboard);
 
         public void ApplyJoined(RoomJoinedMessage joined)
         {
@@ -94,6 +96,7 @@ namespace MahjongGame.Core.Network
             RoomStateValue = snapshot.roomState;
             AlienationPreset = (AlienationPreset)snapshot.alienationPreset;
             OwnTotalAlienation = snapshot.privateSeat?.ownTotalAlienation ?? 0;
+            _sideboard = CloneSideboard(snapshot.sideboard);
             Seats = (snapshot.seats ?? Array.Empty<Messages.RoomSnapshotSeat>()).Select(seat => seat == null ? null : new RoomSeatMessage
             {
                 seatIndex = seat.seatIndex,
@@ -107,6 +110,36 @@ namespace MahjongGame.Core.Network
         }
 
         public void SetSeats(RoomSeatMessage[] seats) => Seats = CloneSeats(seats);
+
+        public void ApplySideboardStarted(SideboardStartedMessage message)
+        {
+            if (message == null) return;
+            _sideboard.isActive = true;
+            _sideboard.decisionId = message.decisionId;
+            _sideboard.deadlineUnixMilliseconds = message.deadlineUnixMilliseconds;
+            _sideboard.ownLocked = false;
+        }
+
+        public void ApplySideboardLocked(SideboardLockedMessage message)
+        {
+            if (message == null) return;
+            _sideboard.decisionId = message.decisionId;
+            _sideboard.ownLocked = true;
+            OwnTotalAlienation = message.ownTotalAlienation;
+        }
+
+        public void ApplySideboardProgress(SideboardProgressMessage message)
+        {
+            if (message == null) return;
+            _sideboard.decisionId = message.decisionId;
+            _sideboard.isActive = !message.isComplete;
+            _sideboard.seatLocked = new bool[4];
+            foreach (SideboardSeatLockStateMessage seat in message.seats ?? Array.Empty<SideboardSeatLockStateMessage>())
+            {
+                if (seat != null && seat.seatIndex >= 0 && seat.seatIndex < 4)
+                    _sideboard.seatLocked[seat.seatIndex] = seat.locked;
+            }
+        }
 
         public bool ApplySeatUpdate(RoomSeatMessage seat)
         {
@@ -147,6 +180,7 @@ namespace MahjongGame.Core.Network
             AcceptedSchemaVersion = 0;
             OwnTotalAlienation = 0;
             Seats = Array.Empty<RoomSeatMessage>();
+            _sideboard = CreateEmptySideboard();
         }
 
         private void ClearCompletedSession()
@@ -180,5 +214,20 @@ namespace MahjongGame.Core.Network
             }
             return clone;
         }
+
+        private static SnapshotSideboardState CreateEmptySideboard() =>
+            new SnapshotSideboardState { seatLocked = new bool[4] };
+
+        private static SnapshotSideboardState CloneSideboard(SnapshotSideboardState sideboard) =>
+            sideboard == null
+                ? CreateEmptySideboard()
+                : new SnapshotSideboardState
+                {
+                    isActive = sideboard.isActive,
+                    decisionId = sideboard.decisionId,
+                    deadlineUnixMilliseconds = sideboard.deadlineUnixMilliseconds,
+                    ownLocked = sideboard.ownLocked,
+                    seatLocked = sideboard.seatLocked?.ToArray() ?? Array.Empty<bool>()
+                };
     }
 }
