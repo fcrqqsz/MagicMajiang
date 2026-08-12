@@ -24,6 +24,8 @@ internal static class TalentPresentationTests
 
     private static void RunTalentEditorAndLobbySourceTests(RegressionRunner runner)
     {
+        RunTalentPickerDuplicateTests(runner);
+
         string editorUxmlPath = GetRepoPath("Assets", "UI", "DeckEditorView.uxml");
         XDocument editorUxml = XDocument.Load(editorUxmlPath);
         List<string> queryNames = editorUxml.Descendants()
@@ -77,6 +79,44 @@ internal static class TalentPresentationTests
         runner.Check(lobbySource.Contains("HandleRoomError(string message)", StringComparison.Ordinal)
             && lobbySource.Contains("ShowRoomAdmissionBlocker(message);", StringComparison.Ordinal),
             "authoritative join-room rejections open the explicit admission blocker");
+        runner.Check(lobbySource.Contains("RoomAlienationPresentationPolicy.Build", StringComparison.Ordinal)
+            && lobbySource.Contains("roomAlienation.PublicSummary", StringComparison.Ordinal)
+            && !lobbySource.Contains("room-seat-alienation", StringComparison.Ordinal)
+            && !lobbySource.Contains("row.Alienation", StringComparison.Ordinal),
+            "room preset appears only in the public summary and never in a seat row");
+
+        RoomAlienationVisibilityView roomAlienation = RoomAlienationPresentationPolicy.Build(
+            AlienationPreset.Standard, ownTotal: 45);
+        runner.Check(roomAlienation.PublicSummary == "异化档位：标准 80"
+            && roomAlienation.OwnSummary == "本家异化：45 / 80"
+            && string.IsNullOrEmpty(roomAlienation.SeatSummary),
+            "room alienation presentation exposes one public preset, one private own total, and no seat copy");
+    }
+
+    private static void RunTalentPickerDuplicateTests(RegressionRunner runner)
+    {
+        var mainCurrent = new TalentSlotConfig
+        {
+            SlotTalentIds = new[] { "peek", null, null, null, null, null },
+            ReserveTalentIds = new string[TalentSlotConfig.ReserveSlotCount]
+        };
+        runner.Check(!TalentPickerDuplicatePolicy.IsDuplicateOutsideSlot(
+                mainCurrent, "peek", slotIndex: 0, isReserve: false),
+            "the currently equipped main talent remains selectable");
+
+        mainCurrent.ReserveTalentIds[0] = "peek";
+        runner.Check(TalentPickerDuplicatePolicy.IsDuplicateOutsideSlot(
+                mainCurrent, "peek", slotIndex: 0, isReserve: false),
+            "a reserve talent at the same numeric index still disables the main picker item");
+
+        var reserveCurrent = new TalentSlotConfig
+        {
+            SlotTalentIds = new string[TalentSlotConfig.MainSlotCount],
+            ReserveTalentIds = new[] { "peek", null, null }
+        };
+        runner.Check(!TalentPickerDuplicatePolicy.IsDuplicateOutsideSlot(
+                reserveCurrent, "peek", slotIndex: 0, isReserve: true),
+            "the currently equipped reserve talent remains selectable");
     }
 
     private static string GetRepoPath(params string[] segments)

@@ -311,12 +311,6 @@
     -unity-text-align: middle-center;
 }
 
-.room-seat-alienation {
-    width: 104px;
-    color: rgb(242, 192, 111);
-    -unity-text-align: middle-right;
-}
-
 .room-seat-ready {
     width: 86px;
     color: rgb(123, 219, 157);

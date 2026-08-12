@@ -441,7 +441,9 @@ namespace MahjongGame.UI
             if (roomIdLabel != null) roomIdLabel.text = $"房间 {room.RoomId}";
             if (roomStateLabel != null) roomStateLabel.text = GetRoomStateText(room.RoomState);
             if (roomModeLabel != null) roomModeLabel.text = $"对局模式：{GetGameModeText(room.GameMode)}";
-            if (roomPresetPublicLabel != null) roomPresetPublicLabel.text = $"异化档位：{RoomLoadoutAdmissionPresentationPolicy.GetDisplayName(room.AlienationPreset)}";
+            RoomAlienationVisibilityView roomAlienation = RoomAlienationPresentationPolicy.Build(
+                room.AlienationPreset, room.OwnTotalAlienation);
+            if (roomPresetPublicLabel != null) roomPresetPublicLabel.text = roomAlienation.PublicSummary;
             if (roomAiFillLabel != null) roomAiFillLabel.text = $"AI 补位：{(room.AiFillEnabled ? "已开启" : "已关闭")}";
 
             int humanCount = 0;
@@ -452,7 +454,7 @@ namespace MahjongGame.UI
             if (roomHumanCountLabel != null) roomHumanCountLabel.text = $"真人玩家：{humanCount}/4";
 
             if (roomLocalDeckLabel != null) roomLocalDeckLabel.text = $"牌库：{GetSelectedDeckName()}";
-            if (roomLocalAlienationLabel != null) roomLocalAlienationLabel.text = $"本家异化：{room.OwnTotalAlienation} / {AlienationBudgetPolicy.GetLimit(room.AlienationPreset)}";
+            if (roomLocalAlienationLabel != null) roomLocalAlienationLabel.text = roomAlienation.OwnSummary;
             if (roomLoadoutLockLabel != null) roomLoadoutLockLabel.text = "构筑已锁定（服务器已确认）";
 
             bool localReady = room.SeatIndex >= 0 && room.SeatIndex < room.Seats.Length && room.Seats[room.SeatIndex] != null && room.Seats[room.SeatIndex].isReady;
@@ -465,7 +467,7 @@ namespace MahjongGame.UI
             for (int index = 0; index < roomSeatRowViews.Count; index++)
             {
                 RoomSeatMessage seat = index < room.Seats.Length ? room.Seats[index] : null;
-                UpdateRoomSeatRow(roomSeatRowViews[index], index, seat, index == room.SeatIndex, room.AlienationPreset);
+                UpdateRoomSeatRow(roomSeatRowViews[index], index, seat, index == room.SeatIndex);
             }
         }
 
@@ -479,15 +481,13 @@ namespace MahjongGame.UI
                 var number = new Label(); number.AddToClassList("room-seat-number"); root.Add(number);
                 var name = new Label(); name.AddToClassList("room-seat-name"); root.Add(name);
                 var kind = new Label(); kind.AddToClassList("room-seat-kind"); root.Add(kind);
-                var alienation = new Label(); alienation.AddToClassList("room-seat-alienation"); root.Add(alienation);
                 var ready = new Label(); ready.AddToClassList("room-seat-ready"); root.Add(ready);
                 roomSeatRows.Add(root);
-                roomSeatRowViews.Add(new RoomSeatRowView(root, number, name, kind, alienation, ready));
+                roomSeatRowViews.Add(new RoomSeatRowView(root, number, name, kind, ready));
             }
         }
 
-        private static void UpdateRoomSeatRow(RoomSeatRowView row, int seatIndex, RoomSeatMessage seat, bool isLocal,
-            AlienationPreset alienationPreset)
+        private static void UpdateRoomSeatRow(RoomSeatRowView row, int seatIndex, RoomSeatMessage seat, bool isLocal)
         {
             if (isLocal) row.Root.AddToClassList("room-seat-row-local");
             else row.Root.RemoveFromClassList("room-seat-row-local");
@@ -497,14 +497,12 @@ namespace MahjongGame.UI
             {
                 row.Name.text = "空席";
                 row.Kind.text = "--";
-                row.Alienation.text = "异化：--";
                 row.Ready.text = "等待";
                 return;
             }
 
             row.Name.text = string.IsNullOrWhiteSpace(seat.displayName) ? $"玩家 {seatIndex + 1}" : seat.displayName;
             row.Kind.text = seat.isAi ? "AI" : "真人";
-            row.Alienation.text = $"档位：{RoomLoadoutAdmissionPresentationPolicy.GetDisplayName(alienationPreset)}";
             row.Ready.text = seat.isReady ? "已准备" : "未准备";
         }
 
@@ -686,16 +684,14 @@ namespace MahjongGame.UI
             public Label Number { get; }
             public Label Name { get; }
             public Label Kind { get; }
-            public Label Alienation { get; }
             public Label Ready { get; }
 
-            public RoomSeatRowView(VisualElement root, Label number, Label name, Label kind, Label alienation, Label ready)
+            public RoomSeatRowView(VisualElement root, Label number, Label name, Label kind, Label ready)
             {
                 Root = root;
                 Number = number;
                 Name = name;
                 Kind = kind;
-                Alienation = alienation;
                 Ready = ready;
             }
         }

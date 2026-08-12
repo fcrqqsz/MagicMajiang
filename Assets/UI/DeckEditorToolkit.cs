@@ -764,9 +764,6 @@ namespace MahjongGame.UI
             var allIds = TalentRegistry.Instance.GetAllIds();
             string[] targetSlots = GetTalentSlots(isReserve);
             string currentSlotTalent = targetSlots[slotIndex];
-            var carriedElsewhere = new HashSet<string>(StringComparer.Ordinal);
-            AddCarriedTalentsExceptCurrent(carriedElsewhere, _currentTalents.SlotTalentIds, slotIndex, isReserve);
-            AddCarriedTalentsExceptCurrent(carriedElsewhere, _currentTalents.ReserveTalentIds, slotIndex, !isReserve);
 
             // 创建弹出选择列表
             var overlay = new VisualElement();
@@ -813,7 +810,8 @@ namespace MahjongGame.UI
                     ? _currentTalents.CanEquipReserve(slotIndex, tier)
                     : _currentTalents.CanEquip(slotIndex, tier);
                 bool allowedByMetadata = !isReserve || metadata.SideboardPolicy == TalentSideboardPolicy.Flexible;
-                bool isDuplicate = carriedElsewhere.Contains(id);
+                bool isDuplicate = TalentPickerDuplicatePolicy.IsDuplicateOutsideSlot(
+                    _currentTalents, id, slotIndex, isReserve);
                 bool canSelect = allowedBySlot && allowedByMetadata && !isDuplicate;
 
                 var item = new VisualElement();
@@ -883,21 +881,6 @@ namespace MahjongGame.UI
         private string[] GetTalentSlots(bool isReserve) => isReserve
             ? _currentTalents.ReserveTalentIds
             : _currentTalents.SlotTalentIds;
-
-        private static void AddCarriedTalentsExceptCurrent(
-            ISet<string> destination,
-            IReadOnlyList<string> source,
-            int currentIndex,
-            bool skipCurrentIndex)
-        {
-            if (source == null) return;
-            for (int index = 0; index < source.Count; index++)
-            {
-                string id = source[index];
-                if (skipCurrentIndex && index == currentIndex) continue;
-                if (!string.IsNullOrWhiteSpace(id)) destination.Add(id);
-            }
-        }
 
         private sealed class TalentSlotBinding
         {
