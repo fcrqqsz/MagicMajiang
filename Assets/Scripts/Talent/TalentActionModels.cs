@@ -27,9 +27,14 @@ namespace MahjongGame.Talents
     public sealed class TalentActionResult
     {
         public bool Accepted { get; private set; }
+        public bool EffectApplied { get; private set; }
         public string ErrorCode { get; private set; }
 
-        public static TalentActionResult Success() => new TalentActionResult { Accepted = true };
+        public static TalentActionResult Success(bool effectApplied) => new TalentActionResult
+        {
+            Accepted = true,
+            EffectApplied = effectApplied
+        };
 
         public static TalentActionResult Reject(string code) => new TalentActionResult
         {

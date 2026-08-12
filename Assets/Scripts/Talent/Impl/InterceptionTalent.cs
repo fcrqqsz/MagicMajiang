@@ -57,13 +57,13 @@ namespace MahjongGame.Talents.Impl
             context.State.SetCounter(UsesKey, remaining - 1, TalentStateScope.Match);
             context.State.SetToken(UsedDecisionKey, context.DecisionId, TalentStateScope.Round);
             context.RevealWithPublicCounter(UsesKey, remaining - 1, TalentStateScope.Match);
-            context.ApplyNegativeEffect(new TalentNegativeEffect(
+            TalentNegativeEffectResult effectResult = context.ApplyNegativeEffect(new TalentNegativeEffect(
                 context.OwnerSeatIndex,
                 Id,
                 target.OwnerSeatIndex,
                 target.TalentId,
                 TalentNegativeEffectTypes.ReducePublicChargeLayer));
-            return TalentActionResult.Success();
+            return TalentActionResult.Success(effectApplied: effectResult.WasApplied);
         }
 
         public override int GetSnapshotPrivateValue(TalentRuntimeState state) =>

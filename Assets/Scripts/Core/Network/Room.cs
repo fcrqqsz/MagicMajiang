@@ -414,6 +414,7 @@ namespace MahjongGame.Core.Network
                 ownerSeatIndex = seatIndex,
                 talentId = message?.talentId,
                 accepted = result.Accepted,
+                effectApplied = result.EffectApplied,
                 errorCode = result.ErrorCode
             });
             return accepted;

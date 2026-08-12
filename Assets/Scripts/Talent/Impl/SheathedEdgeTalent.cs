@@ -54,7 +54,7 @@ namespace MahjongGame.Talents.Impl
             context.SetPublicCounter(ChargeKey, 0, TalentStateScope.Match);
             context.State.SetFlag(ArmedKey, true, TalentStateScope.Round);
             context.EmitPublic("armed", 1);
-            return TalentActionResult.Success();
+            return TalentActionResult.Success(effectApplied: true);
         }
 
         public override int GetPostLegalFanBonus(TalentWinContext context) =>

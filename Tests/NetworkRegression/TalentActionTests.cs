@@ -12,6 +12,7 @@ internal static class TalentActionTests
         SupplementalActionValidationRejectsInvalidDecisionContexts(runner);
         SupplementalTalentAdmissionRejectsResponseWindowsBeforeRuntime(runner);
         CarriedTalentActionExecutesPolymorphically(runner);
+        ActiveTalentFeedbackDistinguishesAppliedEffects(runner);
         InterceptionConsumesUsageBeforeTargetDefense(runner);
         InterceptionLimitsUsageAndEnumeratesOnlyEligibleTargets(runner);
         InterceptionRevalidatesEveryTargetEligibilityOnTheServer(runner);
@@ -37,7 +38,7 @@ internal static class TalentActionTests
         VerifyManagedTalentAction(
             runner,
             "talent-route-accepted",
-            room => room.GameServer.NextTalentActionResult = TalentActionResult.Success(),
+            room => room.GameServer.NextTalentActionResult = TalentActionResult.Success(effectApplied: true),
             new TalentActionMessage
             {
                 decisionId = 501,
@@ -45,6 +46,7 @@ internal static class TalentActionTests
                 targetSeatIndex = -1
             },
             expectedAccepted: true,
+            expectedEffectApplied: true,
             expectedErrorCode: null,
             expectedServerSubmissions: 1,
             "RoomManager routes an authenticated TalentAction through its bound seat and emits one ordered acceptance");
@@ -55,6 +57,7 @@ internal static class TalentActionTests
             room => room.GameServer.NextTalentActionResult = TalentActionResult.Reject(NetworkErrorCodes.WrongPhase),
             new TalentActionMessage { decisionId = 502, talentId = "sheathed_edge" },
             expectedAccepted: false,
+            expectedEffectApplied: false,
             expectedErrorCode: NetworkErrorCodes.WrongPhase,
             expectedServerSubmissions: 1,
             "a GameServer talent rejection emits one ordered seat resolution without a RoomError");
@@ -65,6 +68,7 @@ internal static class TalentActionTests
             room => room.Seats[0].Controller.HumanSubmissionAllowed = false,
             new TalentActionMessage { decisionId = 503, talentId = "sheathed_edge" },
             expectedAccepted: false,
+            expectedEffectApplied: false,
             expectedErrorCode: NetworkErrorCodes.WrongController,
             expectedServerSubmissions: 0,
             "a Room controller rejection emits one ordered seat resolution without reaching GameServer");
@@ -75,6 +79,7 @@ internal static class TalentActionTests
             _ => { },
             null,
             expectedAccepted: false,
+            expectedEffectApplied: false,
             expectedErrorCode: NetworkErrorCodes.InvalidAction,
             expectedServerSubmissions: 0,
             "an empty bound-seat TalentAction emits one ordered InvalidAction resolution");
@@ -146,6 +151,7 @@ internal static class TalentActionTests
         Action<Room> configure,
         TalentActionMessage request,
         bool expectedAccepted,
+        bool expectedEffectApplied,
         string expectedErrorCode,
         int expectedServerSubmissions,
         string description)
@@ -180,6 +186,7 @@ internal static class TalentActionTests
             && resolved.ownerSeatIndex == 0
             && resolved.talentId == request?.talentId
             && resolved.accepted == expectedAccepted
+            && resolved.effectApplied == expectedEffectApplied
             && resolved.errorCode == expectedErrorCode
             && room.GameServer.TalentActionSubmissionCount == expectedServerSubmissions
             && (expectedServerSubmissions == 0
@@ -348,6 +355,79 @@ internal static class TalentActionTests
             "a talent action rejects activation outside its declared window");
         runner.Check(runtime.DrainEventsForSeat(0).Any(runtimeEvent => runtimeEvent.EventType == "test_action"),
             "a polymorphic talent action can emit an owner-filtered runtime event");
+    }
+
+    private static void ActiveTalentFeedbackDistinguishesAppliedEffects(RegressionRunner runner)
+    {
+        TalentMatchRuntime sheathedRuntime = CreateChargedSheathedEdgeRuntime(out GameSession sheathedSession);
+        sheathedRuntime.DrainEventsForSeat(0);
+        sheathedRuntime.OpenMainDecision(ownerSeatIndex: 0, decisionId: 3000000101L);
+        TalentActionResult sheathed = sheathedRuntime.TryActivate(
+            0,
+            new TalentActionRequest { TalentId = "sheathed_edge", DecisionId = 3000000101L },
+            new TalentActivationContext(
+                sheathedSession, 0, TalentActivationWindow.MainTurn, decisionId: 3000000101L));
+        TalentActionResult rejected = sheathedRuntime.TryActivate(
+            0,
+            new TalentActionRequest { TalentId = "not_carried", DecisionId = 3000000101L },
+            new TalentActivationContext(
+                sheathedSession, 0, TalentActivationWindow.MainTurn, decisionId: 3000000101L));
+        IReadOnlyList<TalentRuntimeEvent> sheathedEvents = sheathedRuntime.DrainEventsForSeat(0);
+
+        TalentMatchRuntime blockedRuntime = CreateInterceptionRuntime(
+            includeTargetComposure: true,
+            out GameSession blockedSession);
+        ChargeSheathedEdge(blockedRuntime, blockedSession);
+        blockedRuntime.DrainEventsForSeat(0);
+        blockedRuntime.OpenMainDecision(ownerSeatIndex: 1, decisionId: 3000000102L);
+        TalentActionResult interceptionBlocked = TryInterceptionAt(
+            blockedRuntime, blockedSession, 3000000102L, 0, "sheathed_edge");
+        TalentActionResult duplicate = TryInterceptionAt(
+            blockedRuntime, blockedSession, 3000000102L, 0, "sheathed_edge");
+
+        TalentMatchRuntime appliedRuntime = CreateInterceptionRuntime(
+            includeTargetComposure: false,
+            out GameSession appliedSession);
+        ChargeSheathedEdge(appliedRuntime, appliedSession);
+        appliedRuntime.DrainEventsForSeat(0);
+        appliedRuntime.OpenMainDecision(ownerSeatIndex: 1, decisionId: 3000000103L);
+        TalentActionResult interceptionApplied = TryInterceptionAt(
+            appliedRuntime, appliedSession, 3000000103L, 0, "sheathed_edge");
+        TalentActionResult stale = appliedRuntime.TryActivate(
+            1,
+            new TalentActionRequest
+            {
+                TalentId = "interception",
+                DecisionId = 3000000102L,
+                TargetSeatIndex = 0,
+                TargetTalentId = "sheathed_edge"
+            },
+            new TalentActivationContext(
+                appliedSession, 1, TalentActivationWindow.MainTurn, decisionId: 3000000103L));
+        IReadOnlyList<TalentRuntimeEvent> events = appliedRuntime.DrainEventsForSeat(0);
+
+        runner.Check(sheathed.Accepted && sheathed.EffectApplied,
+            "arming sheathed edge is an applied active effect");
+        runner.Check(interceptionBlocked.Accepted && !interceptionBlocked.EffectApplied,
+            "a blocked interception still spends its use but is not a strong success");
+        runner.Check(interceptionApplied.Accepted && interceptionApplied.EffectApplied,
+            "an unblocked charge reduction is a strong success");
+        runner.Check(sheathedEvents.Count(runtimeEvent => runtimeEvent.EventType == "active_talent_applied"
+                                                   && runtimeEvent.TalentId == "sheathed_edge"
+                                                   && runtimeEvent.Visibility == TalentEventVisibility.Public) == 1
+                     && events.Count(runtimeEvent => runtimeEvent.EventType == "active_talent_applied"
+                                                   && runtimeEvent.TalentId == "interception"
+                                                   && runtimeEvent.Visibility == TalentEventVisibility.Public) == 1,
+            "an applied request emits one standardized public feedback event owned by its source talent");
+        runner.Check(!rejected.Accepted && !rejected.EffectApplied
+                     && sheathedEvents.Count(runtimeEvent => runtimeEvent.EventType == "active_talent_applied") == 1,
+            "a rejected request emits no standardized feedback event");
+        runner.Check(!duplicate.Accepted && !duplicate.EffectApplied
+                     && !stale.Accepted && !stale.EffectApplied,
+            "duplicate and stale requests are not applied active effects");
+        runner.Check(blockedRuntime.DrainEventsForSeat(0)
+                         .Count(runtimeEvent => runtimeEvent.EventType == "active_talent_applied") == 0,
+            "blocked, duplicate, and stale requests emit zero standardized feedback events");
     }
 
     private static void InterceptionConsumesUsageBeforeTargetDefense(RegressionRunner runner)
@@ -1011,7 +1091,7 @@ internal sealed class ActionTalentTestRule : TalentRule
             EventType = "test_action",
             Visibility = TalentEventVisibility.OwnerOnly
         });
-        return TalentActionResult.Success();
+        return TalentActionResult.Success(effectApplied: false);
     }
 }
 

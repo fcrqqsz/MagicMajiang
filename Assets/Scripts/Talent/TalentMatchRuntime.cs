@@ -372,17 +372,26 @@ namespace MahjongGame.Talents
             if (!entry.Metadata.ActivationWindow.HasFlag(context.RequiredWindow))
                 return TalentActionResult.Reject(TalentActionErrorCodes.NotAvailable);
 
-            return entry.Rule.TryActivate(
-                       context.WithState(
-                           entry.State,
-                           runtimeEvent => EmitEvent(entry, runtimeEvent),
-                           IsFirstMainDecision(
-                               ownerSeatIndex,
-                               context.RequiredWindow,
-                               context.DecisionId),
-                           this),
-                       request)
-                   ?? TalentActionResult.NotSupported();
+            TalentActionResult result = entry.Rule.TryActivate(
+                context.WithState(
+                    entry.State,
+                    runtimeEvent => EmitEvent(entry, runtimeEvent),
+                    IsFirstMainDecision(
+                        ownerSeatIndex,
+                        context.RequiredWindow,
+                        context.DecisionId),
+                    this),
+                request)
+                ?? TalentActionResult.NotSupported();
+            if (result.Accepted && result.EffectApplied)
+            {
+                EmitEvent(entry, new TalentRuntimeEvent
+                {
+                    EventType = "active_talent_applied",
+                    Visibility = TalentEventVisibility.Public
+                });
+            }
+            return result;
         }
 
         public int GetPublicCounter(int ownerSeatIndex, string talentId, string key)

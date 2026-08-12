@@ -296,6 +296,7 @@ namespace MahjongGame.Core.Network.Messages
         public int ownerSeatIndex;
         public string talentId;
         public bool accepted;
+        public bool effectApplied;
         public string errorCode;
     }
 
