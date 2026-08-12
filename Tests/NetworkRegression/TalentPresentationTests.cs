@@ -15,12 +15,136 @@ internal static class TalentPresentationTests
 {
     public static void Run(RegressionRunner runner)
     {
+        RunLayeredTalentHudPolicyTests(runner);
+        RunTalentEventPresentationPolicyTests(runner);
         RunAlienationPresentationPolicyTests(runner);
         RunTalentEditorAndLobbySourceTests(runner);
         RunLoadoutPresetTests(runner);
         RunServerAdmissionTests(runner);
         RunClientCommandTests(runner);
     }
+
+    private static void RunLayeredTalentHudPolicyTests(RegressionRunner runner)
+    {
+        var snapshot = new RoomGameSnapshot
+        {
+            privateSeat = new SnapshotPrivateSeat
+            {
+                ownTalents = new[]
+                {
+                    new SnapshotOwnTalent { talentId = "peek", isActive = true },
+                    new SnapshotOwnTalent { talentId = "midas_touch", isActive = false },
+                    new SnapshotOwnTalent { talentId = "draw_reward", isActive = false },
+                    new SnapshotOwnTalent { talentId = "head_start", isActive = false }
+                }
+            },
+            knownTalents = new[]
+            {
+                new SnapshotKnownTalent { ownerSeatIndex = 1, talentId = "peek", isKnown = true, lastPublicEventType = "talent_revealed" },
+                new SnapshotKnownTalent { ownerSeatIndex = 1, talentId = "midas_touch", isKnown = true, lastPublicEventType = "active_talent_applied" },
+                new SnapshotKnownTalent { ownerSeatIndex = 1, talentId = "draw_reward", isKnown = true },
+                new SnapshotKnownTalent { ownerSeatIndex = 1, talentId = "head_start", isKnown = true },
+                new SnapshotKnownTalent { ownerSeatIndex = 1, talentId = "hidden", isKnown = false },
+                new SnapshotKnownTalent { ownerSeatIndex = 2, talentId = "peek", isKnown = true }
+            }
+        };
+        var events = new[]
+        {
+            new TalentRuntimeEventMessage { eventId = 12, ownerSeatIndex = 1, talentId = "midas_touch", eventType = "active_talent_applied", visibility = (int)TalentEventVisibility.Public },
+            new TalentRuntimeEventMessage { eventId = 8, ownerSeatIndex = 1, talentId = "peek", eventType = "talent_revealed", visibility = (int)TalentEventVisibility.Public }
+        };
+
+        TalentHudView view = TalentHudProjectionPolicy.Build(snapshot, localSeatIndex: 0, publicEvents: events);
+        runner.Check(view.OwnVisible.All(item => item.IsActive) && view.OwnCollapsedCount == 3,
+            "only active own talents remain in the persistent hand-anchored row");
+        runner.Check(view.Seats[1].Visible.Count == 2 && view.Seats[1].CollapsedCount == 2,
+            "opponents show two authorized known talents and a +N summary");
+        runner.Check(view.Seats[1].Visible.All(item => !item.ShowActiveState),
+            "opponent chips never reveal post-sideboard active state");
+        runner.Check(view.Seats[1].Visible[0].TalentId == "midas_touch"
+            && view.Seats[1].Visible[1].TalentId == "peek",
+            "public event recency orders authorized opponent talents without inspecting hidden entries");
+        runner.Check(view.Seats[2].Visible.Count == 1 && view.Seats[2].CollapsedCount == 0,
+            "each opponent summary is limited to server-authorized known talents only");
+
+        TalentHudView pinned = TalentHudProjectionPolicy.Build(new RoomGameSnapshot
+        {
+            knownTalents = new[]
+            {
+                new SnapshotKnownTalent { ownerSeatIndex = 3, talentId = "starting_capital", isKnown = true },
+                new SnapshotKnownTalent { ownerSeatIndex = 3, talentId = "midas_touch", isKnown = true }
+            }
+        }, 0, new[]
+        {
+            new TalentRuntimeEventMessage
+            {
+                eventId = 99, ownerSeatIndex = 3, talentId = "midas_touch",
+                eventType = "active_talent_applied", visibility = (int)TalentEventVisibility.Public
+            }
+        });
+        runner.Check(pinned.Seats[3].Visible[0].TalentId == "starting_capital",
+            "public-at-match-start talents are pinned ahead of more recent public events");
+    }
+
+    private static void RunTalentEventPresentationPolicyTests(RegressionRunner runner)
+    {
+        TalentFeedbackView strong = TalentEventPresentationPolicy.Build(ActiveAppliedEvent(), false);
+        runner.Check(strong.Level == TalentFeedbackLevel.Strong
+            && strong.ShowToast && strong.AppendFeed && strong.PulseChip && strong.PlayAudio,
+            "only standardized applied active effects produce the four-part strong feedback");
+
+        runner.Check(TalentEventPresentationPolicy.Build(BlockedEvent(), false).Level == TalentFeedbackLevel.Medium,
+            "control blocking is medium feedback");
+        runner.Check(TalentEventPresentationPolicy.Build(PrivateRefresh(), false).Level == TalentFeedbackLevel.Weak,
+            "ordinary projection refresh only updates chips");
+        TalentFeedbackView recovery = TalentEventPresentationPolicy.Build(ActiveAppliedEvent(), true);
+        runner.Check(recovery.IsSilent && !recovery.ShowToast && !recovery.AppendFeed
+            && !recovery.PulseChip && !recovery.PlayAudio,
+            "recovery suppresses all historical feedback without replaying any feed effects");
+
+        TalentFeedbackView unknown = TalentEventPresentationPolicy.Build(new TalentRuntimeEventMessage
+        {
+            eventId = 9,
+            talentId = "<b>untrusted</b>",
+            eventType = "<script>alert(1)</script>"
+        }, false);
+        runner.Check(unknown.Level == TalentFeedbackLevel.Weak
+            && unknown.Copy == "天赋状态已更新" && unknown.ShouldLogWarning,
+            "unknown events use safe generic copy rather than server-provided rich text");
+
+        var history = new TalentFeedbackHistory();
+        runner.Check(!history.TryAccept(0) && history.TryAccept(10) && !history.TryAccept(10) && !history.TryAccept(9),
+            "feedback history rejects non-positive duplicate and lower event IDs within a match");
+        history.ResetForNewMatch();
+        runner.Check(history.TryAccept(1), "a new match resets event-feedback deduplication");
+    }
+
+    private static TalentRuntimeEventMessage ActiveAppliedEvent() => new TalentRuntimeEventMessage
+    {
+        eventId = 1,
+        ownerSeatIndex = 0,
+        talentId = "peek",
+        eventType = "active_talent_applied",
+        visibility = (int)TalentEventVisibility.Public
+    };
+
+    private static TalentRuntimeEventMessage BlockedEvent() => new TalentRuntimeEventMessage
+    {
+        eventId = 2,
+        ownerSeatIndex = 0,
+        talentId = "interception",
+        eventType = "blocked_negative_effect",
+        visibility = (int)TalentEventVisibility.Public
+    };
+
+    private static TalentRuntimeEventMessage PrivateRefresh() => new TalentRuntimeEventMessage
+    {
+        eventId = 3,
+        ownerSeatIndex = 0,
+        talentId = "peek",
+        eventType = "private_state_refresh",
+        visibility = (int)TalentEventVisibility.OwnerOnly
+    };
 
     private static void RunTalentEditorAndLobbySourceTests(RegressionRunner runner)
     {
