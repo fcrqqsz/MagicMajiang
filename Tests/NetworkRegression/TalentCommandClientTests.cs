@@ -14,6 +14,7 @@ internal static class TalentCommandClientTests
     {
         RemoteProxySerializesTalentActionFromAuthoritativeMainDecision(runner);
         RemoteProxyBindsAndUnbindsTalentPresentationClient(runner);
+        CurrentSnapshotTalentProjectionReplaysAfterSceneConstruction(runner);
         RemoteProxyPublishesOrderedTalentPresentationBoundaries(runner);
         BaseActionClearsTalentPresentationWithoutLosingDecision(runner);
         LiveMainTurnDecisionAuthorizesTalentAction(runner);
@@ -22,6 +23,61 @@ internal static class TalentCommandClientTests
         LiveSideboardDecisionAuthorizesSubmission(runner);
         SideboardRejectsLockedWrongPhaseAndConnectionRecovery(runner);
         WebSocketClient.ResetForTests();
+    }
+
+    private static void CurrentSnapshotTalentProjectionReplaysAfterSceneConstruction(RegressionRunner runner)
+    {
+        using ClientRoomService service = CreateService(CreateMainTurnSnapshot());
+        var local = new TalentPresentationClientStub();
+        using var proxy = new ProxyLifetime(new RemoteServerProxy(local, service));
+        var presentations = new List<(long DecisionId, TalentActionOption[] Options)>();
+        int pickerResets = 0;
+        int runtimeFeedback = 0;
+        proxy.Value.TalentActionsChanged += (decisionId, options) =>
+            presentations.Add((decisionId, options?.ToArray() ?? Array.Empty<TalentActionOption>()));
+        proxy.Value.TalentPickerResetRequested += () => pickerResets++;
+        proxy.Value.TalentRuntimeEventReceived += _ => runtimeFeedback++;
+
+        proxy.Value.ApplyCurrentTalentRecoveryProjection();
+        proxy.Value.ApplyCurrentTalentRecoveryProjection();
+        WebSocketClient.Instance.SentMessages.Clear();
+        proxy.Value.SubmitAction(ClientAction.Discard(0, new TileData(Suit.Man, 3, 101)));
+        ClientActionMessage submitted = GetOnlySentPayload<ClientActionMessage>("Action");
+
+        runner.Check(pickerResets == 3
+            && presentations.Count == 3
+            && presentations[0].DecisionId == MainDecisionId
+            && presentations[0].Options.Single().TalentId == "interception"
+            && presentations[0].Options.Single().TargetSeatIndex == 2
+            && presentations[1].DecisionId == MainDecisionId
+            && presentations[1].Options.Single().TalentId == "interception"
+            && presentations[2].DecisionId == 0
+            && submitted?.decisionId == MainDecisionId,
+            "a proxy created after snapshot application idempotently replays long decision and talent options before base submission");
+        runner.Check(runtimeFeedback == 0,
+            "replaying current talent recovery projection is silent and emits no historical runtime feedback");
+
+        using ClientRoomService wrongSeat = CreateService(CreateMainTurnSnapshot(
+            NetworkDecisionPhase.MainTurn, actingSeatIndex: 1));
+        using var wrongSeatProxy = new ProxyLifetime(new RemoteServerProxy(new TalentPresentationClientStub(), wrongSeat));
+        (long DecisionId, int Count) wrongSeatPresentation = (-1, -1);
+        int wrongSeatReset = 0;
+        wrongSeatProxy.Value.TalentActionsChanged += (decisionId, options) =>
+            wrongSeatPresentation = (decisionId, options?.Count ?? 0);
+        wrongSeatProxy.Value.TalentPickerResetRequested += () => wrongSeatReset++;
+        wrongSeatProxy.Value.ApplyCurrentTalentRecoveryProjection();
+        runner.Check(wrongSeatPresentation == (0L, 0) && wrongSeatReset == 1,
+            "current recovery replay publishes no talent actions for a non-owned main decision");
+
+        using ClientRoomService response = CreateService(CreateMainTurnSnapshot(
+            NetworkDecisionPhase.Response, actingSeatIndex: 0));
+        using var responseProxy = new ProxyLifetime(new RemoteServerProxy(new TalentPresentationClientStub(), response));
+        (long DecisionId, int Count) responsePresentation = (-1, -1);
+        responseProxy.Value.TalentActionsChanged += (decisionId, options) =>
+            responsePresentation = (decisionId, options?.Count ?? 0);
+        responseProxy.Value.ApplyCurrentTalentRecoveryProjection();
+        runner.Check(responsePresentation == (0L, 0),
+            "current recovery replay publishes no talent actions outside the own main-turn phase");
     }
 
     private static void BaseActionClearsTalentPresentationWithoutLosingDecision(RegressionRunner runner)

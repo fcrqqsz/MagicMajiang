@@ -143,6 +143,7 @@ namespace MahjongGame.Core
             }
 
             _localPlayer?.RestoreFromSnapshot(snapshot);
+            _currentClientProxy?.ApplyCurrentTalentRecoveryProjection();
             GameHUDController.Instance?.ApplyRecoverySnapshot(snapshot, Session);
             ResultPanelController.Instance?.ApplyRecoveryResult(snapshot);
         }

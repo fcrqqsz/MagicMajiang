@@ -232,6 +232,7 @@ internal static class TalentPresentationTests
         string pickerPath = GetRepoPath("Assets", "UI", "FloatingTilePanelController.cs");
         string localPath = GetRepoPath("Assets", "Scripts", "Core", "Agents", "LocalPlayerClient.cs");
         string proxyPath = GetRepoPath("Assets", "Scripts", "Core", "Network", "RemoteServerProxy.cs");
+        string gameManagerPath = GetRepoPath("Assets", "Scripts", "Core", "GameManager.cs");
 
         XDocument panel = XDocument.Load(uxmlPath);
         HashSet<string> names = panel.Descendants()
@@ -246,6 +247,7 @@ internal static class TalentPresentationTests
         string picker = File.ReadAllText(pickerPath);
         string local = File.ReadAllText(localPath);
         string proxy = File.ReadAllText(proxyPath);
+        string gameManager = File.ReadAllText(gameManagerPath);
         runner.Check(styles.Contains(".talent-action-row", StringComparison.Ordinal)
             && styles.Contains("MSYH_UITK.asset", StringComparison.Ordinal)
             && !styles.Contains("MSYH.TTC", StringComparison.OrdinalIgnoreCase)
@@ -277,6 +279,10 @@ internal static class TalentPresentationTests
             && proxy.IndexOf("ClearTalentActionsPresentation(clearDecisionId: false);", StringComparison.Ordinal)
                < proxy.IndexOf("var msg = new ClientActionMessage", StringComparison.Ordinal),
             "RemoteServerProxy owns the local talent UI subscription and clears supplemental controls before base submission");
+        int restoreIndex = gameManager.IndexOf("_localPlayer?.RestoreFromSnapshot(snapshot);", StringComparison.Ordinal);
+        int talentReplayIndex = gameManager.IndexOf("_currentClientProxy?.ApplyCurrentTalentRecoveryProjection();", StringComparison.Ordinal);
+        runner.Check(restoreIndex >= 0 && talentReplayIndex > restoreIndex,
+            "GameManager replays current talent actions only after LocalPlayerClient recovery cleanup and base restore");
     }
 
     private static void RunTalentEventPresentationPolicyTests(RegressionRunner runner)

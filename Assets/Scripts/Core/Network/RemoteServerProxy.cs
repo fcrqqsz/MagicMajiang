@@ -80,6 +80,15 @@ namespace MahjongGame.Core.Network
         public bool SubmitSideboard(IReadOnlyCollection<string> activeTalentIds) =>
             _roomService.SubmitSideboard(activeTalentIds);
 
+        public void ApplyCurrentTalentRecoveryProjection()
+        {
+            ClientTalentRecoveryProjection projection =
+                _roomService.GameState.CreateTalentRecoveryProjection();
+            _activeDecisionId = projection.DecisionId;
+            if (projection.CloseTransientPicker) TalentPickerResetRequested?.Invoke();
+            TalentActionsChanged?.Invoke(projection.DecisionId, projection.AvailableActions);
+        }
+
         private void HandleAcceptedSequenceEnvelope(NetworkMessageEnvelope envelope)
         {
             if (envelope == null) return;
@@ -208,10 +217,7 @@ namespace MahjongGame.Core.Network
 
         private void HandleReconnectSnapshot(RoomGameSnapshot snapshot)
         {
-            ClientTalentRecoveryProjection projection = _roomService.GameState.CreateTalentRecoveryProjection();
-            _activeDecisionId = projection.DecisionId;
-            if (projection.CloseTransientPicker) TalentPickerResetRequested?.Invoke();
-            TalentActionsChanged?.Invoke(projection.DecisionId, projection.AvailableActions);
+            ApplyCurrentTalentRecoveryProjection();
         }
 
         private void ClearTalentActionsPresentation(bool clearDecisionId = true)
