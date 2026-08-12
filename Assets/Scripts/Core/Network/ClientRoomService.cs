@@ -86,16 +86,20 @@ namespace MahjongGame.Core.Network
             client.OnDisconnected += HandleDisconnected;
         }
 
-        public bool CreateRoom(GameMode gameMode, string nickname, string address = null)
+        public bool CreateRoom(
+            GameMode gameMode,
+            AlienationPreset roomPreset,
+            string nickname,
+            string address = null)
         {
             if (!CanStartNewRoomCommand()) return false;
+            if (!AlienationBudgetPolicy.IsDefined(roomPreset)) return false;
             if (!TryBuildSelectedLoadout(out var loadout)) return false;
-            AlienationPreset alienationPreset = GetSelectedAlienationPreset();
             if (!BeginRoomCommand(nickname,
                     () => Send("CreateRoom", new CreateRoomMessage
                     {
                         gameMode = (int)gameMode,
-                        alienationPreset = (int)alienationPreset,
+                        alienationPreset = (int)roomPreset,
                         loadout = loadout
                     }),
                     address)) return false;
@@ -140,6 +144,9 @@ namespace MahjongGame.Core.Network
             });
             return true;
         }
+
+        public bool CreateRoom(GameMode gameMode, string nickname, string address = null) =>
+            CreateRoom(gameMode, GetSelectedLoadoutAlienationPreset(), nickname, address);
 
         public bool SubmitSideboard(IReadOnlyCollection<string> activeTalentIds)
         {
@@ -371,11 +378,13 @@ namespace MahjongGame.Core.Network
             loadout = null;
             DeckConfig deckConfig;
             TalentSlotConfig talentConfig;
+            AlienationPreset alienationPreset;
             var profile = ProfileManager.Instance?.CurrentProfile;
             if (profile == null || profile.SavedDecks == null || profile.SavedDecks.Count == 0)
             {
                 deckConfig = DeckConfig.CreateStandard();
                 talentConfig = new TalentSlotConfig();
+                alienationPreset = AlienationPreset.Standard;
             }
             else
             {
@@ -389,17 +398,24 @@ namespace MahjongGame.Core.Network
                 SavedDeck savedDeck = profile.SavedDecks[index];
                 deckConfig = savedDeck?.Config;
                 talentConfig = savedDeck?.Talents ?? new TalentSlotConfig();
+                alienationPreset = savedDeck?.AlienationPreset ?? AlienationPreset.Standard;
             }
 
-            if (PlayerLoadoutCodec.TryCreateMessage(deckConfig, talentConfig, out loadout, out string errorCode)) return true;
+            if (PlayerLoadoutCodec.TryCreateMessage(
+                    deckConfig, talentConfig, alienationPreset, out loadout, out string errorCode)) return true;
             RoomError?.Invoke($"The selected local loadout is invalid ({errorCode}). Fix it before entering a room.");
             return false;
         }
 
-        private static AlienationPreset GetSelectedAlienationPreset()
+        private static AlienationPreset GetSelectedLoadoutAlienationPreset()
         {
-            AlienationPreset preset = ProfileManager.Instance?.CurrentProfile?.Settings?.SelectedAlienationPreset
-                ?? AlienationPreset.Standard;
+            var profile = ProfileManager.Instance?.CurrentProfile;
+            if (profile?.SavedDecks == null || profile.SavedDecks.Count == 0)
+                return AlienationPreset.Standard;
+            int index = profile.SelectedDeckIndex;
+            if (index < 0 || index >= profile.SavedDecks.Count)
+                return AlienationPreset.Standard;
+            AlienationPreset preset = profile.SavedDecks[index]?.AlienationPreset ?? AlienationPreset.Standard;
             return AlienationBudgetPolicy.IsDefined(preset) ? preset : AlienationPreset.Standard;
         }
 

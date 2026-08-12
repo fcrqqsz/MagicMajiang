@@ -208,7 +208,8 @@ internal static class TalentActionTests
         {
             gameMode = (int)GameMode.Single,
             alienationPreset = (int)AlienationPreset.Standard,
-            loadout = PlayerLoadoutCodec.CreateMessage(loadout.DeckConfig, loadout.TalentConfig)
+            loadout = PlayerLoadoutCodec.CreateMessage(
+                loadout.DeckConfig, loadout.TalentConfig, AlienationPreset.Standard)
         }));
 
         var roomsField = typeof(RoomManager).GetField(

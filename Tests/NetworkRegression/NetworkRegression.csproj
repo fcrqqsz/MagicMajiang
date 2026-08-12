@@ -17,6 +17,7 @@
     <Compile Include="TalentFoundationTests.cs" />
     <Compile Include="TalentActionTests.cs" />
     <Compile Include="TalentCommandClientTests.cs" />
+    <Compile Include="TalentPresentationTests.cs" />
     <Compile Include="SideboardTests.cs" />
     <Compile Include="AuthoritativePublicTileTransitionTests.cs" />
     <Compile Include="UnityEngineStubs.cs" />

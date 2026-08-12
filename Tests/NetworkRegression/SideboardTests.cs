@@ -429,7 +429,7 @@ internal static class SideboardTests
             {
                 SlotTalentIds = mainIds,
                 ReserveTalentIds = reserveIds
-            }),
+            }, AlienationPreset.Low),
             out TrustedPlayerLoadout loadout,
             out string errorCode);
         if (!decoded) throw new InvalidOperationException($"Invalid sideboard test loadout: {errorCode}");
@@ -494,7 +494,8 @@ internal static class SideboardTests
         {
             gameMode = (int)GameMode.HalfGame,
             alienationPreset = (int)AlienationPreset.Low,
-            loadout = PlayerLoadoutCodec.CreateMessage(loadout.DeckConfig, loadout.TalentConfig)
+            loadout = PlayerLoadoutCodec.CreateMessage(
+                loadout.DeckConfig, loadout.TalentConfig, AlienationPreset.Low)
         }));
 
         var roomsField = typeof(RoomManager).GetField("_rooms", System.Reflection.BindingFlags.Instance

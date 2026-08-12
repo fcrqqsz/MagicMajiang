@@ -384,6 +384,13 @@ namespace MahjongGame.Core.Network
         {
             int actual = 0;
             int limit = 0;
+            int loadoutAlienationPreset = 0;
+            int roomAlienationPreset = 0;
+            if (errorCode == PlayerLoadoutErrorCodes.AlienationPresetMismatch)
+            {
+                loadoutAlienationPreset = message?.alienationPreset ?? 0;
+                roomAlienationPreset = (int)preset;
+            }
             if (errorCode == PlayerLoadoutErrorCodes.AlienationLimitExceeded
                 && PlayerLoadoutCodec.TryDecode(message, out var unboundedLoadout, out _))
             {
@@ -391,10 +398,19 @@ namespace MahjongGame.Core.Network
                 limit = AlienationBudgetPolicy.GetLimit(preset);
             }
 
-            SendError(connectionId, endpoint, errorCode, "The submitted player loadout is invalid.", actual, limit);
+            SendError(connectionId, endpoint, errorCode, "The submitted player loadout is invalid.",
+                actual, limit, loadoutAlienationPreset, roomAlienationPreset);
         }
 
-        private void SendError(string connectionId, GameEndpoint endpoint, string code, string message, int actual = 0, int limit = 0)
+        private void SendError(
+            string connectionId,
+            GameEndpoint endpoint,
+            string code,
+            string message,
+            int actual = 0,
+            int limit = 0,
+            int loadoutAlienationPreset = 0,
+            int roomAlienationPreset = 0)
         {
             if (_connections.TryGet(connectionId, out var record)
                 && record.IsAuthenticated
@@ -405,19 +421,30 @@ namespace MahjongGame.Core.Network
                 {
                     code = code,
                     message = message,
+                    loadoutAlienationPreset = loadoutAlienationPreset,
+                    roomAlienationPreset = roomAlienationPreset,
                     actual = actual,
                     limit = limit
                 })) return;
 
-            SendError(endpoint, code, message, actual, limit);
+            SendError(endpoint, code, message, actual, limit, loadoutAlienationPreset, roomAlienationPreset);
         }
 
         private static void Send(GameEndpoint endpoint, string type, object payload) => endpoint?.SendMessage(MessageSerializer.Serialize(type, 0, payload));
-        private static void SendError(GameEndpoint endpoint, string code, string message, int actual = 0, int limit = 0) =>
+        private static void SendError(
+            GameEndpoint endpoint,
+            string code,
+            string message,
+            int actual = 0,
+            int limit = 0,
+            int loadoutAlienationPreset = 0,
+            int roomAlienationPreset = 0) =>
             endpoint?.SendMessage(MessageSerializer.Serialize("RoomError", 0, new RoomErrorMessage
             {
                 code = code,
                 message = message,
+                loadoutAlienationPreset = loadoutAlienationPreset,
+                roomAlienationPreset = roomAlienationPreset,
                 actual = actual,
                 limit = limit
             }));

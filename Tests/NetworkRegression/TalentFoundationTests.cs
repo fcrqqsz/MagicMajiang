@@ -38,7 +38,6 @@ internal static class TalentFoundationTests
         PurePostLegalModifiersRevealThroughEntryExcludedCounterfactuals(runner);
         NetworkRuntimeIntegrationHasNoStableTalentIdLiterals(runner);
         LoadoutDecodingEnforcesRoomAlienationPresets(runner);
-        ProfileSettingsNormalizeUnknownAlienationPreset(runner);
     }
 
     private static void LegacySlotsNormalizeWithoutDiscardingMainLoadout(RegressionRunner runner)
@@ -935,6 +934,7 @@ internal static class TalentFoundationTests
         PlayerLoadoutMessage message = new PlayerLoadoutMessage
         {
             schemaVersion = TrustedPlayerLoadout.CurrentSchemaVersion,
+            alienationPreset = (int)AlienationPreset.Low,
             deckEntries = BuildValidDeckEntries(deckAlienation: 30),
             mainTalentSlotIds = new[] { "midas_touch", null, null, null, null, null },
             reserveTalentSlotIds = new[] { null, "network_test_small", null }
@@ -945,33 +945,18 @@ internal static class TalentFoundationTests
         runner.Check(!lowAccepted && lowError == PlayerLoadoutErrorCodes.AlienationLimitExceeded,
             "low preset rejects 30 deck + 15 active talent");
 
+        message.alienationPreset = (int)AlienationPreset.Standard;
         bool standardAccepted = PlayerLoadoutCodec.TryDecode(
             message, AlienationPreset.Standard, out TrustedPlayerLoadout standard, out _);
         runner.Check(standardAccepted && standard.TotalAlienation == 45,
             "inactive reserve cost is excluded from room-entry alienation");
-        runner.Check(TrustedPlayerLoadout.CurrentSchemaVersion == 2,
-            "carried-loadout wire schema is v2");
+        runner.Check(TrustedPlayerLoadout.CurrentSchemaVersion == 3,
+            "carried-loadout wire schema is v3");
 
-        message.schemaVersion = 1;
+        message.schemaVersion = 2;
         runner.Check(!PlayerLoadoutCodec.TryDecode(message, AlienationPreset.Standard, out _, out string legacyError)
                      && legacyError == PlayerLoadoutErrorCodes.UnsupportedLoadoutVersion,
-            "legacy v1 loadouts are explicitly rejected instead of being guessed");
-    }
-
-    private static void ProfileSettingsNormalizeUnknownAlienationPreset(RegressionRunner runner)
-    {
-        PlayerProfile profile = new PlayerProfile
-        {
-            Settings = new ProfileSettings
-            {
-                SelectedAlienationPreset = (AlienationPreset)999
-            }
-        };
-
-        profile.Normalize();
-
-        runner.Check(profile.Settings.SelectedAlienationPreset == AlienationPreset.Standard,
-            "profile normalization restores an unknown alienation preview preset to Standard");
+            "legacy v2 loadouts are explicitly rejected instead of being guessed");
     }
 
     private static DeckTileCountMessage[] BuildValidDeckEntries(int deckAlienation)

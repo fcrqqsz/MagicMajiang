@@ -18,6 +18,12 @@ if (args.Length == 1 && string.Equals(args[0], "talent-command-client", StringCo
     return runner.Complete();
 }
 
+if (args.Length == 1 && string.Equals(args[0], "talent-presentation", StringComparison.OrdinalIgnoreCase))
+{
+    TalentPresentationTests.Run(runner);
+    return runner.Complete();
+}
+
 IdentityConnectionTests.Run(runner);
 RoomSessionTests.Run(runner);
 NetworkAuthorityBoundaryTests.Run(runner);
@@ -26,6 +32,7 @@ ActionValidationTests.Run(runner);
 TalentFoundationTests.Run(runner);
 TalentActionTests.Run(runner);
 TalentCommandClientTests.Run(runner);
+TalentPresentationTests.Run(runner);
 SideboardTests.Run(runner);
 AuthoritativePublicTileTransitionTests.Run(runner);
 

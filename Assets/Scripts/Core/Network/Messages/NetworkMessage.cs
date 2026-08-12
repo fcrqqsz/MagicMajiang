@@ -25,7 +25,7 @@ namespace MahjongGame.Core.Network.Messages
         public int protocolVersion = NetworkProtocol.Version;
         public string username;
 
-        // Retained only for serialized legacy data; protocol v3 authenticates with username.
+        // Retained only for serialized legacy data; the current protocol authenticates with username.
         public string nickname;
     }
 
@@ -81,6 +81,7 @@ namespace MahjongGame.Core.Network.Messages
     public class PlayerLoadoutMessage
     {
         public int schemaVersion;
+        public int alienationPreset;
         public DeckTileCountMessage[] deckEntries;
         public string[] mainTalentSlotIds;
         public string[] reserveTalentSlotIds;
@@ -215,6 +216,8 @@ namespace MahjongGame.Core.Network.Messages
     {
         public string code;
         public string message;
+        public int loadoutAlienationPreset;
+        public int roomAlienationPreset;
         public int actual;
         public int limit;
     }

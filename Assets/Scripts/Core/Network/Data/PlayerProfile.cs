@@ -38,12 +38,6 @@ namespace MahjongGame.Core.Network.Data
         public float SFXVolume = 1.0f;
         public bool DebugMode = false;
         public int SelectedGameMode = 0; // 0=Single, 1=EastOnly, 2=HalfGame, 3=FullGame
-        public AlienationPreset SelectedAlienationPreset = AlienationPreset.Standard;
-
-        public void Normalize()
-        {
-            if (!AlienationBudgetPolicy.IsDefined(SelectedAlienationPreset))
-                SelectedAlienationPreset = AlienationPreset.Standard;
-        }
+        public void Normalize() { }
     }
 }

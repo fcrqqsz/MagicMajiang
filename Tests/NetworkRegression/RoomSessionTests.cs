@@ -26,7 +26,8 @@ internal static class RoomSessionTests
     {
         var room = new Room("stale-loadout", GameMode.Single, AlienationPreset.Low, "host", true, 8);
         PlayerLoadoutCodec.TryDecode(
-            PlayerLoadoutCodec.CreateMessage(DeckConfig.CreateStandard(), new TalentSlotConfig()),
+            PlayerLoadoutCodec.CreateMessage(
+                DeckConfig.CreateStandard(), new TalentSlotConfig(), AlienationPreset.Low),
             AlienationPreset.Low,
             out var hostLoadout,
             out _);
@@ -41,7 +42,8 @@ internal static class RoomSessionTests
         });
 
         PlayerLoadoutCodec.TryDecode(
-            PlayerLoadoutCodec.CreateMessage(DeckConfig.CreateStandard(), new TalentSlotConfig()),
+            PlayerLoadoutCodec.CreateMessage(
+                DeckConfig.CreateStandard(), new TalentSlotConfig(), AlienationPreset.Low),
             AlienationPreset.Low,
             out var staleLoadout,
             out _);
@@ -111,7 +113,8 @@ internal static class RoomSessionTests
         var createRequest = new CreateRoomMessage
         {
             gameMode = (int)GameMode.HalfGame,
-            loadout = PlayerLoadoutCodec.CreateMessage(DeckConfig.CreateStandard(), new TalentSlotConfig())
+            loadout = PlayerLoadoutCodec.CreateMessage(
+                DeckConfig.CreateStandard(), new TalentSlotConfig(), AlienationPreset.Low)
         };
         typeof(CreateRoomMessage).GetField("alienationPreset")?.SetValue(createRequest, (int)AlienationPreset.Low);
         host.Receive("host-connection", 1, MessageSerializer.Serialize("CreateRoom", 0, createRequest));
@@ -147,7 +150,8 @@ internal static class RoomSessionTests
         guest.Receive("guest-connection", 2, MessageSerializer.Serialize("JoinRoom", 0, new JoinRoomMessage
         {
             roomId = hostJoined.roomId,
-            loadout = PlayerLoadoutCodec.CreateMessage(DeckConfig.CreateStandard(), new TalentSlotConfig())
+            loadout = PlayerLoadoutCodec.CreateMessage(
+                DeckConfig.CreateStandard(), new TalentSlotConfig(), AlienationPreset.Low)
         }));
         var guestJoined = guest.SentMessages.Select(MessageSerializer.DeserializeEnvelope)
             .Where(envelope => envelope.type == "RoomJoined")
@@ -166,7 +170,7 @@ internal static class RoomSessionTests
             SlotTalentIds = new[] { "midas_touch", null, null, null, null, null },
             ReserveTalentIds = new string[TalentSlotConfig.ReserveSlotCount]
         };
-        return PlayerLoadoutCodec.CreateMessage(deck, talents);
+        return PlayerLoadoutCodec.CreateMessage(deck, talents, AlienationPreset.Low);
     }
 
     private static void ConfigureThirtyAlienationDeck(DeckConfig deck)

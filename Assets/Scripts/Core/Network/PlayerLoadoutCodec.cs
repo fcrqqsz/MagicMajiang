@@ -8,18 +8,25 @@ namespace MahjongGame.Core.Network
     /// <summary>Server-owned reconstruction of an accepted player loadout.</summary>
     public sealed class TrustedPlayerLoadout
     {
-        public const int CurrentSchemaVersion = 2;
+        public const int CurrentSchemaVersion = 3;
 
         public int SchemaVersion { get; }
         public DeckConfig DeckConfig { get; }
         public TalentSlotConfig TalentConfig { get; }
+        public AlienationPreset AlienationPreset { get; }
         public int TotalAlienation { get; }
 
-        internal TrustedPlayerLoadout(int schemaVersion, DeckConfig deckConfig, TalentSlotConfig talentConfig, int totalAlienation)
+        internal TrustedPlayerLoadout(
+            int schemaVersion,
+            DeckConfig deckConfig,
+            TalentSlotConfig talentConfig,
+            AlienationPreset alienationPreset,
+            int totalAlienation)
         {
             SchemaVersion = schemaVersion;
             DeckConfig = deckConfig;
             TalentConfig = talentConfig;
+            AlienationPreset = alienationPreset;
             TotalAlienation = totalAlienation;
         }
     }
@@ -30,6 +37,14 @@ namespace MahjongGame.Core.Network
         private const int DeckEntryCount = 34;
 
         public static PlayerLoadoutMessage CreateMessage(DeckConfig deckConfig, TalentSlotConfig talentConfig)
+        {
+            return CreateMessage(deckConfig, talentConfig, AlienationPreset.Standard);
+        }
+
+        public static PlayerLoadoutMessage CreateMessage(
+            DeckConfig deckConfig,
+            TalentSlotConfig talentConfig,
+            AlienationPreset alienationPreset)
         {
             var entries = new DeckTileCountMessage[DeckEntryCount];
             int entryIndex = 0;
@@ -46,6 +61,7 @@ namespace MahjongGame.Core.Network
             return new PlayerLoadoutMessage
             {
                 schemaVersion = TrustedPlayerLoadout.CurrentSchemaVersion,
+                alienationPreset = (int)alienationPreset,
                 deckEntries = entries,
                 mainTalentSlotIds = CopySlotIds(talentConfig?.SlotTalentIds, TalentSlotConfig.MainSlotCount),
                 reserveTalentSlotIds = CopySlotIds(talentConfig?.ReserveTalentIds, TalentSlotConfig.ReserveSlotCount)
@@ -60,12 +76,29 @@ namespace MahjongGame.Core.Network
                 TrustedPlayerLoadout.CurrentSchemaVersion,
                 deckConfig,
                 talentConfig,
+                AlienationPreset.Standard,
                 AlienationBudgetPolicy.Calculate(deckConfig, talentConfig.GetMainIds(), TalentRegistry.Instance));
         }
 
         public static bool TryCreateMessage(DeckConfig deckConfig, TalentSlotConfig talentConfig, out PlayerLoadoutMessage message, out string errorCode)
         {
-            message = CreateMessage(deckConfig, talentConfig);
+            return TryCreateMessage(deckConfig, talentConfig, AlienationPreset.Standard, out message, out errorCode);
+        }
+
+        public static bool TryCreateMessage(
+            DeckConfig deckConfig,
+            TalentSlotConfig talentConfig,
+            AlienationPreset alienationPreset,
+            out PlayerLoadoutMessage message,
+            out string errorCode)
+        {
+            message = CreateMessage(deckConfig, talentConfig, alienationPreset);
+            if (!AlienationBudgetPolicy.IsDefined(alienationPreset))
+            {
+                message = null;
+                errorCode = PlayerLoadoutErrorCodes.InvalidAlienationPreset;
+                return false;
+            }
             if (!TryBuildDeck(message.deckEntries, out _))
             {
                 message = null;
@@ -104,11 +137,6 @@ namespace MahjongGame.Core.Network
         {
             loadout = null;
             errorCode = null;
-            if (preset.HasValue && !AlienationBudgetPolicy.IsDefined(preset.Value))
-            {
-                errorCode = PlayerLoadoutErrorCodes.InvalidAlienationPreset;
-                return false;
-            }
             if (message == null)
             {
                 errorCode = PlayerLoadoutErrorCodes.MissingLoadout;
@@ -117,6 +145,22 @@ namespace MahjongGame.Core.Network
             if (message.schemaVersion != TrustedPlayerLoadout.CurrentSchemaVersion)
             {
                 errorCode = PlayerLoadoutErrorCodes.UnsupportedLoadoutVersion;
+                return false;
+            }
+            AlienationPreset messagePreset = (AlienationPreset)message.alienationPreset;
+            if (!AlienationBudgetPolicy.IsDefined(messagePreset))
+            {
+                errorCode = PlayerLoadoutErrorCodes.InvalidAlienationPreset;
+                return false;
+            }
+            if (preset.HasValue && !AlienationBudgetPolicy.IsDefined(preset.Value))
+            {
+                errorCode = PlayerLoadoutErrorCodes.InvalidAlienationPreset;
+                return false;
+            }
+            if (preset.HasValue && messagePreset != preset.Value)
+            {
+                errorCode = PlayerLoadoutErrorCodes.AlienationPresetMismatch;
                 return false;
             }
             if (!TryBuildDeck(message.deckEntries, out DeckConfig deck))
@@ -137,20 +181,22 @@ namespace MahjongGame.Core.Network
                 return false;
             }
 
-            loadout = new TrustedPlayerLoadout(message.schemaVersion, deck, talents, total);
+            loadout = new TrustedPlayerLoadout(message.schemaVersion, deck, talents, messagePreset, total);
             return true;
         }
 
         public static TrustedPlayerLoadout CloneTrustedLoadout(TrustedPlayerLoadout loadout)
         {
             if (loadout == null) return null;
-            PlayerLoadoutMessage message = CreateMessage(loadout.DeckConfig, loadout.TalentConfig);
+            PlayerLoadoutMessage message = CreateMessage(
+                loadout.DeckConfig, loadout.TalentConfig, loadout.AlienationPreset);
             return TryBuildDeck(message.deckEntries, out DeckConfig deck)
                    && TryBuildTalents(message.mainTalentSlotIds, message.reserveTalentSlotIds, out TalentSlotConfig talents)
                 ? new TrustedPlayerLoadout(
                     TrustedPlayerLoadout.CurrentSchemaVersion,
                     deck,
                     talents,
+                    loadout.AlienationPreset,
                     AlienationBudgetPolicy.Calculate(deck, talents.GetMainIds(), TalentRegistry.Instance))
                 : null;
         }

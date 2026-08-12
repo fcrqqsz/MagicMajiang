@@ -11,11 +11,14 @@ namespace MahjongGame.Core.Network.Data
         public int AlienationScore;
         public DeckConfig Config;
         public TalentSlotConfig Talents = new TalentSlotConfig();
+        public AlienationPreset AlienationPreset = AlienationPreset.Standard;
 
         public void Normalize()
         {
             Talents ??= new TalentSlotConfig();
             Talents.Normalize();
+            if (!AlienationBudgetPolicy.IsDefined(AlienationPreset))
+                AlienationPreset = AlienationPreset.Standard;
         }
     }
 }
