@@ -7,6 +7,39 @@
             <ui:Label name="InfoLabel" text="单局-余136张" class="info-label" picking-mode="Ignore" />
         </ui:VisualElement>
 
+        <!-- 事件流：侧边轻量历史，最多四条 -->
+        <ui:VisualElement name="TalentEffectFeed" class="talent-effect-feed" picking-mode="Ignore" />
+        <ui:Button name="TalentDrawerDismissLayer" class="talent-drawer-dismiss" />
+
+        <!-- 本家分层栏：位于手牌安全区上方 -->
+        <ui:VisualElement name="OwnTalentLayer" class="own-talent-layer">
+            <ui:VisualElement name="OwnTalentBar" class="own-talent-bar" picking-mode="Ignore" />
+            <ui:Button name="OwnTalentCollapsedButton" text="" class="talent-more-button" />
+            <ui:VisualElement name="OwnTalentDrawer" class="talent-drawer talent-drawer--bottom" picking-mode="Ignore" />
+        </ui:VisualElement>
+
+        <!-- 四席已知天赋：本席容器保留统一映射，对手摘要固定最多两项 -->
+        <ui:VisualElement name="Seat0TalentLayer" class="seat-talent-layer seat-talent-layer--bottom">
+            <ui:VisualElement name="Seat0KnownTalents" class="known-talent-row" picking-mode="Ignore" />
+            <ui:Button name="Seat0KnownTalentMore" text="" class="talent-more-button" />
+            <ui:VisualElement name="Seat0KnownTalentDrawer" class="talent-drawer talent-drawer--bottom" picking-mode="Ignore" />
+        </ui:VisualElement>
+        <ui:VisualElement name="Seat1TalentLayer" class="seat-talent-layer seat-talent-layer--right">
+            <ui:VisualElement name="Seat1KnownTalents" class="known-talent-row known-talent-row--vertical" picking-mode="Ignore" />
+            <ui:Button name="Seat1KnownTalentMore" text="" class="talent-more-button" />
+            <ui:VisualElement name="Seat1KnownTalentDrawer" class="talent-drawer talent-drawer--right" picking-mode="Ignore" />
+        </ui:VisualElement>
+        <ui:VisualElement name="Seat2TalentLayer" class="seat-talent-layer seat-talent-layer--top">
+            <ui:VisualElement name="Seat2KnownTalents" class="known-talent-row" picking-mode="Ignore" />
+            <ui:Button name="Seat2KnownTalentMore" text="" class="talent-more-button" />
+            <ui:VisualElement name="Seat2KnownTalentDrawer" class="talent-drawer talent-drawer--top" picking-mode="Ignore" />
+        </ui:VisualElement>
+        <ui:VisualElement name="Seat3TalentLayer" class="seat-talent-layer seat-talent-layer--left">
+            <ui:VisualElement name="Seat3KnownTalents" class="known-talent-row known-talent-row--vertical" picking-mode="Ignore" />
+            <ui:Button name="Seat3KnownTalentMore" text="" class="talent-more-button" />
+            <ui:VisualElement name="Seat3KnownTalentDrawer" class="talent-drawer talent-drawer--left" picking-mode="Ignore" />
+        </ui:VisualElement>
+
         <!-- 中央菱形 -->
         <ui:VisualElement name="DiamondWrapper" class="diamond-wrapper" picking-mode="Ignore">
             <ui:VisualElement name="Diamond" class="diamond" picking-mode="Ignore">
@@ -52,6 +85,9 @@
 
             </ui:VisualElement>
         </ui:VisualElement>
+
+        <!-- 中央安全区强反馈，不接收输入 -->
+        <ui:Label name="TalentToast" text="" class="talent-toast" picking-mode="Ignore" />
 
     </ui:VisualElement>
 </ui:UXML>

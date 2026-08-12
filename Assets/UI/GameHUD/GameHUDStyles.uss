@@ -5,7 +5,148 @@
     top: 0;
     right: 0;
     bottom: 0;
+    -unity-font-definition: url('project://database/Assets/Font/MSYH_UITK.asset');
 }
+
+/* ======= 分层天赋 HUD（B 密度） ======= */
+.own-talent-layer {
+    position: absolute;
+    left: 50%;
+    bottom: 188px;
+    translate: -50% 0;
+    flex-direction: row;
+    align-items: center;
+}
+
+.own-talent-bar,
+.known-talent-row {
+    flex-direction: row;
+    align-items: center;
+}
+
+.seat-talent-layer {
+    position: absolute;
+    align-items: center;
+}
+
+.seat-talent-layer--bottom {
+    left: 50%;
+    top: 58%;
+    translate: -50% 0;
+    display: none;
+}
+
+.seat-talent-layer--right {
+    right: 28px;
+    top: 50%;
+    translate: 0 -50%;
+}
+
+.seat-talent-layer--top {
+    left: 50%;
+    top: 30px;
+    translate: -50% 0;
+}
+
+.seat-talent-layer--left {
+    left: 28px;
+    top: 50%;
+    translate: 0 -50%;
+}
+
+.known-talent-row--vertical {
+    flex-direction: column;
+}
+
+.talent-more-button {
+    min-width: 42px;
+    height: 28px;
+    margin: 2px;
+    padding: 2px 7px;
+    border-width: 1px;
+    border-color: rgba(203, 178, 109, 0.64);
+    border-radius: 7px;
+    background-color: rgba(8, 20, 14, 0.9);
+    color: #E8E1CB;
+    font-size: 14px;
+    -unity-font-definition: url('project://database/Assets/Font/MSYH_UITK.asset');
+}
+
+.talent-drawer {
+    position: absolute;
+    display: none;
+    max-width: 420px;
+    padding: 8px;
+    flex-direction: row;
+    flex-wrap: wrap;
+    background-color: rgba(5, 15, 10, 0.96);
+    border-width: 1px;
+    border-color: rgba(212, 175, 55, 0.7);
+    border-radius: 9px;
+}
+
+.talent-drawer--visible {
+    display: flex;
+}
+
+.talent-drawer--bottom { bottom: 36px; left: 50%; translate: -50% 0; }
+.talent-drawer--top { top: 36px; left: 50%; translate: -50% 0; }
+.talent-drawer--right { right: 46px; top: 50%; translate: 0 -50%; }
+.talent-drawer--left { left: 46px; top: 50%; translate: 0 -50%; }
+
+.talent-effect-feed {
+    position: absolute;
+    right: 26px;
+    top: 84px;
+    width: 260px;
+    align-items: flex-end;
+}
+
+.talent-drawer-dismiss {
+    position: absolute;
+    left: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    display: none;
+    background-color: rgba(0, 0, 0, 0);
+    border-width: 0;
+}
+
+.talent-drawer-dismiss--visible { display: flex; }
+
+.talent-feed-row {
+    margin-bottom: 4px;
+    padding: 5px 10px;
+    background-color: rgba(5, 18, 12, 0.78);
+    border-radius: 6px;
+    color: #D9D3C2;
+    font-size: 14px;
+    -unity-font-definition: url('project://database/Assets/Font/MSYH_UITK.asset');
+}
+
+.talent-feed-row--positive { color: #91E0A6; }
+.talent-feed-row--negative { color: #EEA0A0; }
+
+.talent-toast {
+    position: absolute;
+    left: 50%;
+    top: 40%;
+    translate: -50% -50%;
+    display: none;
+    padding: 12px 24px;
+    background-color: rgba(4, 20, 12, 0.94);
+    border-width: 2px;
+    border-color: #E5C66E;
+    border-radius: 10px;
+    color: #FFF1B0;
+    font-size: 25px;
+    -unity-font-style: bold;
+    -unity-text-align: middle-center;
+    -unity-font-definition: url('project://database/Assets/Font/MSYH_UITK.asset');
+}
+
+.talent-toast--visible { display: flex; }
 
 /* ======= 左上角信息栏 ======= */
 .info-bar {

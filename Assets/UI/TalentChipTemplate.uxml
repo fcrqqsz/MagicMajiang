@@ -1,0 +1,8 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" editor-extension-mode="False">
+    <Style src="project://database/Assets/UI/TalentChipTemplate.uss" />
+    <ui:VisualElement name="TalentChip" class="talent-chip talent-chip--inactive" picking-mode="Ignore">
+        <ui:Label name="NameLabel" text="天赋" class="talent-chip__name" picking-mode="Ignore" />
+        <ui:Label name="ValueLabel" text="" class="talent-chip__value" picking-mode="Ignore" />
+        <ui:Label name="ConsumedMarker" text="已耗尽" class="talent-chip__consumed" picking-mode="Ignore" />
+    </ui:VisualElement>
+</ui:UXML>

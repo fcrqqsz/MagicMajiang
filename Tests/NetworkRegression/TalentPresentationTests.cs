@@ -17,6 +17,8 @@ internal static class TalentPresentationTests
     {
         RunLayeredTalentHudPolicyTests(runner);
         RunTalentEventPresentationPolicyTests(runner);
+        RunLayeredTalentHudArtifactTests(runner);
+        RunTalentAudioAssetTests(runner);
         RunAlienationPresentationPolicyTests(runner);
         RunTalentEditorAndLobbySourceTests(runner);
         RunLoadoutPresetTests(runner);
@@ -58,18 +60,24 @@ internal static class TalentPresentationTests
         TalentHudView view = TalentHudProjectionPolicy.Build(snapshot, localSeatIndex: 0, publicEvents: events);
         runner.Check(view.OwnVisible.All(item => item.IsActive) && view.OwnCollapsedCount == 3,
             "only active own talents remain in the persistent hand-anchored row");
+        runner.Check(view.OwnCollapsed.Count == 3 && view.OwnCollapsed.All(item => !item.IsActive),
+            "the own edge drawer receives only the private inactive talents counted by the summary");
         TalentHudItem unknownActive = view.OwnVisible.Single(item => item.ShouldLogWarning);
         runner.Check(unknownActive.IsActive && unknownActive.ShowActiveState
             && unknownActive.DisplayName == "未知天赋" && unknownActive.TalentId == string.Empty,
             "an unknown active own talent stays visible with fixed safe local fallback instead of inflating collapsed state");
         runner.Check(view.Seats[1].Visible.Count == 2 && view.Seats[1].CollapsedCount == 2,
             "opponents show two authorized known talents and a +N summary");
+        runner.Check(view.Seats[1].Expanded.Count == 4
+            && view.Seats[1].Expanded.All(item => !item.ShowActiveState),
+            "the opponent edge drawer expands only the four server-authorized known talents");
         runner.Check(view.Seats[1].Visible.All(item => !item.ShowActiveState),
             "opponent chips never reveal post-sideboard active state");
         runner.Check(view.Seats[1].Visible[0].TalentId == "midas_touch"
             && view.Seats[1].Visible[1].TalentId == "peek",
             "public event recency orders authorized opponent talents without inspecting hidden entries");
         runner.Check(view.Seats[1].Visible.All(item => item.TalentId != "starting_capital")
+            && view.Seats[1].Expanded.All(item => item.TalentId != "starting_capital")
             && view.Seats[1].CollapsedCount == 2,
             "a hidden registered opponent talent changes neither visible ordering nor the authorized +N count");
         runner.Check(view.Seats[2].Visible.Count == 1 && view.Seats[2].CollapsedCount == 0,
@@ -140,6 +148,166 @@ internal static class TalentPresentationTests
             "feedback history rejects non-positive duplicate and lower event IDs within a match");
         history.ResetForNewMatch();
         runner.Check(history.TryAccept(1), "a new match resets event-feedback deduplication");
+
+        runner.Check(!new TalentFeedbackHistory().TryBuild(null, false, out _),
+            "a button click or rejected action with no runtime event requests no talent audio");
+        runner.Check(!new TalentFeedbackHistory().TryBuild(BlockedEvent(), false, out TalentFeedbackView blockedFeedback)
+            || !blockedFeedback.PlayAudio,
+            "an accepted-but-blocked result requests no talent audio");
+        var playbackHistory = new TalentFeedbackHistory();
+        runner.Check(playbackHistory.TryBuild(ActiveAppliedEvent(), false, out TalentFeedbackView firstStrong)
+            && firstStrong.PlayAudio
+            && !playbackHistory.TryBuild(ActiveAppliedEvent(), false, out _),
+            "one accepted strong event requests audio once and its duplicate requests none");
+        runner.Check(!new TalentFeedbackHistory().TryBuild(ActiveAppliedEvent(), true, out _),
+            "recovery never produces a talent-audio request");
+    }
+
+    private static void RunLayeredTalentHudArtifactTests(RegressionRunner runner)
+    {
+        string hudPath = GetRepoPath("Assets", "UI", "GameHUD", "GameHUD.uxml");
+        string chipPath = GetRepoPath("Assets", "UI", "TalentChipTemplate.uxml");
+        string hudStylesPath = GetRepoPath("Assets", "UI", "GameHUD", "GameHUDStyles.uss");
+        string chipStylesPath = GetRepoPath("Assets", "UI", "TalentChipTemplate.uss");
+        string controllerPath = GetRepoPath("Assets", "UI", "GameHUD", "GameHUDController.cs");
+        string proxyPath = GetRepoPath("Assets", "Scripts", "Core", "Network", "RemoteServerProxy.cs");
+        string scenePath = GetRepoPath("Assets", "Scenes", "03_Game.unity");
+
+        bool assetsExist = File.Exists(hudPath) && File.Exists(chipPath)
+            && File.Exists(hudStylesPath) && File.Exists(chipStylesPath)
+            && File.Exists(controllerPath) && File.Exists(proxyPath) && File.Exists(scenePath);
+        runner.Check(assetsExist, "layered talent HUD source and UI assets exist");
+        if (!assetsExist) return;
+
+        XDocument hud = XDocument.Load(hudPath);
+        HashSet<string> hudNames = hud.Descendants()
+            .Select(element => element.Attribute("name")?.Value)
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .ToHashSet(StringComparer.Ordinal);
+        string[] requiredHudNames =
+        {
+            "OwnTalentBar", "OwnTalentCollapsedButton", "TalentEffectFeed", "TalentToast",
+            "Seat0KnownTalents", "Seat1KnownTalents", "Seat2KnownTalents", "Seat3KnownTalents",
+            "Seat0KnownTalentMore", "Seat1KnownTalentMore", "Seat2KnownTalentMore", "Seat3KnownTalentMore"
+        };
+        runner.Check(requiredHudNames.All(hudNames.Contains),
+            "GameHUD exposes the own row four seat summaries feed and central toast");
+
+        XDocument chip = XDocument.Load(chipPath);
+        HashSet<string> chipNames = chip.Descendants()
+            .Select(element => element.Attribute("name")?.Value)
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .ToHashSet(StringComparer.Ordinal);
+        runner.Check(chipNames.Contains("NameLabel") && chipNames.Contains("ValueLabel")
+            && chipNames.Contains("ConsumedMarker"),
+            "talent chip template exposes name value and consumed marker bindings");
+
+        string hudStyles = File.ReadAllText(hudStylesPath);
+        string chipStyles = File.ReadAllText(chipStylesPath);
+        runner.Check(hudStyles.Contains("MSYH_UITK.asset", StringComparison.Ordinal)
+            && chipStyles.Contains("MSYH_UITK.asset", StringComparison.Ordinal)
+            && !hudStyles.Contains("MSYH.TTC", StringComparison.OrdinalIgnoreCase)
+            && !hudStyles.Contains("MSYH_SDF.asset", StringComparison.OrdinalIgnoreCase),
+            "talent HUD styles use the UI Toolkit TextCore font path only");
+        string[] requiredClasses = { "active", "inactive", "known", "consumed", "positive", "negative" };
+        runner.Check(requiredClasses.All(name => chipStyles.Contains("talent-chip--" + name, StringComparison.Ordinal)),
+            "talent chip styles define every state and polarity class without controller colors");
+
+        string controller = File.ReadAllText(controllerPath);
+        string proxy = File.ReadAllText(proxyPath);
+        runner.Check(controller.Contains("TalentRuntimeEventReceived += HandleTalentRuntimeEvent", StringComparison.Ordinal)
+            && controller.Contains("TalentRuntimeEventReceived -= HandleTalentRuntimeEvent", StringComparison.Ordinal)
+            && controller.Contains("TalentFeedbackHistory", StringComparison.Ordinal)
+            && controller.Contains("ApplyRecoverySnapshot", StringComparison.Ordinal),
+            "GameHUD subscribes ordered talent events and keeps recovery on the snapshot-only path");
+        runner.Check(controller.Contains("_genericActiveTalentClip", StringComparison.Ordinal)
+            && controller.Contains("_talentAudioSource", StringComparison.Ordinal)
+            && controller.Contains("if (feedback.PlayAudio)", StringComparison.Ordinal)
+            && !controller.Contains("Resources.Load", StringComparison.Ordinal),
+            "generic talent audio is serialized and gated only by the feedback view");
+        runner.Check(!controller.Contains("ShowActiveState" + ")", StringComparison.Ordinal)
+            || controller.Contains("item.ShowActiveState && isOwn", StringComparison.Ordinal),
+            "opponent talent chips have no active-state binding");
+        runner.Check(proxy.Contains("BindServerProxy(this)", StringComparison.Ordinal)
+            && proxy.Contains("UnbindServerProxy(this)", StringComparison.Ordinal),
+            "RemoteServerProxy owns the HUD event subscription lifetime");
+
+        int tweenCalls = CountOccurrences(controller, "DOVirtual.");
+        int linkedTweens = CountOccurrences(controller, ".SetLink(gameObject)");
+        runner.Check(tweenCalls > 0 && linkedTweens == tweenCalls,
+            "every GameHUD DOTween call is linked to the HUD GameObject");
+        runner.Check(controller.Contains("schedule.Execute", StringComparison.Ordinal)
+            && controller.Contains(".Pause()", StringComparison.Ordinal)
+            && controller.Contains(".Kill()", StringComparison.Ordinal),
+            "GameHUD cancels scheduled work and kills linked tweens during teardown");
+
+        string scene = File.ReadAllText(scenePath);
+        string clipGuid = ReadMetaGuid(GetRepoPath("Assets", "Audio", "SFX", "Talent", "talent_active_generic.wav.meta"));
+        runner.Check(!string.IsNullOrWhiteSpace(clipGuid)
+            && scene.Contains("_genericActiveTalentClip: {fileID: 8300000, guid: " + clipGuid, StringComparison.Ordinal)
+            && scene.Contains("_talentAudioSource: {fileID:", StringComparison.Ordinal)
+            && scene.Contains("Spatialize: 0", StringComparison.Ordinal)
+            && scene.Contains("m_PlayOnAwake: 0", StringComparison.Ordinal),
+            "03_Game serializes the generated clip and a non-spatial non-autoplay AudioSource");
+    }
+
+    private static void RunTalentAudioAssetTests(RegressionRunner runner)
+    {
+        string scriptPath = GetRepoPath("Tools", "GenerateTalentPlaceholderAudio.ps1");
+        string wavPath = GetRepoPath("Assets", "Audio", "SFX", "Talent", "talent_active_generic.wav");
+        bool assetsExist = File.Exists(scriptPath) && File.Exists(wavPath);
+        runner.Check(assetsExist, "deterministic talent placeholder generator and WAV exist");
+        if (!assetsExist) return;
+
+        using var stream = File.OpenRead(wavPath);
+        using var reader = new BinaryReader(stream);
+        string riff = new string(reader.ReadChars(4));
+        int riffSize = reader.ReadInt32();
+        string wave = new string(reader.ReadChars(4));
+        string fmt = new string(reader.ReadChars(4));
+        int fmtSize = reader.ReadInt32();
+        short format = reader.ReadInt16();
+        short channels = reader.ReadInt16();
+        int sampleRate = reader.ReadInt32();
+        int byteRate = reader.ReadInt32();
+        short blockAlign = reader.ReadInt16();
+        short bitsPerSample = reader.ReadInt16();
+        if (fmtSize > 16) stream.Position += fmtSize - 16;
+        string data = new string(reader.ReadChars(4));
+        int dataSize = reader.ReadInt32();
+        double duration = dataSize / (double)byteRate;
+        int peak = 0;
+        for (long position = stream.Position; position + 1 < stream.Length; position += 2)
+        {
+            short sample = reader.ReadInt16();
+            peak = Math.Max(peak, Math.Abs((int)sample));
+        }
+        runner.Check(riff == "RIFF" && wave == "WAVE" && fmt == "fmt " && data == "data"
+            && format == 1 && sampleRate == 48000 && channels == 2 && bitsPerSample == 16
+            && blockAlign == 4 && riffSize + 8 == stream.Length
+            && duration >= 0.60 && duration <= 0.80 && peak <= 29203,
+            "talent placeholder is valid 48 kHz stereo 16-bit PCM lasting 0.60-0.80 seconds at or below -1 dBFS");
+    }
+
+    private static int CountOccurrences(string source, string value)
+    {
+        int count = 0;
+        int start = 0;
+        while ((start = source.IndexOf(value, start, StringComparison.Ordinal)) >= 0)
+        {
+            count++;
+            start += value.Length;
+        }
+        return count;
+    }
+
+    private static string ReadMetaGuid(string path)
+    {
+        if (!File.Exists(path)) return string.Empty;
+        return File.ReadLines(path)
+            .Select(line => line.Trim())
+            .FirstOrDefault(line => line.StartsWith("guid: ", StringComparison.Ordinal))?
+            .Substring("guid: ".Length) ?? string.Empty;
     }
 
     private static TalentRuntimeEventMessage ActiveAppliedEvent() => new TalentRuntimeEventMessage

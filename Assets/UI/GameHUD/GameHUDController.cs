@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 using UnityEngine.UIElements;
 using MahjongGame.Core;
@@ -14,6 +16,9 @@ namespace MahjongGame.UI
         public static GameHUDController Instance { get; private set; }
 
         [SerializeField] private UIDocument _document;
+        [SerializeField] private VisualTreeAsset _talentChipTemplate;
+        [SerializeField] private AudioClip _genericActiveTalentClip;
+        [SerializeField] private AudioSource _talentAudioSource;
 
         private Label _infoLabel;
         private Label[] _windLabels = new Label[4];   // 0=底部(本地), 1=右, 2=上, 3=左
@@ -21,6 +26,26 @@ namespace MahjongGame.UI
         private VisualElement[] _glowElements = new VisualElement[4];
         private Label _timerText;
         private VisualElement[] _arcSegments = new VisualElement[4]; // top, right, bottom, left
+        private VisualElement _root;
+        private VisualElement _ownTalentBar;
+        private Button _ownTalentCollapsedButton;
+        private VisualElement _ownTalentDrawer;
+        private readonly VisualElement[] _seatTalentRows = new VisualElement[4];
+        private readonly Button[] _seatTalentMoreButtons = new Button[4];
+        private readonly VisualElement[] _seatTalentDrawers = new VisualElement[4];
+        private Button _talentDrawerDismissLayer;
+        private VisualElement _talentEffectFeed;
+        private Label _talentToast;
+        private VisualElement _expandedTalentDrawer;
+        private IVisualElementScheduledItem _toastHideSchedule;
+        private RemoteServerProxy _serverProxy;
+        private RoomGameSnapshot _talentSnapshot;
+        private readonly List<TalentRuntimeEventMessage> _acceptedPublicTalentEvents = new List<TalentRuntimeEventMessage>();
+        private readonly TalentFeedbackHistory _talentFeedbackHistory = new TalentFeedbackHistory();
+        private Tweener _talentChipTween;
+        private Tweener _talentToastTween;
+        private bool _missingAudioWarningLogged;
+        private bool _missingTemplateWarningLogged;
 
         private int _activePlayerIndex = -1;
         private float _timerRemaining;
@@ -42,40 +67,334 @@ namespace MahjongGame.UI
             }
             Instance = this;
 
-            var root = _document.rootVisualElement;
+            _root = _document.rootVisualElement;
 
-            _infoLabel = root.Q<Label>("InfoLabel");
+            _infoLabel = _root.Q<Label>("InfoLabel");
 
             // 座位: Bottom(0=自己), Right(1=下家), Top(2=对家), Left(3=上家)
-            _windLabels[0] = root.Q<Label>("WindBottom");
-            _windLabels[1] = root.Q<Label>("WindRight");
-            _windLabels[2] = root.Q<Label>("WindTop");
-            _windLabels[3] = root.Q<Label>("WindLeft");
+            _windLabels[0] = _root.Q<Label>("WindBottom");
+            _windLabels[1] = _root.Q<Label>("WindRight");
+            _windLabels[2] = _root.Q<Label>("WindTop");
+            _windLabels[3] = _root.Q<Label>("WindLeft");
 
-            _scoreLabels[0] = root.Q<Label>("ScoreBottom");
-            _scoreLabels[1] = root.Q<Label>("ScoreRight");
-            _scoreLabels[2] = root.Q<Label>("ScoreTop");
-            _scoreLabels[3] = root.Q<Label>("ScoreLeft");
+            _scoreLabels[0] = _root.Q<Label>("ScoreBottom");
+            _scoreLabels[1] = _root.Q<Label>("ScoreRight");
+            _scoreLabels[2] = _root.Q<Label>("ScoreTop");
+            _scoreLabels[3] = _root.Q<Label>("ScoreLeft");
 
-            _glowElements[0] = root.Q<VisualElement>("GlowBottom");
-            _glowElements[1] = root.Q<VisualElement>("GlowRight");
-            _glowElements[2] = root.Q<VisualElement>("GlowTop");
-            _glowElements[3] = root.Q<VisualElement>("GlowLeft");
+            _glowElements[0] = _root.Q<VisualElement>("GlowBottom");
+            _glowElements[1] = _root.Q<VisualElement>("GlowRight");
+            _glowElements[2] = _root.Q<VisualElement>("GlowTop");
+            _glowElements[3] = _root.Q<VisualElement>("GlowLeft");
 
             // 进度条段: top, right, bottom, left
-            _arcSegments[0] = root.Q<VisualElement>("ArcTop");
-            _arcSegments[1] = root.Q<VisualElement>("ArcRight");
-            _arcSegments[2] = root.Q<VisualElement>("ArcBottom");
-            _arcSegments[3] = root.Q<VisualElement>("ArcLeft");
+            _arcSegments[0] = _root.Q<VisualElement>("ArcTop");
+            _arcSegments[1] = _root.Q<VisualElement>("ArcRight");
+            _arcSegments[2] = _root.Q<VisualElement>("ArcBottom");
+            _arcSegments[3] = _root.Q<VisualElement>("ArcLeft");
 
-            _timerText = root.Q<Label>("TimerText");
+            _timerText = _root.Q<Label>("TimerText");
+            BindTalentElements();
         }
 
         void OnDestroy()
         {
+            UnbindServerProxy(_serverProxy);
+            _toastHideSchedule?.Pause();
+            _toastHideSchedule = null;
             _pulseTween?.Kill();
+            _talentChipTween?.Kill();
+            _talentToastTween?.Kill();
             if (Instance == this) Instance = null;
         }
+
+        private void BindTalentElements()
+        {
+            _ownTalentBar = _root.Q<VisualElement>("OwnTalentBar");
+            _ownTalentCollapsedButton = _root.Q<Button>("OwnTalentCollapsedButton");
+            _ownTalentDrawer = _root.Q<VisualElement>("OwnTalentDrawer");
+            _talentDrawerDismissLayer = _root.Q<Button>("TalentDrawerDismissLayer");
+            _talentEffectFeed = _root.Q<VisualElement>("TalentEffectFeed");
+            _talentToast = _root.Q<Label>("TalentToast");
+
+            for (int slot = 0; slot < 4; slot++)
+            {
+                _seatTalentRows[slot] = _root.Q<VisualElement>($"Seat{slot}KnownTalents");
+                _seatTalentMoreButtons[slot] = _root.Q<Button>($"Seat{slot}KnownTalentMore");
+                _seatTalentDrawers[slot] = _root.Q<VisualElement>($"Seat{slot}KnownTalentDrawer");
+                int capturedSlot = slot;
+                _seatTalentMoreButtons[slot].clicked += () => ToggleTalentDrawer(_seatTalentDrawers[capturedSlot]);
+            }
+
+            _ownTalentCollapsedButton.clicked += () => ToggleTalentDrawer(_ownTalentDrawer);
+            _talentDrawerDismissLayer.clicked += CloseTalentDrawers;
+            CloseTalentDrawers();
+        }
+
+        public void BindServerProxy(RemoteServerProxy proxy)
+        {
+            if (proxy == null || ReferenceEquals(_serverProxy, proxy)) return;
+            UnbindServerProxy(_serverProxy);
+            _serverProxy = proxy;
+            _talentFeedbackHistory.ResetForNewMatch();
+            _acceptedPublicTalentEvents.Clear();
+            _serverProxy.TalentRuntimeEventReceived += HandleTalentRuntimeEvent;
+            _serverProxy.TalentActionsChanged += HandleTalentActionsChanged;
+            RebuildTalentHudFromClientState();
+        }
+
+        public void UnbindServerProxy(RemoteServerProxy proxy)
+        {
+            if (proxy == null || !ReferenceEquals(_serverProxy, proxy)) return;
+            _serverProxy.TalentRuntimeEventReceived -= HandleTalentRuntimeEvent;
+            _serverProxy.TalentActionsChanged -= HandleTalentActionsChanged;
+            _serverProxy = null;
+        }
+
+        private void HandleTalentActionsChanged(long decisionId, IReadOnlyList<MahjongGame.Talents.TalentActionOption> actions)
+        {
+            CloseTalentDrawers();
+            RebuildTalentHudFromClientState();
+        }
+
+        private void HandleTalentRuntimeEvent(TalentRuntimeEventMessage runtimeEvent)
+        {
+            if (!_talentFeedbackHistory.TryBuild(runtimeEvent, false, out TalentFeedbackView feedback)) return;
+
+            if (runtimeEvent.visibility == (int)MahjongGame.Talents.TalentEventVisibility.Public)
+            {
+                _acceptedPublicTalentEvents.Add(runtimeEvent);
+            }
+
+            RebuildTalentHudFromClientState();
+            if (feedback.ShouldLogWarning)
+                Debug.LogWarning("[GameHUD] UnknownTalentRuntimeEvent");
+            if (feedback.PulseChip)
+                PulseTalentChip(runtimeEvent.ownerSeatIndex, runtimeEvent.talentId);
+            if (feedback.AppendFeed)
+                AppendTalentFeed(feedback, runtimeEvent);
+            if (feedback.ShowToast)
+                ShowTalentToast(feedback.Copy);
+            if (feedback.PlayAudio)
+                PlayTalentAudio();
+        }
+
+        private void RebuildTalentHudFromClientState()
+        {
+            RoomGameSnapshot snapshot = NetworkManager.Instance?.RoomService?.GameState?.Snapshot;
+            if (snapshot != null)
+            {
+                _talentSnapshot = snapshot;
+                RenderTalentHud(snapshot);
+            }
+        }
+
+        private void RenderTalentHud(RoomGameSnapshot snapshot)
+        {
+            if (snapshot == null || _ownTalentBar == null) return;
+            int localSeatIndex = snapshot.requestingSeatIndex >= 0
+                ? snapshot.requestingSeatIndex
+                : NetworkManager.Instance?.RoomService?.SeatIndex ?? 0;
+            TalentHudView view = TalentHudProjectionPolicy.Build(
+                snapshot,
+                localSeatIndex,
+                _acceptedPublicTalentEvents);
+
+            RenderTalentItems(_ownTalentBar, view.OwnVisible, isOwn: true);
+            RenderTalentItems(_ownTalentDrawer, view.OwnCollapsed, isOwn: true);
+            ConfigureMoreButton(_ownTalentCollapsedButton, view.OwnCollapsedCount);
+
+            for (int slot = 0; slot < 4; slot++)
+            {
+                _seatTalentRows[slot]?.Clear();
+                _seatTalentDrawers[slot]?.Clear();
+                ConfigureMoreButton(_seatTalentMoreButtons[slot], 0);
+            }
+
+            foreach (KeyValuePair<int, TalentSeatSummary> pair in view.Seats)
+            {
+                int slot = PlayerIndexToUISlot(pair.Key);
+                if (slot == 0) continue;
+                RenderTalentItems(_seatTalentRows[slot], pair.Value.Visible, isOwn: false);
+                RenderTalentItems(_seatTalentDrawers[slot], pair.Value.Expanded, isOwn: false);
+                ConfigureMoreButton(_seatTalentMoreButtons[slot], pair.Value.CollapsedCount);
+            }
+        }
+
+        private void RenderTalentItems(
+            VisualElement container,
+            IEnumerable<TalentHudItem> items,
+            bool isOwn)
+        {
+            if (container == null) return;
+            container.Clear();
+            foreach (TalentHudItem item in items ?? Enumerable.Empty<TalentHudItem>())
+            {
+                VisualElement chip = CreateTalentChip(item, isOwn);
+                container.Add(chip);
+            }
+        }
+
+        private VisualElement CreateTalentChip(TalentHudItem item, bool isOwn)
+        {
+            VisualElement instanceRoot;
+            VisualElement chip;
+            if (_talentChipTemplate != null)
+            {
+                TemplateContainer template = _talentChipTemplate.CloneTree();
+                instanceRoot = template;
+                chip = template.Q<VisualElement>("TalentChip") ?? template;
+            }
+            else
+            {
+                if (!_missingTemplateWarningLogged)
+                {
+                    Debug.LogWarning("[GameHUD] Missing talent chip template; using safe fallback.");
+                    _missingTemplateWarningLogged = true;
+                }
+                chip = new VisualElement { name = "TalentChip" };
+                instanceRoot = chip;
+                chip.AddToClassList("talent-chip");
+                chip.Add(new Label { name = "NameLabel" });
+                chip.Add(new Label { name = "ValueLabel" });
+                chip.Add(new Label { name = "ConsumedMarker" });
+            }
+
+            chip.userData = TalentChipKey(item.TalentId, isOwn);
+            Label nameLabel = chip.Q<Label>("NameLabel");
+            Label valueLabel = chip.Q<Label>("ValueLabel");
+            Label consumedMarker = chip.Q<Label>("ConsumedMarker");
+            if (nameLabel != null) nameLabel.text = item.DisplayName;
+            if (valueLabel != null) valueLabel.text = item.ShowValue ? item.Value.ToString() : string.Empty;
+            if (consumedMarker != null) consumedMarker.style.display = DisplayStyle.None;
+
+            SetClass(chip, "talent-chip--active", item.ShowActiveState && isOwn && item.IsActive);
+            SetClass(chip, "talent-chip--inactive", item.ShowActiveState && isOwn && !item.IsActive);
+            SetClass(chip, "talent-chip--known", !isOwn);
+            if (item.ShouldLogWarning)
+                Debug.LogWarning("[GameHUD] Unknown active own talent rendered with fallback copy.");
+            return instanceRoot;
+        }
+
+        private static void ConfigureMoreButton(Button button, int collapsedCount)
+        {
+            if (button == null) return;
+            button.text = collapsedCount > 0 ? $"+{collapsedCount}" : string.Empty;
+            button.style.display = collapsedCount > 0 ? DisplayStyle.Flex : DisplayStyle.None;
+        }
+
+        private static void SetClass(VisualElement element, string className, bool enabled)
+        {
+            if (enabled) element.AddToClassList(className);
+            else element.RemoveFromClassList(className);
+        }
+
+        private void ToggleTalentDrawer(VisualElement drawer)
+        {
+            if (drawer == null) return;
+            if (ReferenceEquals(_expandedTalentDrawer, drawer))
+            {
+                CloseTalentDrawers();
+                return;
+            }
+            CloseTalentDrawers();
+            _expandedTalentDrawer = drawer;
+            drawer.AddToClassList("talent-drawer--visible");
+            _talentDrawerDismissLayer.AddToClassList("talent-drawer-dismiss--visible");
+        }
+
+        public void CloseTalentDrawers()
+        {
+            _expandedTalentDrawer?.RemoveFromClassList("talent-drawer--visible");
+            _expandedTalentDrawer = null;
+            _talentDrawerDismissLayer?.RemoveFromClassList("talent-drawer-dismiss--visible");
+        }
+
+        private void AppendTalentFeed(TalentFeedbackView feedback, TalentRuntimeEventMessage runtimeEvent)
+        {
+            if (_talentEffectFeed == null) return;
+            var row = new Label(feedback.Copy);
+            row.AddToClassList("talent-feed-row");
+            row.AddToClassList(IsNegativeEvent(runtimeEvent?.eventType)
+                ? "talent-feed-row--negative"
+                : "talent-feed-row--positive");
+            _talentEffectFeed.Add(row);
+            while (_talentEffectFeed.childCount > 4)
+                _talentEffectFeed.RemoveAt(0);
+        }
+
+        private void ShowTalentToast(string copy)
+        {
+            if (_talentToast == null) return;
+            _toastHideSchedule?.Pause();
+            _talentToastTween?.Kill();
+            _talentToast.text = copy ?? string.Empty;
+            _talentToast.AddToClassList("talent-toast--visible");
+            _talentToast.style.opacity = 0f;
+            _talentToastTween = DOVirtual.Float(0f, 1f, 0.18f,
+                    value => _talentToast.style.opacity = value)
+                .SetEase(Ease.OutQuad)
+                .SetLink(gameObject);
+            _toastHideSchedule = _talentToast.schedule.Execute(HideTalentToast).StartingIn(1800);
+        }
+
+        private void HideTalentToast()
+        {
+            _talentToast?.RemoveFromClassList("talent-toast--visible");
+            _toastHideSchedule = null;
+        }
+
+        private void PulseTalentChip(int ownerSeatIndex, string talentId)
+        {
+            bool isOwn = ownerSeatIndex == (_talentSnapshot?.requestingSeatIndex
+                ?? NetworkManager.Instance?.RoomService?.SeatIndex ?? 0);
+            VisualElement chip = FindTalentChip(ownerSeatIndex, talentId, isOwn);
+            if (chip == null) return;
+            _talentChipTween?.Kill();
+            chip.style.scale = new Scale(Vector2.one);
+            _talentChipTween = DOVirtual.Float(1f, 1.12f, 0.16f,
+                    value => chip.style.scale = new Scale(new Vector2(value, value)))
+                .SetLoops(2, LoopType.Yoyo)
+                .SetEase(Ease.OutQuad)
+                .SetLink(gameObject);
+        }
+
+        private VisualElement FindTalentChip(int ownerSeatIndex, string talentId, bool isOwn)
+        {
+            IEnumerable<VisualElement> containers;
+            if (isOwn)
+                containers = new[] { _ownTalentBar, _ownTalentDrawer };
+            else
+            {
+                int slot = PlayerIndexToUISlot(ownerSeatIndex);
+                containers = new[] { _seatTalentRows[slot], _seatTalentDrawers[slot] };
+            }
+
+            string key = TalentChipKey(talentId, isOwn);
+            return containers.Where(container => container != null)
+                .SelectMany(container => container.Query<VisualElement>(className: "talent-chip").ToList())
+                .FirstOrDefault(element => string.Equals(element.userData as string, key, StringComparison.Ordinal));
+        }
+
+        private void PlayTalentAudio()
+        {
+            if (_talentAudioSource == null || _genericActiveTalentClip == null)
+            {
+                if (!_missingAudioWarningLogged)
+                {
+                    Debug.LogWarning("[GameHUD] Missing generic active-talent AudioSource or AudioClip.");
+                    _missingAudioWarningLogged = true;
+                }
+                return;
+            }
+            _talentAudioSource.PlayOneShot(_genericActiveTalentClip);
+        }
+
+        private static bool IsNegativeEvent(string eventType) =>
+            string.Equals(eventType, "public_charge_reduced", StringComparison.Ordinal);
+
+        private static string TalentChipKey(string talentId, bool isOwn) =>
+            (isOwn ? "own:" : "known:") + (talentId ?? string.Empty);
 
         /// <summary>
         /// 更新左上角局信息 + 四家风位和分数
@@ -150,6 +469,10 @@ namespace MahjongGame.UI
         {
             if (snapshot == null || session == null) return;
             ResetForRecovery();
+            CloseTalentDrawers();
+            _acceptedPublicTalentEvents.Clear();
+            _talentSnapshot = snapshot;
+            RenderTalentHud(snapshot);
             UpdateRoundInfo(session);
             UpdateRemainingCount(snapshot.remainingWallCount);
 

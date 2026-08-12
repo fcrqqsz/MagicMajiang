@@ -25,6 +25,7 @@ namespace MahjongGame.Core.Network
             _roomService = roomService ?? throw new System.ArgumentNullException(nameof(roomService));
             _roomService.AcceptedSequenceEnvelope += HandleAcceptedSequenceEnvelope;
             _roomService.ReconnectSnapshotApplied += HandleReconnectSnapshot;
+            GameHUDController.Instance?.BindServerProxy(this);
         }
 
         public void SetLocalClient(Agents.IPlayerClient localClient)
@@ -36,6 +37,7 @@ namespace MahjongGame.Core.Network
         {
             _roomService.AcceptedSequenceEnvelope -= HandleAcceptedSequenceEnvelope;
             _roomService.ReconnectSnapshotApplied -= HandleReconnectSnapshot;
+            GameHUDController.Instance?.UnbindServerProxy(this);
         }
 
         public void SubmitAction(ClientAction action)
@@ -94,6 +96,7 @@ namespace MahjongGame.Core.Network
                 case "TileDrawn":
                     var drawnMsg = MessageSerializer.DeserializePayload<TileDrawnMessage>(envelope.data);
                     _activeDecisionId = drawnMsg?.decisionId ?? 0;
+                    GameHUDController.Instance?.CloseTalentDrawers();
                     _localClient.OnTileDrawn(drawnMsg.tile?.ToTileData());
                     break;
                 case "PlayerDrew":
@@ -103,6 +106,7 @@ namespace MahjongGame.Core.Network
                 case "TurnWithoutDraw":
                     var turnWithoutDrawMsg = MessageSerializer.DeserializePayload<TurnWithoutDrawMessage>(envelope.data);
                     _activeDecisionId = turnWithoutDrawMsg?.decisionId ?? 0;
+                    GameHUDController.Instance?.CloseTalentDrawers();
                     _localClient.OnTurnWithoutDraw();
                     break;
                 case "WallCount":
@@ -112,12 +116,14 @@ namespace MahjongGame.Core.Network
                 case "Discarded":
                     var discMsg = MessageSerializer.DeserializePayload<DiscardedMessage>(envelope.data);
                     _activeDecisionId = discMsg?.decisionId ?? 0;
+                    GameHUDController.Instance?.CloseTalentDrawers();
                     ClearTalentActionsPresentation(clearDecisionId: false);
                     _localClient.OnOtherPlayerDiscarded(discMsg.playerId, discMsg.tile?.ToTileData());
                     break;
                 case "AddedKongDeclared":
                     var addedKongMsg = MessageSerializer.DeserializePayload<AddedKongDeclaredMessage>(envelope.data);
                     _activeDecisionId = addedKongMsg?.decisionId ?? 0;
+                    GameHUDController.Instance?.CloseTalentDrawers();
                     ClearTalentActionsPresentation(clearDecisionId: false);
                     _localClient.OnAddedKongDeclared(addedKongMsg.playerId, addedKongMsg.tile?.ToTileData());
                     break;

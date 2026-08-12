@@ -12,6 +12,8 @@ namespace MahjongGame.Core
         public string DisplayName { get; set; }
         public bool IsActive { get; set; }
         public bool ShowActiveState { get; set; }
+        public int Value { get; set; }
+        public bool ShowValue { get; set; }
         public bool ShouldLogWarning { get; set; }
     }
 
@@ -19,12 +21,14 @@ namespace MahjongGame.Core
     {
         public int SeatIndex { get; set; }
         public IReadOnlyList<TalentHudItem> Visible { get; set; } = Array.Empty<TalentHudItem>();
+        public IReadOnlyList<TalentHudItem> Expanded { get; set; } = Array.Empty<TalentHudItem>();
         public int CollapsedCount { get; set; }
     }
 
     public sealed class TalentHudView
     {
         public IReadOnlyList<TalentHudItem> OwnVisible { get; set; } = Array.Empty<TalentHudItem>();
+        public IReadOnlyList<TalentHudItem> OwnCollapsed { get; set; } = Array.Empty<TalentHudItem>();
         public int OwnCollapsedCount { get; set; }
         public IReadOnlyDictionary<int, TalentSeatSummary> Seats { get; set; }
             = new Dictionary<int, TalentSeatSummary>();
@@ -49,6 +53,11 @@ namespace MahjongGame.Core
                 .OrderBy(talent => talent.talentId, StringComparer.Ordinal)
                 .Select(CreateOwnItem)
                 .ToArray();
+            var inactiveOwn = ownTalents
+                .Where(talent => talent != null && !talent.isActive && IsKnownTalent(talent.talentId))
+                .OrderBy(talent => talent.talentId, StringComparer.Ordinal)
+                .Select(talent => CreateItem(talent.talentId, false, true, talent.privateValue))
+                .ToArray();
 
             var recency = BuildPublicRecency(publicEvents);
             var seats = (snapshot?.knownTalents ?? Array.Empty<SnapshotKnownTalent>())
@@ -64,6 +73,7 @@ namespace MahjongGame.Core
             return new TalentHudView
             {
                 OwnVisible = activeOwn,
+                OwnCollapsed = inactiveOwn,
                 OwnCollapsedCount = ownTalents.Count(talent => talent != null && !talent.isActive),
                 Seats = seats
             };
@@ -86,7 +96,10 @@ namespace MahjongGame.Core
             {
                 SeatIndex = seatIndex,
                 Visible = ordered.Take(OpponentVisibleLimit)
-                    .Select(talent => CreateItem(talent.talentId, false, false))
+                    .Select(talent => CreateItem(talent.talentId, false, false, talent.lastPublicValue))
+                    .ToArray(),
+                Expanded = ordered
+                    .Select(talent => CreateItem(talent.talentId, false, false, talent.lastPublicValue))
                     .ToArray(),
                 CollapsedCount = Math.Max(0, ordered.Length - OpponentVisibleLimit)
             };
@@ -109,17 +122,23 @@ namespace MahjongGame.Core
 
         private static string EventKey(int seatIndex, string talentId) => seatIndex + ":" + talentId;
 
-        private static TalentHudItem CreateItem(string talentId, bool isActive, bool showActiveState) => new TalentHudItem
+        private static TalentHudItem CreateItem(
+            string talentId,
+            bool isActive,
+            bool showActiveState,
+            int value = 0) => new TalentHudItem
         {
             TalentId = talentId,
             DisplayName = TalentRegistry.Instance.GetDisplayName(talentId),
             IsActive = isActive,
-            ShowActiveState = showActiveState
+            ShowActiveState = showActiveState,
+            Value = value,
+            ShowValue = value != 0
         };
 
         private static TalentHudItem CreateOwnItem(SnapshotOwnTalent talent) =>
             IsKnownTalent(talent.talentId)
-                ? CreateItem(talent.talentId, true, true)
+                ? CreateItem(talent.talentId, true, true, talent.privateValue)
                 : new TalentHudItem
                 {
                     TalentId = string.Empty,

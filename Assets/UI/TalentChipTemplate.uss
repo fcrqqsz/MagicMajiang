@@ -1,0 +1,72 @@
+.talent-chip {
+    min-width: 84px;
+    height: 30px;
+    margin: 2px;
+    padding-left: 9px;
+    padding-right: 9px;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    background-color: rgba(10, 24, 18, 0.92);
+    border-width: 1px;
+    border-radius: 7px;
+    border-color: rgba(203, 178, 109, 0.55);
+    -unity-font-definition: url('project://database/Assets/Font/MSYH_UITK.asset');
+}
+
+.talent-chip__name,
+.talent-chip__value,
+.talent-chip__consumed {
+    -unity-font-definition: url('project://database/Assets/Font/MSYH_UITK.asset');
+    -unity-text-align: middle-center;
+}
+
+.talent-chip__name {
+    color: #E8E1CB;
+    font-size: 15px;
+}
+
+.talent-chip__value {
+    min-width: 20px;
+    margin-left: 5px;
+    color: #FFD479;
+    font-size: 14px;
+    -unity-font-style: bold;
+}
+
+.talent-chip__consumed {
+    display: none;
+    margin-left: 5px;
+    color: #9D9D9D;
+    font-size: 12px;
+}
+
+.talent-chip--active {
+    background-color: rgba(47, 87, 49, 0.96);
+    border-color: #F4D277;
+}
+
+.talent-chip--inactive {
+    opacity: 0.68;
+}
+
+.talent-chip--known {
+    background-color: rgba(24, 43, 52, 0.92);
+    border-color: rgba(125, 179, 194, 0.72);
+}
+
+.talent-chip--consumed .talent-chip__consumed {
+    display: flex;
+}
+
+.talent-chip--consumed .talent-chip__value {
+    display: none;
+}
+
+.talent-chip--positive {
+    border-color: #79D896;
+}
+
+.talent-chip--negative {
+    border-color: #E78686;
+}

@@ -122,6 +122,9 @@ namespace MahjongGame.UI
         public static GameHUDController Instance { get; set; }
         public void UpdateRoundInfo(MahjongGame.Core.Network.GameSession session) { }
         public void UpdateScores(int[] scores) { }
+        public void BindServerProxy(MahjongGame.Core.Network.RemoteServerProxy proxy) { }
+        public void UnbindServerProxy(MahjongGame.Core.Network.RemoteServerProxy proxy) { }
+        public void CloseTalentDrawers() { }
     }
 
     public sealed class ResultPanelController

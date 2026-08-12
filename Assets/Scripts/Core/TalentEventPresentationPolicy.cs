@@ -85,6 +85,17 @@ namespace MahjongGame.Core
     {
         private long _highestEventId;
 
+        public bool TryBuild(
+            TalentRuntimeEventMessage runtimeEvent,
+            bool isRecovery,
+            out TalentFeedbackView feedback)
+        {
+            feedback = TalentEventPresentationPolicy.Build(runtimeEvent, isRecovery);
+            return runtimeEvent != null
+                && !feedback.IsSilent
+                && TryAccept(runtimeEvent.eventId);
+        }
+
         public bool TryAccept(long eventId)
         {
             if (eventId <= 0 || eventId <= _highestEventId) return false;
