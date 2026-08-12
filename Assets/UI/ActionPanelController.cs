@@ -4,6 +4,7 @@ using MahjongGame.Core;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using MahjongGame.Talents;
 
 namespace MahjongGame.UI
 {
@@ -25,12 +26,17 @@ namespace MahjongGame.UI
         [SerializeField] private UIDocument _document;
         private VisualElement _root;
         private VisualElement _btnContainer;
+        private VisualElement _talentActionContainer;
+        private Label _talentActionStatus;
         private Button _btnChi, _btnPon, _btnMingGan, _btnAnGan, _btnJiaGang, _btnHu, _btnSkip;
 
         // 当前的回调函数引用
         private Action<ActionPanelChoice> _currentCallback;
         private Action<int> _currentChiCallback;
         private Action<TileData> _currentKongCallback;
+        private Action<TalentActionOption> _talentSelectedCallback;
+        private TalentActionPanelState _talentState = TalentActionPanelPolicy.Clear();
+        private IVisualElementScheduledItem _talentStatusClearSchedule;
 
         void Awake()
         {
@@ -44,6 +50,8 @@ namespace MahjongGame.UI
 
             _root = _document.rootVisualElement;
             _btnContainer = _root.Q<VisualElement>("ButtonContainer");
+            _talentActionContainer = _root.Q<VisualElement>("TalentActionContainer");
+            _talentActionStatus = _root.Q<Label>("TalentActionStatus");
 
             _btnChi = _root.Q<Button>("BtnChi");
             _btnPon = _root.Q<Button>("BtnPon");
@@ -66,6 +74,14 @@ namespace MahjongGame.UI
             Hide();
         }
 
+        private void OnDestroy()
+        {
+            _talentStatusClearSchedule?.Pause();
+            _talentStatusClearSchedule = null;
+            ClearTalentActions(0);
+            if (Instance == this) Instance = null;
+        }
+
         // 防抖动辅助：防止极短时间内双击导致调用两次
         private void SafeInvoke(Action action)
         {
@@ -75,11 +91,13 @@ namespace MahjongGame.UI
 
         public void Hide()
         {
-            _root.style.display = DisplayStyle.None;
             // 清理回调，防止意外触发
             _currentCallback = null;
             _currentChiCallback = null;
             _currentKongCallback = null;
+            if (_btnContainer != null)
+                _btnContainer.style.display = DisplayStyle.None;
+            RefreshRootVisibility();
         }
 
         public void Show(AllowedActions actions, Action<ActionPanelChoice> callback)
@@ -89,6 +107,7 @@ namespace MahjongGame.UI
 
             // 2. 还原界面状态 (如果之前显示了二级菜单，这里要还原)
             RestoreMainButtons();
+            _btnContainer.style.display = DisplayStyle.Flex;
 
             // 3. 设置可见性
             SetVisible(_btnChi, actions.CanChiLeft || actions.CanChiMiddle || actions.CanChiRight);
@@ -100,6 +119,127 @@ namespace MahjongGame.UI
             SetVisible(_btnSkip, true);
 
             _root.style.display = DisplayStyle.Flex;
+        }
+
+        public void ShowTalentActions(
+            long decisionId,
+            IReadOnlyList<TalentActionOption> options,
+            Action<TalentActionOption> onSelected)
+        {
+            _talentSelectedCallback = onSelected;
+            ClearTalentStatus();
+            _talentState = TalentActionPanelPolicy.Open(
+                decisionId,
+                ReadBaseActionAvailability(),
+                options);
+            RenderTalentActions();
+            RefreshRootVisibility();
+        }
+
+        public void ClearTalentActions(long decisionId)
+        {
+            if (decisionId > 0 && _talentState.DecisionId != decisionId) return;
+            _talentState = TalentActionPanelPolicy.Clear();
+            _talentSelectedCallback = null;
+            ClearTalentStatus();
+            _talentActionContainer?.Clear();
+            if (_talentActionContainer != null)
+                _talentActionContainer.style.display = DisplayStyle.None;
+            RefreshRootVisibility();
+        }
+
+        public void BeginTalentActionSubmit(TalentActionOption selected)
+        {
+            if (selected == null) return;
+            _talentState = TalentActionPanelPolicy.BeginSubmit(_talentState, selected.TalentId);
+            RenderTalentActions();
+        }
+
+        public void RestoreRejectedTalentAction(
+            long decisionId,
+            string talentId,
+            string errorCode)
+        {
+            _talentState = TalentActionPanelPolicy.Resolve(
+                _talentState, decisionId, talentId, accepted: false, errorCode);
+            ShowTalentStatus(TalentActionPanelPolicy.GetRejectionCopy(errorCode));
+            RenderTalentActions();
+            RefreshRootVisibility();
+        }
+
+        private void RenderTalentActions()
+        {
+            if (_talentActionContainer == null) return;
+            _talentActionContainer.Clear();
+            foreach (IGrouping<string, TalentActionPanelOption> group in
+                     _talentState.Options.GroupBy(option => option.TalentId, StringComparer.Ordinal))
+            {
+                TalentActionPanelOption presentation = group.First();
+                bool isPending = group.Any(option => option.IsPending);
+                TalentActionOption selected = TalentActionPanelPolicy.CloneOption(presentation.Option);
+                var button = new Button
+                {
+                    text = isPending
+                        ? $"{TalentRegistry.Instance.GetDisplayName(selected.TalentId)}…"
+                        : TalentRegistry.Instance.GetDisplayName(selected.TalentId)
+                };
+                button.AddToClassList("talent-action-btn");
+                button.SetEnabled(!isPending);
+                button.clicked += () =>
+                {
+                    if (!_talentState.IsOpen || isPending) return;
+                    _talentSelectedCallback?.Invoke(TalentActionPanelPolicy.CloneOption(selected));
+                };
+                _talentActionContainer.Add(button);
+            }
+            _talentActionContainer.style.display = _talentState.IsOpen
+                ? DisplayStyle.Flex
+                : DisplayStyle.None;
+        }
+
+        private BaseActionAvailability ReadBaseActionAvailability() => new BaseActionAvailability
+        {
+            CanHu = IsVisible(_btnHu),
+            CanPon = IsVisible(_btnPon),
+            CanChi = IsVisible(_btnChi),
+            CanKong = IsVisible(_btnMingGan) || IsVisible(_btnAnGan) || IsVisible(_btnJiaGang),
+            CanSkip = IsVisible(_btnSkip),
+            CanDiscard = true
+        };
+
+        private static bool IsVisible(VisualElement element) =>
+            element != null && element.style.display != DisplayStyle.None;
+
+        private void RefreshRootVisibility()
+        {
+            if (_root == null) return;
+            bool hasBaseCallback = _currentCallback != null
+                || _currentChiCallback != null
+                || _currentKongCallback != null;
+            _root.style.display = hasBaseCallback || _talentState.IsOpen
+                ? DisplayStyle.Flex
+                : DisplayStyle.None;
+        }
+
+        private void ShowTalentStatus(string copy)
+        {
+            if (_talentActionStatus == null) return;
+            _talentStatusClearSchedule?.Pause();
+            _talentActionStatus.text = copy ?? string.Empty;
+            _talentActionStatus.style.display = string.IsNullOrEmpty(copy)
+                ? DisplayStyle.None
+                : DisplayStyle.Flex;
+            _talentStatusClearSchedule = _talentActionStatus.schedule.Execute(ClearTalentStatus)
+                .StartingIn(2200);
+        }
+
+        private void ClearTalentStatus()
+        {
+            _talentStatusClearSchedule?.Pause();
+            _talentStatusClearSchedule = null;
+            if (_talentActionStatus == null) return;
+            _talentActionStatus.text = string.Empty;
+            _talentActionStatus.style.display = DisplayStyle.None;
         }
 
         /// <summary>

@@ -13,12 +13,98 @@ internal static class TalentCommandClientTests
     public static void Run(RegressionRunner runner)
     {
         RemoteProxySerializesTalentActionFromAuthoritativeMainDecision(runner);
+        RemoteProxyBindsAndUnbindsTalentPresentationClient(runner);
+        RemoteProxyPublishesOrderedTalentPresentationBoundaries(runner);
+        BaseActionClearsTalentPresentationWithoutLosingDecision(runner);
         LiveMainTurnDecisionAuthorizesTalentAction(runner);
         TalentActionRejectsWrongPhaseAndResync(runner);
         RemoteProxySerializesSideboardWithoutChangingLocalState(runner);
         LiveSideboardDecisionAuthorizesSubmission(runner);
         SideboardRejectsLockedWrongPhaseAndConnectionRecovery(runner);
         WebSocketClient.ResetForTests();
+    }
+
+    private static void BaseActionClearsTalentPresentationWithoutLosingDecision(RegressionRunner runner)
+    {
+        using ClientRoomService service = CreateLiveRoomService();
+        var local = new TalentPresentationClientStub();
+        using var proxy = new ProxyLifetime(new RemoteServerProxy(local, service));
+        WebSocketClient.Instance.Receive(MessageSerializer.Serialize("TileDrawn", 3, new TileDrawnMessage
+        {
+            decisionId = MainDecisionId,
+            decision = new SnapshotDecision
+            {
+                decisionId = MainDecisionId,
+                phase = (int)NetworkDecisionPhase.MainTurn,
+                actingSeatIndex = 0,
+                controllerSeatIndex = 0,
+                eligibleSeats = Array.Empty<int>(),
+                submittedSeats = Array.Empty<int>(),
+                deadlineUnixMilliseconds = DateTimeOffset.UtcNow.AddMinutes(1).ToUnixTimeMilliseconds()
+            },
+            tile = new SimpleTileData { suit = (int)Suit.Man, value = 2, isValid = true }
+        }));
+        WebSocketClient.Instance.SentMessages.Clear();
+        int clearCount = 0;
+        proxy.Value.TalentActionsChanged += (decisionId, options) =>
+        {
+            if (decisionId == 0 && (options?.Count ?? 0) == 0) clearCount++;
+        };
+
+        proxy.Value.SubmitAction(ClientAction.Discard(0,
+            new TileData(Suit.Man, 2, 100)));
+        ClientActionMessage sent = GetOnlySentPayload<ClientActionMessage>("Action");
+
+        runner.Check(clearCount == 1 && sent?.decisionId == MainDecisionId,
+            "base action submission clears supplemental controls without erasing its authoritative decision ID");
+    }
+
+    private static void RemoteProxyPublishesOrderedTalentPresentationBoundaries(RegressionRunner runner)
+    {
+        using ClientRoomService service = CreateService(CreateMainTurnSnapshot());
+        var local = new TalentPresentationClientStub();
+        using var proxy = new ProxyLifetime(new RemoteServerProxy(local, service));
+        var presentations = new List<(long DecisionId, int Count)>();
+        int resets = 0;
+        proxy.Value.TalentActionsChanged += (decisionId, options) =>
+            presentations.Add((decisionId, options?.Count ?? 0));
+        proxy.Value.TalentPickerResetRequested += () => resets++;
+
+        WebSocketClient.Instance.Receive(MessageSerializer.Serialize(
+            "TalentPrivateState", 1, new TalentPrivateStateMessage
+            {
+                ownerSeatIndex = 0,
+                talents = Array.Empty<SnapshotOwnTalent>(),
+                availableTalentActions = new[]
+                {
+                    new SnapshotTalentActionOption { talentId = "sheathed_edge" }
+                }
+            }));
+        WebSocketClient.Instance.Receive(MessageSerializer.Serialize(
+            "Discarded", 2, new DiscardedMessage
+            {
+                playerId = 0,
+                decisionId = MainDecisionId + 1,
+                tile = new SimpleTileData { suit = (int)Suit.Man, value = 1, isValid = true }
+            }));
+
+        runner.Check(presentations.Count == 2
+            && presentations[0] == (MainDecisionId, 1)
+            && presentations[1] == (0L, 0)
+            && resets == 1,
+            "ordered TalentPrivateState opens supplemental actions and Discarded clears actions plus picker");
+    }
+
+    private static void RemoteProxyBindsAndUnbindsTalentPresentationClient(RegressionRunner runner)
+    {
+        using ClientRoomService service = CreateService(CreateMainTurnSnapshot());
+        var presentationClient = new TalentPresentationClientStub();
+        var proxy = new RemoteServerProxy(presentationClient, service);
+        runner.Check(presentationClient.BindCount == 1 && presentationClient.LastProxy == proxy,
+            "RemoteServerProxy binds the local supplemental talent presentation at construction");
+        proxy.Cleanup();
+        runner.Check(presentationClient.UnbindCount == 1 && presentationClient.LastProxy == proxy,
+            "RemoteServerProxy unbinds the local supplemental talent presentation during cleanup");
     }
 
     private static void LiveMainTurnDecisionAuthorizesTalentAction(RegressionRunner runner)
@@ -328,5 +414,45 @@ internal static class TalentCommandClientTests
         public ProxyLifetime(RemoteServerProxy value) => Value = value;
 
         public void Dispose() => Value.Cleanup();
+    }
+
+    private sealed class TalentPresentationClientStub : IPlayerClient, ITalentActionPresentationClient
+    {
+        public int BindCount { get; private set; }
+        public int UnbindCount { get; private set; }
+        public RemoteServerProxy LastProxy { get; private set; }
+
+        public int PlayerId => 0;
+        public System.Threading.CancellationToken TurnCancellationToken { get; set; }
+
+        public void BindTalentActionPresentation(RemoteServerProxy proxy)
+        {
+            BindCount++;
+            LastProxy = proxy;
+        }
+
+        public void UnbindTalentActionPresentation(RemoteServerProxy proxy)
+        {
+            UnbindCount++;
+            LastProxy = proxy;
+        }
+
+        public void OnGameStart(List<TileData> startingHand) { }
+        public void OnTileDrawn(TileData drawnTile) { }
+        public void OnPlayerDrawn(int playerId) { }
+        public void OnTurnWithoutDraw() { }
+        public void OnWallCountChanged(int remainingCount) { }
+        public void OnOtherPlayerDiscarded(int playerId, TileData discardedTile) { }
+        public void OnAddedKongDeclared(int playerId, TileData targetTile) { }
+        public void OnActionResolved(int playerId, ClientActionType actionType, TileData targetTile, int[] chiCombinations = null) { }
+        public void OnDrawGame() { }
+        public void OnPlayerWin(int playerId, int totalFan, List<string> fanDetails, bool isSelfDraw,
+            WinKind winKind, int loserId, WinningHandSnapshot winningHand,
+            TalentFanBreakdownMessage talentFanBreakdown) { }
+        public void OnRoundStart(int roundNumber, WindDirection prevalentWind, WindDirection seatWind, int dealerIndex) { }
+        public void OnSessionEnd(int[] finalScores) { }
+        public void OnTimeout(TileData autoDiscardedTile) { }
+        public void OnTalentInfo(ScoringOptions scoringOptions) { }
+        public void OnPeekWallTiles(List<TileData> topTiles) { }
     }
 }

@@ -17,8 +17,10 @@ internal static class TalentPresentationTests
 {
     public static void Run(RegressionRunner runner)
     {
+        RunTalentActionPanelPolicyTests(runner);
         RunLayeredTalentHudPolicyTests(runner);
         RunTalentEventPresentationPolicyTests(runner);
+        RunTalentActionPanelArtifactTests(runner);
         RunLayeredTalentHudArtifactTests(runner);
         RunTalentAudioAssetTests(runner);
         RunAlienationPresentationPolicyTests(runner);
@@ -26,6 +28,124 @@ internal static class TalentPresentationTests
         RunLoadoutPresetTests(runner);
         RunServerAdmissionTests(runner);
         RunClientCommandTests(runner);
+    }
+
+    private static void RunTalentActionPanelPolicyTests(RegressionRunner runner)
+    {
+        var sourceInterception = new TalentActionOption
+        {
+            TalentId = "interception",
+            TargetSeatIndex = 2,
+            TargetTalentId = "sheathed_edge"
+        };
+        var baseActions = new BaseActionAvailability { CanDiscard = true, CanHu = true };
+        TalentActionPanelState state = TalentActionPanelPolicy.Open(
+            72L,
+            baseActions,
+            new[]
+            {
+                new TalentActionOption { TalentId = "sheathed_edge" },
+                sourceInterception
+            });
+
+        sourceInterception.TargetSeatIndex = 3;
+        baseActions.CanDiscard = false;
+        runner.Check(state.DecisionId == 72L
+            && state.BaseActions.CanDiscard
+            && state.Options.Single(option => option.TalentId == "interception").Option.TargetSeatIndex == 2,
+            "opening the talent action panel deep-copies base availability and presentation options");
+
+        state = TalentActionPanelPolicy.BeginSubmit(state, "interception");
+        runner.Check(state.BaseActions.CanDiscard
+            && state.Options.Single(option => option.TalentId == "interception").IsPending
+            && !state.Options.Single(option => option.TalentId == "sheathed_edge").IsPending,
+            "submitting one talent leaves base actions and other talent options available");
+
+        state = TalentActionPanelPolicy.Resolve(
+            state, 72L, "interception", accepted: false, errorCode: TalentActionErrorCodes.InvalidTarget);
+        runner.Check(state.IsOpen
+            && !state.Options.Single(option => option.TalentId == "interception").IsPending
+            && state.BaseActions.CanDiscard,
+            "ordinary rejection restores only the submitted talent button");
+
+        TalentActionPanelState accepted = TalentActionPanelPolicy.Resolve(
+            TalentActionPanelPolicy.BeginSubmit(state, "sheathed_edge"),
+            72L, "sheathed_edge", accepted: true, errorCode: null);
+        runner.Check(accepted.IsOpen
+            && accepted.BaseActions.CanDiscard
+            && accepted.Options.Single(option => option.TalentId == "sheathed_edge").IsPending,
+            "an accepted talent result keeps the independent base actions available until authoritative options refresh");
+
+        TalentActionPanelState stale = TalentActionPanelPolicy.Resolve(
+            state, 72L, "interception", accepted: false, errorCode: NetworkErrorCodes.StaleDecision);
+        runner.Check(!stale.IsOpen && stale.Options.Count == 0,
+            "a stale talent result clears the complete supplemental presentation");
+
+        TalentActionPanelState expired = TalentActionPanelPolicy.Resolve(
+            state, 72L, "interception", accepted: false, errorCode: NetworkErrorCodes.DecisionExpired);
+        runner.Check(!expired.IsOpen && expired.Options.Count == 0,
+            "an expired talent result clears the complete supplemental presentation");
+
+        TalentActionPanelState lateStale = TalentActionPanelPolicy.Resolve(
+            state, 71L, "interception", accepted: false, errorCode: NetworkErrorCodes.StaleDecision);
+        runner.Check(lateStale.IsOpen && lateStale.DecisionId == 72L && lateStale.Options.Count == 2,
+            "a late stale result from an older decision cannot clear the current supplemental presentation");
+
+        TalentActionPanelState selecting = TalentActionPanelPolicy.BeginTargetSelection(state, "interception");
+        TalentActionPanelState cancelled = TalentActionPanelPolicy.CancelTargetSelection(selecting);
+        runner.Check(selecting.TargetSelection != null
+            && cancelled.TargetSelection == null
+            && cancelled.Options.All(option => !option.IsPending),
+            "cancelling target selection returns to the same buttons without beginning a submission");
+
+        TalentActionPanelState recovered = TalentActionPanelPolicy.ResetForRecovery(state);
+        runner.Check(!recovered.IsOpen && recovered.DecisionId == 0 && recovered.Options.Count == 0,
+            "recovery atomically resets talent action buttons pending state and target selection");
+        runner.Check(TalentActionPanelPolicy.GetRejectionCopy(TalentActionErrorCodes.InvalidTarget) == "目标已不可用"
+            && TalentActionPanelPolicy.GetRejectionCopy(TalentActionErrorCodes.InsufficientResource) == "充能不足"
+            && TalentActionPanelPolicy.GetRejectionCopy("future_error") == "天赋动作未生效",
+            "ordinary talent rejection codes map to short fixed local presentation text");
+
+        var targetSnapshot = new RoomGameSnapshot
+        {
+            seats = new[]
+            {
+                new RoomSnapshotSeat { seatIndex = 1, displayName = "North Player" },
+                new RoomSnapshotSeat { seatIndex = 2, displayName = "West Player" }
+            },
+            knownTalents = new[]
+            {
+                new SnapshotKnownTalent
+                {
+                    ownerSeatIndex = 2,
+                    talentId = "sheathed_edge",
+                    isKnown = true,
+                    lastPublicValue = 3
+                },
+                new SnapshotKnownTalent
+                {
+                    ownerSeatIndex = 1,
+                    talentId = "sheathed_edge",
+                    isKnown = true,
+                    lastPublicValue = 9
+                },
+                new SnapshotKnownTalent
+                {
+                    ownerSeatIndex = 3,
+                    talentId = "midas_touch",
+                    isKnown = false,
+                    lastPublicValue = 99
+                }
+            }
+        };
+        IReadOnlyList<TalentActionTargetPresentation> targets =
+            TalentActionPanelPolicy.BuildAuthorizedTargets(state.Options, "interception", targetSnapshot);
+        runner.Check(targets.Count == 1
+            && targets[0].SeatIndex == 2
+            && targets[0].SeatDisplayName == "West Player"
+            && targets[0].TalentDisplayName == "藏锋"
+            && targets[0].PublicCharge == 3,
+            "target presentation joins only server-option-authorized seat talent and public charge data");
     }
 
     private static void RunLayeredTalentHudPolicyTests(RegressionRunner runner)
@@ -102,6 +222,61 @@ internal static class TalentPresentationTests
         });
         runner.Check(pinned.Seats[3].Visible[0].TalentId == "starting_capital",
             "public-at-match-start talents are pinned ahead of more recent public events");
+    }
+
+    private static void RunTalentActionPanelArtifactTests(RegressionRunner runner)
+    {
+        string uxmlPath = GetRepoPath("Assets", "UI", "ActionPanel.uxml");
+        string stylesPath = GetRepoPath("Assets", "UI", "ActionPanelStyles.uss");
+        string controllerPath = GetRepoPath("Assets", "UI", "ActionPanelController.cs");
+        string pickerPath = GetRepoPath("Assets", "UI", "FloatingTilePanelController.cs");
+        string localPath = GetRepoPath("Assets", "Scripts", "Core", "Agents", "LocalPlayerClient.cs");
+        string proxyPath = GetRepoPath("Assets", "Scripts", "Core", "Network", "RemoteServerProxy.cs");
+
+        XDocument panel = XDocument.Load(uxmlPath);
+        HashSet<string> names = panel.Descendants()
+            .Select(element => element.Attribute("name")?.Value)
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .ToHashSet(StringComparer.Ordinal);
+        runner.Check(names.Contains("TalentActionContainer") && names.Contains("ButtonContainer"),
+            "ActionPanel exposes a separate supplemental talent action row beside the base action row");
+
+        string styles = File.ReadAllText(stylesPath);
+        string controller = File.ReadAllText(controllerPath);
+        string picker = File.ReadAllText(pickerPath);
+        string local = File.ReadAllText(localPath);
+        string proxy = File.ReadAllText(proxyPath);
+        runner.Check(styles.Contains(".talent-action-row", StringComparison.Ordinal)
+            && styles.Contains("MSYH_UITK.asset", StringComparison.Ordinal)
+            && !styles.Contains("MSYH.TTC", StringComparison.OrdinalIgnoreCase)
+            && !styles.Contains("MSYH_SDF.asset", StringComparison.OrdinalIgnoreCase),
+            "the supplemental row has UI Toolkit styling and the supported TextCore font only");
+        runner.Check(controller.Contains("ShowTalentActions(", StringComparison.Ordinal)
+            && controller.Contains("ClearTalentActions(long decisionId)", StringComparison.Ordinal)
+            && controller.Contains("_talentSelectedCallback", StringComparison.Ordinal)
+            && controller.Contains("RenderTalentActions", StringComparison.Ordinal)
+            && controller.Contains("_btnContainer.style.display = DisplayStyle.None", StringComparison.Ordinal)
+            && controller.Contains("_btnContainer.style.display = DisplayStyle.Flex", StringComparison.Ordinal),
+            "ActionPanel owns a typed talent callback while independently hiding and showing the base action row");
+        runner.Check(picker.Contains("ShowOptionSelection(", StringComparison.Ordinal)
+            && picker.Contains("Action onCancelled", StringComparison.Ordinal)
+            && picker.Contains("_closeBtn.clicked -=", StringComparison.Ordinal)
+            && picker.Contains("OnDestroy", StringComparison.Ordinal),
+            "FloatingTilePanel provides a cancellable non-tile selection mode and removes callbacks on teardown");
+        runner.Check(local.Contains("BindTalentActionPresentation(", StringComparison.Ordinal)
+            && local.Contains("UnbindTalentActionPresentation(", StringComparison.Ordinal)
+            && local.Contains("TalentActionResolvedReceived +=", StringComparison.Ordinal)
+            && local.Contains("TalentActionResolvedReceived -=", StringComparison.Ordinal)
+            && local.Contains("ClearTalentActionPresentation", StringComparison.Ordinal)
+            && local.Contains("BuildAuthorizedTargets", StringComparison.Ordinal)
+            && local.Contains("resolved.decisionId != _talentPanelState.DecisionId", StringComparison.Ordinal),
+            "LocalPlayerClient binds ordered talent UI state and cleans it at local presentation boundaries");
+        runner.Check(proxy.Contains("BindTalentActionPresentation(this)", StringComparison.Ordinal)
+            && proxy.Contains("UnbindTalentActionPresentation(this)", StringComparison.Ordinal)
+            && proxy.Contains("ClearTalentActionsPresentation(clearDecisionId: false);", StringComparison.Ordinal)
+            && proxy.IndexOf("ClearTalentActionsPresentation(clearDecisionId: false);", StringComparison.Ordinal)
+               < proxy.IndexOf("var msg = new ClientActionMessage", StringComparison.Ordinal),
+            "RemoteServerProxy owns the local talent UI subscription and clears supplemental controls before base submission");
     }
 
     private static void RunTalentEventPresentationPolicyTests(RegressionRunner runner)

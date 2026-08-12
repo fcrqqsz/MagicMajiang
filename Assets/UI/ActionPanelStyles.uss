@@ -12,6 +12,42 @@
     flex-direction: row;
 }
 
+.talent-action-row {
+    flex-direction: row;
+    justify-content: flex-end;
+    min-height: 70px;
+}
+
+.talent-action-status {
+    color: #FFD9B3;
+    font-size: 22px;
+    -unity-text-align: middle-right;
+    margin-right: 12px;
+}
+
+.talent-action-btn {
+    min-width: 150px;
+    height: 62px;
+    margin: 6px 10px;
+    padding-left: 20px;
+    padding-right: 20px;
+    border-radius: 14px;
+    border-width: 2px;
+    border-color: rgba(255, 225, 145, 0.85);
+    background-color: rgba(52, 38, 82, 0.96);
+    color: #FFF4CF;
+    font-size: 25px;
+    -unity-font-style: bold;
+}
+
+.talent-action-btn:hover {
+    background-color: rgba(78, 55, 118, 0.98);
+}
+
+.talent-action-btn:disabled {
+    opacity: 0.55;
+}
+
 /* 基础按钮样式 */
 .action-btn {
     width: 100px;

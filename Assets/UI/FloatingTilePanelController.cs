@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UIElements;
 using MahjongGame.Core;
+using MahjongGame.Talents;
 
 namespace MahjongGame.UI
 {
@@ -20,6 +21,7 @@ namespace MahjongGame.UI
         private Button _closeBtn;
 
         private Coroutine _autoCloseCoroutine;
+        private Action _closeClicked;
 
         private void Awake()
         {
@@ -39,9 +41,18 @@ namespace MahjongGame.UI
                 _scrollView = _document.rootVisualElement.Q<ScrollView>("FloatingTileScroll");
                 _closeBtn = _document.rootVisualElement.Q<Button>("FloatingPanelCloseBtn");
 
-                _closeBtn.clicked += Hide;
+                ConfigureClose(Hide);
                 HideImmediate();
             }
+        }
+
+        private void OnDestroy()
+        {
+            StopAutoClose();
+            if (_closeBtn != null && _closeClicked != null)
+                _closeBtn.clicked -= _closeClicked;
+            _closeClicked = null;
+            if (Instance == this) Instance = null;
         }
 
         /// <summary>
@@ -53,6 +64,8 @@ namespace MahjongGame.UI
 
             StopAutoClose();
             PopulateTiles(title, tiles, false, null);
+            ConfigureClose(Hide);
+            _closeBtn.text = "知道了";
             _closeBtn.style.display = DisplayStyle.Flex;
             ShowPanel();
 
@@ -72,6 +85,45 @@ namespace MahjongGame.UI
             StopAutoClose();
             PopulateTiles(title, tiles, true, onSelected);
             _closeBtn.style.display = DisplayStyle.None;
+            ShowPanel();
+        }
+
+        public void ShowOptionSelection(
+            string title,
+            IReadOnlyList<TalentActionTargetPresentation> options,
+            Action<TalentActionOption> onSelected,
+            Action onCancelled)
+        {
+            if (_root == null) return;
+
+            StopAutoClose();
+            _titleLabel.text = title;
+            _scrollView.Clear();
+            foreach (TalentActionTargetPresentation target in options ?? Array.Empty<TalentActionTargetPresentation>())
+            {
+                if (target?.Option == null) continue;
+                TalentActionOption selected = TalentActionPanelPolicy.CloneOption(target.Option);
+                var item = new Button
+                {
+                    text = $"{target.SeatDisplayName}\n{target.TalentDisplayName} · 充能 {target.PublicCharge}"
+                };
+                item.AddToClassList("floating-tile-item");
+                item.AddToClassList("selectable");
+                item.clicked += () =>
+                {
+                    onSelected?.Invoke(TalentActionPanelPolicy.CloneOption(selected));
+                    Hide();
+                };
+                _scrollView.Add(item);
+            }
+
+            ConfigureClose(() =>
+            {
+                Hide();
+                onCancelled?.Invoke();
+            });
+            _closeBtn.text = "取消";
+            _closeBtn.style.display = DisplayStyle.Flex;
             ShowPanel();
         }
 
@@ -158,6 +210,14 @@ namespace MahjongGame.UI
                 StopCoroutine(_autoCloseCoroutine);
                 _autoCloseCoroutine = null;
             }
+        }
+
+        private void ConfigureClose(Action callback)
+        {
+            if (_closeBtn == null) return;
+            if (_closeClicked != null) _closeBtn.clicked -= _closeClicked;
+            _closeClicked = callback;
+            if (_closeClicked != null) _closeBtn.clicked += _closeClicked;
         }
     }
 }

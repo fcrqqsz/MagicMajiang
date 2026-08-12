@@ -106,6 +106,7 @@
     <Compile Include="..\..\Assets\Scripts\Core\TalentPickerDuplicatePolicy.cs" Link="TalentPickerDuplicatePolicy.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\TalentHudProjectionPolicy.cs" Link="TalentHudProjectionPolicy.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\TalentEventPresentationPolicy.cs" Link="TalentEventPresentationPolicy.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\TalentActionPanelPolicy.cs" Link="TalentActionPanelPolicy.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\RoomAlienationPresentationPolicy.cs" Link="RoomAlienationPresentationPolicy.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\ScoringOptions.cs" Link="ScoringOptions.cs" />
     <Compile Include="..\..\Assets\Scripts\Talent\TalentSlotConfig.cs" Link="TalentSlotConfig.cs" />

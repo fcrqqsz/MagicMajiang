@@ -8,13 +8,15 @@ using MahjongGame.Core.Network;
 using MahjongGame.Core.Network.Messages;
 using MahjongGame.Core;
 using MahjongGame.UI;
+using MahjongGame.Talents;
+using MahjongGame.Systems;
 
 namespace MahjongGame.Core.Agents
 {
     /// <summary>
     /// 本地玩家客户端。将服务端的事件映射到 UI 和 3D 表现层，并收集玩家输入发回服务端。
     /// </summary>
-    public class LocalPlayerClient : IPlayerClient
+    public class LocalPlayerClient : IPlayerClient, ITalentActionPresentationClient
     {
         public int PlayerId { get; private set; }
         public CancellationToken TurnCancellationToken { get; set; }
@@ -33,6 +35,8 @@ namespace MahjongGame.Core.Agents
         // 天赋加成
         private ScoringOptions _scoringOptions;
         private CancellationTokenSource _presentationCancellation = new CancellationTokenSource();
+        private RemoteServerProxy _talentActionProxy;
+        private TalentActionPanelState _talentPanelState = TalentActionPanelPolicy.Clear();
 
         public LocalPlayerClient(int playerId, IServer server, HandController handController)
         {
@@ -46,6 +50,26 @@ namespace MahjongGame.Core.Agents
             _server = server;
         }
 
+        public void BindTalentActionPresentation(RemoteServerProxy proxy)
+        {
+            if (proxy == null || ReferenceEquals(_talentActionProxy, proxy)) return;
+            UnbindTalentActionPresentation(_talentActionProxy);
+            _talentActionProxy = proxy;
+            _talentActionProxy.TalentActionsChanged += HandleTalentActionsChanged;
+            _talentActionProxy.TalentActionResolvedReceived += HandleTalentActionResolved;
+            _talentActionProxy.TalentPickerResetRequested += HandleTalentPickerReset;
+        }
+
+        public void UnbindTalentActionPresentation(RemoteServerProxy proxy)
+        {
+            if (proxy == null || !ReferenceEquals(_talentActionProxy, proxy)) return;
+            _talentActionProxy.TalentActionsChanged -= HandleTalentActionsChanged;
+            _talentActionProxy.TalentActionResolvedReceived -= HandleTalentActionResolved;
+            _talentActionProxy.TalentPickerResetRequested -= HandleTalentPickerReset;
+            ClearTalentActionPresentation();
+            _talentActionProxy = null;
+        }
+
         /// <summary>Cancels every UI wait owned by the old projection before a recovered table is rebuilt.</summary>
         public void CancelPendingInput()
         {
@@ -56,10 +80,105 @@ namespace MahjongGame.Core.Agents
             _isWaitingForUI = false;
             _lastDiscarderId = -1;
             ActionPanelController.Instance?.Hide();
-            FloatingTilePanelController.Instance?.Hide();
+            ClearTalentActionPresentation();
             UI.WaitHintController.Instance?.HideHint();
             _handController?.SetInteractable(false);
             GameHUDController.Instance?.StopTimer();
+        }
+
+        private void HandleTalentActionsChanged(
+            long decisionId,
+            IReadOnlyList<TalentActionOption> options)
+        {
+            if (decisionId <= 0 || options == null || options.Count == 0)
+            {
+                ClearTalentActionPresentation();
+                return;
+            }
+
+            _talentPanelState = TalentActionPanelPolicy.Open(
+                decisionId,
+                new BaseActionAvailability { CanDiscard = true },
+                options);
+            ActionPanelController.Instance?.ShowTalentActions(
+                decisionId,
+                _talentPanelState.Options.Select(option => option.Option).ToArray(),
+                HandleTalentActionSelected);
+        }
+
+        private void HandleTalentActionSelected(TalentActionOption option)
+        {
+            if (option == null || _talentActionProxy == null || !_talentPanelState.IsOpen) return;
+
+            IReadOnlyList<TalentActionTargetPresentation> targets =
+                TalentActionPanelPolicy.BuildAuthorizedTargets(
+                    _talentPanelState.Options,
+                    option.TalentId,
+                    NetworkManager.Instance?.RoomService?.GameState?.Snapshot);
+            bool requiresTarget = _talentPanelState.Options.Any(candidate =>
+                string.Equals(candidate.TalentId, option.TalentId, StringComparison.Ordinal)
+                && (candidate.Option.TargetSeatIndex >= 0
+                    || !string.IsNullOrWhiteSpace(candidate.Option.TargetTalentId)));
+            if (!requiresTarget)
+            {
+                SubmitTalentAction(option);
+                return;
+            }
+
+            if (targets.Count == 0) return;
+            _talentPanelState = TalentActionPanelPolicy.BeginTargetSelection(
+                _talentPanelState, option.TalentId);
+            FloatingTilePanelController.Instance?.ShowOptionSelection(
+                TalentRegistry.Instance.GetDisplayName(option.TalentId) + " - 选择目标",
+                targets,
+                SubmitTalentAction,
+                () => _talentPanelState = TalentActionPanelPolicy.CancelTargetSelection(_talentPanelState));
+        }
+
+        private void SubmitTalentAction(TalentActionOption option)
+        {
+            if (option == null || _talentActionProxy?.SubmitTalentAction(option) != true) return;
+            _talentPanelState = TalentActionPanelPolicy.BeginSubmit(_talentPanelState, option.TalentId);
+            ActionPanelController.Instance?.BeginTalentActionSubmit(option);
+        }
+
+        private void HandleTalentActionResolved(TalentActionResolvedMessage resolved)
+        {
+            if (resolved == null || resolved.decisionId != _talentPanelState.DecisionId) return;
+            if (resolved.accepted) return;
+
+            _talentPanelState = TalentActionPanelPolicy.Resolve(
+                _talentPanelState,
+                resolved.decisionId,
+                resolved.talentId,
+                accepted: false,
+                resolved.errorCode);
+            FloatingTilePanelController.Instance?.Hide();
+            if (!_talentPanelState.IsOpen)
+            {
+                ClearTalentActionPresentation();
+                return;
+            }
+
+            ActionPanelController.Instance?.RestoreRejectedTalentAction(
+                resolved.decisionId,
+                resolved.talentId,
+                resolved.errorCode);
+        }
+
+        private void HandleTalentPickerReset()
+        {
+            _talentPanelState = TalentActionPanelPolicy.ResetForRecovery(_talentPanelState);
+            ActionPanelController.Instance?.ClearTalentActions(0);
+            FloatingTilePanelController.Instance?.Hide();
+        }
+
+        private void ClearTalentActionPresentation()
+        {
+            long decisionId = _talentPanelState.DecisionId;
+            _talentPanelState = TalentActionPanelPolicy.Clear();
+            ActionPanelController.Instance?.ClearTalentActions(decisionId);
+            FloatingTilePanelController.Instance?.Hide();
         }
 
         private CancellationTokenSource CreateOperationCancellation()
@@ -567,6 +686,7 @@ namespace MahjongGame.Core.Agents
         {
             _isWaitingForUI = false;
             ActionPanelController.Instance?.Hide();
+            ClearTalentActionPresentation();
             _handController.SetInteractable(false);
             GameHUDController.Instance?.StopTimer();
             ResultPanelController.Instance?.SetSessionInfo(GameManager.Instance?.Session);
@@ -579,6 +699,7 @@ namespace MahjongGame.Core.Agents
         {
             _isWaitingForUI = false;
             ActionPanelController.Instance?.Hide();
+            ClearTalentActionPresentation();
             _handController.SetInteractable(false);
             GameHUDController.Instance?.StopTimer();
             ResultPanelController.Instance?.SetSessionInfo(GameManager.Instance?.Session);
@@ -600,6 +721,7 @@ namespace MahjongGame.Core.Agents
 
         public void OnSessionEnd(int[] finalScores)
         {
+            ClearTalentActionPresentation();
             Debug.Log($"[LocalPlayer] 对战结束 - 分数: {string.Join(",", finalScores)}");
         }
 
@@ -612,6 +734,7 @@ namespace MahjongGame.Core.Agents
         {
             _isWaitingForUI = false;
             ActionPanelController.Instance.Hide();
+            ClearTalentActionPresentation();
             _handController.SetInteractable(false);
 
             // 同步手牌：移除被自动出的牌（视觉+数据）

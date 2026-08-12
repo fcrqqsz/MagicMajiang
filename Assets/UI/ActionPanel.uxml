@@ -1,6 +1,8 @@
 <ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" editor-extension-mode="False">
     <Style src="project://database/Assets/UI/ActionPanelStyles.uss?fileID=7433441132597879392&amp;guid=2acc87babcc3b114ca036c2e66144c05&amp;type=3#ActionPanelStyles" />
     <ui:VisualElement name="Root" class="action-panel-root">
+        <ui:Label name="TalentActionStatus" class="talent-action-status" />
+        <ui:VisualElement name="TalentActionContainer" class="talent-action-row" />
         <ui:VisualElement name="ButtonContainer" class="button-row">
             <ui:Button name="BtnChi" text="吃" class="action-btn btn-chi" />
             <ui:Button name="BtnPon" text="碰" class="action-btn btn-pon" />

@@ -8,6 +8,12 @@ using MahjongGame.UI;
 
 namespace MahjongGame.Core.Network
 {
+    public interface ITalentActionPresentationClient
+    {
+        void BindTalentActionPresentation(RemoteServerProxy proxy);
+        void UnbindTalentActionPresentation(RemoteServerProxy proxy);
+    }
+
     public class RemoteServerProxy : IServer
     {
         private Agents.IPlayerClient _localClient;
@@ -26,17 +32,21 @@ namespace MahjongGame.Core.Network
             _roomService.AcceptedSequenceEnvelope += HandleAcceptedSequenceEnvelope;
             _roomService.ReconnectSnapshotApplied += HandleReconnectSnapshot;
             GameHUDController.Instance?.BindServerProxy(this);
+            (_localClient as ITalentActionPresentationClient)?.BindTalentActionPresentation(this);
         }
 
         public void SetLocalClient(Agents.IPlayerClient localClient)
         {
+            (_localClient as ITalentActionPresentationClient)?.UnbindTalentActionPresentation(this);
             _localClient = localClient;
+            (_localClient as ITalentActionPresentationClient)?.BindTalentActionPresentation(this);
         }
 
         public void Cleanup()
         {
             _roomService.AcceptedSequenceEnvelope -= HandleAcceptedSequenceEnvelope;
             _roomService.ReconnectSnapshotApplied -= HandleReconnectSnapshot;
+            (_localClient as ITalentActionPresentationClient)?.UnbindTalentActionPresentation(this);
             GameHUDController.Instance?.UnbindServerProxy(this);
         }
 
@@ -47,6 +57,8 @@ namespace MahjongGame.Core.Network
                 Debug.LogWarning("[RemoteServerProxy] Ignoring action while client recovery is required.");
                 return;
             }
+
+            ClearTalentActionsPresentation(clearDecisionId: false);
 
             var msg = new ClientActionMessage
             {
