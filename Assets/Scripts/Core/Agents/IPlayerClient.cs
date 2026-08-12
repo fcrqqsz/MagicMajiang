@@ -65,7 +65,8 @@ namespace MahjongGame.Core.Agents
         /// 广播：有人胡牌
         /// </summary>
         void OnPlayerWin(int playerId, int totalFan, List<string> fanDetails, bool isSelfDraw,
-            WinKind winKind, int loserId, WinningHandSnapshot winningHand);
+            WinKind winKind, int loserId, WinningHandSnapshot winningHand,
+            TalentFanBreakdownMessage talentFanBreakdown);
 
         /// <summary>
         /// 新一局开始时，服务端同步圈风/门风/东家信息

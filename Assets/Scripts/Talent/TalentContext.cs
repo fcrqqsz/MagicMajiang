@@ -513,6 +513,26 @@ namespace MahjongGame.Talents
         }
     }
 
+    public sealed class TalentAcceptedWinAttributionContext : TalentContext
+    {
+        public int WinnerSeatIndex => CurrentSeatIndex.Value;
+        public int AlreadyAcceptedFinalFan { get; }
+        public Func<ScoringOptions, FanEvaluation> EvaluateOptions { get; }
+
+        public TalentAcceptedWinAttributionContext(
+            GameSession session,
+            int winnerSeatIndex,
+            int alreadyAcceptedFinalFan,
+            Func<ScoringOptions, FanEvaluation> evaluateOptions)
+            : base(session, ValidateSeatIndex(winnerSeatIndex))
+        {
+            if (alreadyAcceptedFinalFan < 0)
+                throw new ArgumentOutOfRangeException(nameof(alreadyAcceptedFinalFan));
+            AlreadyAcceptedFinalFan = alreadyAcceptedFinalFan;
+            EvaluateOptions = evaluateOptions ?? throw new ArgumentNullException(nameof(evaluateOptions));
+        }
+    }
+
     public sealed class TalentWinEvaluation
     {
         public bool IsLegal { get; }

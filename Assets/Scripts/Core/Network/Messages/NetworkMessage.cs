@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using UnityEngine;
 using MahjongGame.Core;
 
@@ -407,6 +408,66 @@ namespace MahjongGame.Core.Network.Messages
     }
 
     [Serializable]
+    public sealed class TalentFanContributionMessage
+    {
+        public string talentId;
+        public int fanDelta;
+        public int category;
+        public int sequence;
+    }
+
+    [Serializable]
+    public sealed class TalentFanBreakdownMessage
+    {
+        public int baseFan;
+        public int finalFan;
+        public TalentFanContributionMessage[] contributions;
+
+        public static TalentFanBreakdownMessage Clone(TalentFanBreakdownMessage source)
+        {
+            if (source == null) return null;
+            return new TalentFanBreakdownMessage
+            {
+                baseFan = source.baseFan,
+                finalFan = source.finalFan,
+                contributions = (source.contributions ?? Array.Empty<TalentFanContributionMessage>())
+                    .Where(row => row != null)
+                    .Select(row => new TalentFanContributionMessage
+                    {
+                        talentId = row.talentId,
+                        fanDelta = row.fanDelta,
+                        category = row.category,
+                        sequence = row.sequence
+                    })
+                    .ToArray()
+            };
+        }
+
+        public static TalentFanBreakdownMessage FromResolution(TalentFanResolution source)
+        {
+            if (source?.IsAttributionComplete != true) return null;
+            TalentFanContribution[] contributions =
+                (source.Contributions ?? Array.Empty<TalentFanContribution>()).ToArray();
+            if (source.BaseFan + contributions.Sum(row => row.FanDelta) != source.FinalFan)
+                return null;
+            return new TalentFanBreakdownMessage
+            {
+                baseFan = source.BaseFan,
+                finalFan = source.FinalFan,
+                contributions = contributions
+                    .Select(row => new TalentFanContributionMessage
+                    {
+                        talentId = row.TalentId,
+                        fanDelta = row.FanDelta,
+                        category = (int)row.Category,
+                        sequence = row.Sequence
+                    })
+                    .ToArray()
+            };
+        }
+    }
+
+    [Serializable]
     public class PlayerWinMessage
     {
         public int winnerId;
@@ -416,6 +477,7 @@ namespace MahjongGame.Core.Network.Messages
         public WinKind winKind;
         public int loserId = -1;
         public WinningHandSnapshot winningHand;
+        public TalentFanBreakdownMessage talentFanBreakdown;
         public int[] scores;
         public int completedRounds;
     }

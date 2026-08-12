@@ -548,6 +548,189 @@ namespace MahjongGame.Talents
             };
         }
 
+        public TalentFanResolution ResolveAcceptedWinFan(
+            TalentAcceptedWinAttributionContext context)
+        {
+            if (context == null) throw new ArgumentNullException(nameof(context));
+            EnsureReadyRound(context, nameof(ResolveAcceptedWinFan));
+
+            try
+            {
+                return ResolveAcceptedWinFanCore(context);
+            }
+            catch (Exception error)
+            {
+                Debug.LogError(
+                    $"[TalentMatchRuntime] Accepted-win fan attribution failed: " +
+                    $"seat={context.WinnerSeatIndex}, accepted={context.AlreadyAcceptedFinalFan}, error={error}");
+                return CreateFailedAttribution(context.AlreadyAcceptedFinalFan);
+            }
+        }
+
+        private TalentFanResolution ResolveAcceptedWinFanCore(
+            TalentAcceptedWinAttributionContext context)
+        {
+
+            RuntimeEntry[] entries = GetAttributionEntries(context.WinnerSeatIndex).ToArray();
+            var scoringContext = new TalentScoringContext(_session, context.WinnerSeatIndex);
+            FanEvaluation baseEvaluation = EvaluateAttributionCandidate(
+                context, BuildScoringOptions(scoringContext, Array.Empty<RuntimeEntry>()));
+            int baseFan = baseEvaluation.HasWinningShape ? baseEvaluation.Fan : 0;
+            int previousPositiveFan = baseFan;
+            FanEvaluation previousEvaluation = baseEvaluation;
+            var contributions = new List<TalentFanContribution>();
+
+            for (int index = 0; index < entries.Length; index++)
+            {
+                RuntimeEntry[] included = entries.Take(index + 1).ToArray();
+                ScoringOptions options = BuildScoringOptions(scoringContext, included);
+                FanEvaluation evaluation = EvaluateAttributionCandidate(context, options);
+                int eligibilityFan = evaluation.HasWinningShape ? evaluation.Fan : 0;
+                int postLegalBonus = SumPostLegalBonuses(context.WinnerSeatIndex, included);
+                int nextPositiveFan = Math.Max(0, eligibilityFan + postLegalBonus);
+                int delta = nextPositiveFan - previousPositiveFan;
+                if (delta != 0)
+                {
+                    contributions.Add(new TalentFanContribution
+                    {
+                        TalentId = entries[index].Rule.Id,
+                        FanDelta = delta,
+                        Category = eligibilityFan != (previousEvaluation.HasWinningShape
+                            ? previousEvaluation.Fan
+                            : 0)
+                            ? TalentFanContributionCategory.Eligibility
+                            : TalentFanContributionCategory.PostLegal,
+                        Sequence = entries[index].Sequence
+                    });
+                }
+
+                previousPositiveFan = nextPositiveFan;
+                previousEvaluation = evaluation;
+            }
+
+            int previousFinalFan = previousPositiveFan;
+            var requestedPenalties = new List<int>();
+            foreach (RuntimeEntry entry in entries)
+            {
+                int requestedPenalty = GetPostLegalPenalty(context.WinnerSeatIndex, entry);
+                if (requestedPenalty >= 0) continue;
+
+                requestedPenalties.Add(requestedPenalty);
+                int effectiveNegative = TalentFanModifierPolicy.SumPenalties(requestedPenalties);
+                int nextFinalFan = Math.Max(0, previousPositiveFan + effectiveNegative);
+                int delta = nextFinalFan - previousFinalFan;
+                if (delta != 0)
+                {
+                    contributions.Add(new TalentFanContribution
+                    {
+                        TalentId = entry.Rule.Id,
+                        FanDelta = delta,
+                        Category = TalentFanContributionCategory.Negative,
+                        Sequence = entry.Sequence
+                    });
+                }
+                previousFinalFan = nextFinalFan;
+            }
+
+            ScoringOptions authoritativeOptions = BuildScoringOptions(scoringContext, entries);
+            FanEvaluation authoritativeEvaluation = EvaluateAttributionCandidate(
+                context, authoritativeOptions);
+            int eligibility = authoritativeEvaluation.HasWinningShape
+                ? authoritativeEvaluation.Fan
+                : 0;
+            int bonus = SumPostLegalBonuses(context.WinnerSeatIndex, entries);
+            int negative = SumPostLegalPenalties(context.WinnerSeatIndex, entries);
+            int authoritativeFinal = Math.Max(0, eligibility + bonus + negative);
+            int attributedFinal = baseFan + contributions.Sum(row => row.FanDelta);
+            if (attributedFinal != authoritativeFinal
+                || authoritativeFinal != context.AlreadyAcceptedFinalFan)
+            {
+                Debug.LogError(
+                    $"[TalentMatchRuntime] Accepted-win fan attribution mismatch: " +
+                    $"seat={context.WinnerSeatIndex}, base={baseFan}, " +
+                    $"attributed={attributedFinal}, recomputed={authoritativeFinal}, " +
+                    $"accepted={context.AlreadyAcceptedFinalFan}.");
+                return CreateFailedAttribution(context.AlreadyAcceptedFinalFan);
+            }
+
+            return new TalentFanResolution
+            {
+                IsAttributionComplete = true,
+                BaseFan = baseFan,
+                EligibilityFan = eligibility,
+                PostLegalBonusFan = bonus,
+                NegativeFan = negative,
+                FinalFan = context.AlreadyAcceptedFinalFan,
+                Contributions = contributions.ToArray()
+            };
+        }
+
+        private static TalentFanResolution CreateFailedAttribution(int acceptedFinalFan)
+        {
+            return new TalentFanResolution
+            {
+                BaseFan = 0,
+                EligibilityFan = 0,
+                PostLegalBonusFan = 0,
+                NegativeFan = 0,
+                FinalFan = acceptedFinalFan,
+                Contributions = Array.Empty<TalentFanContribution>()
+            };
+        }
+
+        private static FanEvaluation EvaluateAttributionCandidate(
+            TalentAcceptedWinAttributionContext context,
+            ScoringOptions options)
+        {
+            FanEvaluation evaluation = context.EvaluateOptions(options);
+            return evaluation ?? new FanEvaluation
+            {
+                HasWinningShape = false,
+                Fan = 0,
+                FanDetails = null
+            };
+        }
+
+        private int SumPostLegalBonuses(int winnerSeatIndex, IEnumerable<RuntimeEntry> entries)
+        {
+            int bonus = 0;
+            var winContext = new TalentWinContext(_session, winnerSeatIndex);
+            foreach (RuntimeEntry entry in entries)
+            {
+                TalentWinContext bound = winContext.BindWin(
+                    entry.OwnerSeatIndex,
+                    entry.State.CreateDetachedCopy(),
+                    eventSink: null);
+                bonus += Math.Max(0, entry.Rule.GetPostLegalFanBonus(bound));
+            }
+            return bonus;
+        }
+
+        private int SumPostLegalPenalties(int winnerSeatIndex, IEnumerable<RuntimeEntry> entries)
+        {
+            var winContext = new TalentWinContext(_session, winnerSeatIndex);
+            var requested = new List<int>();
+            foreach (RuntimeEntry entry in entries)
+            {
+                TalentWinContext bound = winContext.BindWin(
+                    entry.OwnerSeatIndex,
+                    entry.State.CreateDetachedCopy(),
+                    eventSink: null);
+                requested.Add(entry.Rule.GetPostLegalFanPenalty(bound));
+            }
+            return TalentFanModifierPolicy.SumPenalties(requested);
+        }
+
+        private int GetPostLegalPenalty(int winnerSeatIndex, RuntimeEntry entry)
+        {
+            var winContext = new TalentWinContext(_session, winnerSeatIndex);
+            TalentWinContext bound = winContext.BindWin(
+                entry.OwnerSeatIndex,
+                entry.State.CreateDetachedCopy(),
+                eventSink: null);
+            return entry.Rule.GetPostLegalFanPenalty(bound);
+        }
+
         public void ConfirmAcceptedWin(TalentWinContext context)
         {
             if (context == null) throw new ArgumentNullException(nameof(context));
@@ -578,6 +761,23 @@ namespace MahjongGame.Talents
             foreach (RuntimeEntry entry in GetActiveEntriesForSeat(context.CurrentSeatIndex))
             {
                 if (ReferenceEquals(entry, excludedEntry)) continue;
+                entry.Rule.ConfigureScoring(context.BindScoring(
+                    entry.OwnerSeatIndex,
+                    entry.State.CreateDetachedCopy(),
+                    eventSink: null), options);
+            }
+            return options;
+        }
+
+        private ScoringOptions BuildScoringOptions(
+            TalentScoringContext context,
+            IReadOnlyCollection<RuntimeEntry> includedEntries)
+        {
+            var included = new HashSet<RuntimeEntry>(includedEntries ?? Array.Empty<RuntimeEntry>());
+            var options = new ScoringOptions();
+            foreach (RuntimeEntry entry in GetAttributionEntries(context.CurrentSeatIndex))
+            {
+                if (!included.Contains(entry)) continue;
                 entry.Rule.ConfigureScoring(context.BindScoring(
                     entry.OwnerSeatIndex,
                     entry.State.CreateDetachedCopy(),
@@ -771,6 +971,16 @@ namespace MahjongGame.Talents
                                     || entry.OwnerSeatIndex == currentSeatIndex))
                 .OrderByDescending(entry => entry.Rule.Priority)
                 .ThenBy(entry => entry.Sequence);
+        }
+
+        private IEnumerable<RuntimeEntry> GetAttributionEntries(int winnerSeatIndex)
+        {
+            ValidateSeatIndex(winnerSeatIndex);
+            return _entries
+                .Where(entry => entry.State.IsActive
+                                && (entry.Rule.Scope == TalentScope.Global
+                                    || entry.OwnerSeatIndex == winnerSeatIndex))
+                .OrderBy(entry => entry.Sequence);
         }
 
         private IEnumerable<RuntimeEntry> GetActiveTargetDefenses(int targetSeatIndex)

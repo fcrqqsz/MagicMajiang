@@ -15,6 +15,7 @@
     <Compile Include="SnapshotReconnectTests.cs" />
     <Compile Include="ActionValidationTests.cs" />
     <Compile Include="TalentFoundationTests.cs" />
+    <Compile Include="TalentResultAttributionTests.cs" />
     <Compile Include="TalentActionTests.cs" />
     <Compile Include="TalentCommandClientTests.cs" />
     <Compile Include="TalentPresentationTests.cs" />
@@ -95,6 +96,7 @@
     <Compile Include="..\..\Assets\Scripts\Core\OpponentMeldState.cs" Link="OpponentMeldState.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\MeldVisualPolicy.cs" Link="MeldVisualPolicy.cs" />
     <Compile Include="..\..\Assets\UI\ResultHandLayoutPolicy.cs" Link="ResultHandLayoutPolicy.cs" />
+    <Compile Include="..\..\Assets\UI\TalentFanPresentationState.cs" Link="TalentFanPresentationState.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\SelfTurnKongOptions.cs" Link="SelfTurnKongOptions.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\MahjongEnums.cs" Link="MahjongEnums.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\DeckConfig.cs" Link="DeckConfig.cs" />

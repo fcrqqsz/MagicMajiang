@@ -175,7 +175,9 @@ namespace MahjongGame.Core.Agents
         public void OnActionResolved(int playerId, MahjongGame.Core.Network.ClientActionType actionType, MahjongGame.Core.TileData targetTile, int[] chiCombinations = null) { }
         public void OnDrawGame() { }
         public void OnPlayerWin(int playerId, int totalFan, System.Collections.Generic.List<string> fanDetails, bool isSelfDraw,
-            MahjongGame.Core.Network.Messages.WinKind winKind, int loserId, MahjongGame.Core.Network.Messages.WinningHandSnapshot winningHand) { }
+            MahjongGame.Core.Network.Messages.WinKind winKind, int loserId,
+            MahjongGame.Core.Network.Messages.WinningHandSnapshot winningHand,
+            MahjongGame.Core.Network.Messages.TalentFanBreakdownMessage talentFanBreakdown) { }
         public void OnRoundStart(int roundNumber, MahjongGame.Core.WindDirection prevalentWind, MahjongGame.Core.WindDirection seatWind, int dealerIndex) { }
         public void OnSessionEnd(int[] finalScores) { }
         public void OnTimeout(MahjongGame.Core.TileData autoDiscardedTile) { }
@@ -260,6 +262,7 @@ namespace MahjongGame.Core.Network
         public int LoserId { get; private set; } = -1;
         public bool IsDrawGame { get; private set; }
         public WinningHandSnapshot WinningHandSnapshot => null;
+        public TalentFanBreakdownMessage WinTalentFanBreakdown { get; private set; }
         public int CompletionNotifications { get; private set; }
         public int TalentActionSubmissionCount { get; private set; }
         public int LastTalentActionSeatIndex { get; private set; } = -1;
@@ -313,6 +316,16 @@ namespace MahjongGame.Core.Network
             IsDrawGame = true;
             WinnerId = -1;
             Complete(GameRoundCompletionKind.Draw);
+        }
+
+        public void SetWinResult(
+            int winnerId,
+            int fan,
+            TalentFanBreakdownMessage talentFanBreakdown)
+        {
+            WinnerId = winnerId;
+            WinFan = fan;
+            WinTalentFanBreakdown = TalentFanBreakdownMessage.Clone(talentFanBreakdown);
         }
 
         public static void ResetObservations()

@@ -1161,7 +1161,7 @@ internal static class SnapshotReconnectTests
         };
 
         remote.OnPlayerWin(0, 16, new List<string> { "清龙(16)" }, false,
-            WinKind.RobKong, 3, winningHand);
+            WinKind.RobKong, 3, winningHand, talentFanBreakdown: null);
         var envelope = MessageSerializer.DeserializeEnvelope(endpoint.SentMessages.Single());
         var payload = MessageSerializer.DeserializePayload<PlayerWinMessage>(envelope.data);
         runner.Check(envelope.type == "PlayerWin"

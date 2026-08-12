@@ -25,9 +25,40 @@ namespace MahjongGame.Core
             totalFan = 0;
             fanDetails = null;
 
+            FanEvaluation evaluation = EvaluateBestFan(
+                hand, melds, winTile, isSelfDraw, roundWind, seatWind, options, isRobKongWin);
+            if (!evaluation.HasWinningShape || evaluation.Fan < 8) return false;
+
+            totalFan = evaluation.Fan;
+            fanDetails = evaluation.FanDetails;
+            return true;
+        }
+
+        /// <summary>
+        /// 计算最高番拆解，不施加八番起胡门槛。
+        /// </summary>
+        public static FanEvaluation EvaluateBestFan(
+            List<TileData> hand,
+            List<Meld> melds,
+            TileData winTile,
+            bool isSelfDraw,
+            WindDirection roundWind = WindDirection.East,
+            WindDirection seatWind = WindDirection.East,
+            ScoringOptions options = null,
+            bool isRobKongWin = false)
+        {
+
             // 1. 获取所有胡牌拆解方案
             var decompositions = GetAllDecompositions(hand, melds, winTile, isSelfDraw);
-            if (decompositions.Count == 0) return false;
+            if (decompositions.Count == 0)
+            {
+                return new FanEvaluation
+                {
+                    HasWinningShape = false,
+                    Fan = 0,
+                    FanDetails = null
+                };
+            }
 
             int bonusFan = options?.BonusFan ?? 0;
             int maxFan = -1;
@@ -60,14 +91,16 @@ namespace MahjongGame.Core
                 }
             }
 
-            // 3. 8番起胡校验 (含天赋加番)
-            if (maxFan + bonusFan < 8) return false;
-
-            totalFan = maxFan + bonusFan;
-            fanDetails = bestDetails;
+            int totalFan = maxFan + bonusFan;
+            List<string> fanDetails = bestDetails;
             if (bonusFan > 0)
                 fanDetails.Add($"快人一步(+{bonusFan})");
-            return true;
+            return new FanEvaluation
+            {
+                HasWinningShape = true,
+                Fan = totalFan,
+                FanDetails = fanDetails
+            };
         }
 
         /// <summary>

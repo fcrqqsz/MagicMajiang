@@ -75,6 +75,7 @@ namespace MahjongGame.Core.Network
         public int WinnerId { get; private set; } = -1;
         public int WinFan { get; private set; }
         public TalentFanResolution WinFanResolution { get; private set; } = new TalentFanResolution();
+        public TalentFanBreakdownMessage WinTalentFanBreakdown { get; private set; }
         public List<string> WinFanDetails { get; private set; } = new List<string>();
         public bool WinIsSelfDraw { get; private set; }
         public WinKind WinResultKind { get; private set; } = WinKind.Unknown;
@@ -156,6 +157,7 @@ namespace MahjongGame.Core.Network
             WinnerId = -1;
             WinFan = 0;
             WinFanResolution = new TalentFanResolution();
+            WinTalentFanBreakdown = null;
             WinFanDetails = new List<string>();
             WinIsSelfDraw = false;
             WinResultKind = WinKind.Unknown;
@@ -1274,6 +1276,47 @@ namespace MahjongGame.Core.Network
                 out List<string> serverDetails);
             int serverFan = acceptedLegal ? serverResolution.FinalFan : 0;
 
+            if (acceptedLegal)
+            {
+                try
+                {
+                    TalentFanResolution attribution = _talentRuntime.ResolveAcceptedWinFan(
+                        new TalentAcceptedWinAttributionContext(
+                            _session,
+                            pid,
+                            serverFan,
+                            candidateOptions => MahjongLogic.EvaluateBestFan(
+                                hand,
+                                melds,
+                                winTile,
+                                isSelfDraw,
+                                roundWind,
+                                seatWind,
+                                candidateOptions,
+                                isRobKongWin)));
+                    if (attribution.FinalFan == serverFan)
+                    {
+                        serverResolution = attribution;
+                    }
+                    else
+                    {
+                        Debug.LogWarning(
+                            $"[GameServer] Accepted-win talent attribution disagreed with server final: " +
+                            $"seat={pid}, attributed={attribution.FinalFan}, server={serverFan}.");
+                        serverResolution.FinalFan = serverFan;
+                        serverResolution.Contributions = Array.Empty<TalentFanContribution>();
+                    }
+                }
+                catch (Exception attributionError)
+                {
+                    Debug.LogWarning(
+                        $"[GameServer] Accepted-win talent attribution failed for seat {pid}: " +
+                        attributionError);
+                    serverResolution.FinalFan = serverFan;
+                    serverResolution.Contributions = Array.Empty<TalentFanContribution>();
+                }
+            }
+
             TalentWinEvaluation acceptedEvaluation = new TalentWinEvaluation(
                 isLegal: acceptedLegal,
                 finalFan: serverFan);
@@ -1327,6 +1370,7 @@ namespace MahjongGame.Core.Network
             WinnerId = pid;
             WinFan = serverFan;
             WinFanResolution = serverResolution;
+            WinTalentFanBreakdown = TalentFanBreakdownMessage.FromResolution(serverResolution);
             WinFanDetails = serverDetails?.ToList() ?? new List<string>();
             WinIsSelfDraw = isSelfDraw;
             WinResultKind = isSelfDraw
@@ -1350,7 +1394,8 @@ namespace MahjongGame.Core.Network
                 foreach (var client in _clients)
                 {
                     client.OnPlayerWin(pid, serverFan, serverDetails, isSelfDraw,
-                        WinResultKind, loserId, WinningHandSnapshotCodec.Clone(WinningHandSnapshot));
+                        WinResultKind, loserId, WinningHandSnapshotCodec.Clone(WinningHandSnapshot),
+                        TalentFanBreakdownMessage.Clone(WinTalentFanBreakdown));
                 }
             });
             OnTalentEventsAvailable?.Invoke();

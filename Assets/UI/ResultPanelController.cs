@@ -11,7 +11,7 @@ using MahjongGame.Systems;
 
 namespace MahjongGame.UI
 {
-    public class ResultPanelController : MonoBehaviour
+    public class ResultPanelController : MonoBehaviour, ILocalResultPresentation
     {
         public static ResultPanelController Instance;
 
@@ -22,6 +22,9 @@ namespace MahjongGame.UI
         private Label _totalLabel;
         private Button _btnRestart;
         private WinningHandStripView _winningHandView;
+        private readonly TalentFanPresentationState _talentFanPresentation =
+            new TalentFanPresentationState();
+        public TalentFanBreakdownMessage TalentFanBreakdown => _talentFanPresentation.Current;
 
         // 多局对战状态
         private GameSession _session;
@@ -72,6 +75,7 @@ namespace MahjongGame.UI
         public void ApplyRecoveryResult(RoomGameSnapshot snapshot)
         {
             ResetForRecovery();
+            new LocalResultPresentationBridge(this).ShowRecovery(snapshot);
             var result = snapshot?.result;
             if (result == null) return;
 
@@ -89,8 +93,16 @@ namespace MahjongGame.UI
             if (result.winnerId < 0) return;
 
             var details = result.fanDetails?.ToList() ?? new List<string>();
-            if (IsLocalSeat(result.winnerId)) ShowWin(result.fanCount, details, result.isSelfDraw, result.winningHand);
-            else ShowLose(result.winnerId, result.fanCount, details, result.winningHand);
+            if (IsLocalSeat(result.winnerId))
+            {
+                ShowWin(result.fanCount, details, result.isSelfDraw, result.winningHand,
+                    result.talentFanBreakdown);
+            }
+            else
+            {
+                ShowLose(result.winnerId, result.fanCount, details, result.winningHand,
+                    result.talentFanBreakdown);
+            }
         }
 
         private void UpdateButtonText()
@@ -111,6 +123,7 @@ namespace MahjongGame.UI
 
         public void ShowDraw(List<string> playerStatuses = null)
         {
+            _talentFanPresentation.ApplyLive(null);
             _winningHandView?.Hide();
             _titleLabel.text = "流  局";
             _titleLabel.style.color = new StyleColor(new Color(0.7f, 0.7f, 0.7f));
@@ -142,8 +155,10 @@ namespace MahjongGame.UI
         }
 
         public void ShowLose(int aiId, int totalFan, List<string> fanDetails,
-            WinningHandSnapshot winningHand = null)
+            WinningHandSnapshot winningHand = null,
+            TalentFanBreakdownMessage talentFanBreakdown = null)
         {
+            _talentFanPresentation.ApplyLive(talentFanBreakdown);
             _winningHandView?.Show(winningHand);
             _titleLabel.text = $"{GetPlayerDisplayName(aiId)} 胡牌";
             _titleLabel.style.color = new StyleColor(new Color(0.5f, 0.5f, 0.8f));
@@ -166,8 +181,10 @@ namespace MahjongGame.UI
         }
 
         public void ShowWin(int totalFan, List<string> fanDetails, bool isTsumo,
-            WinningHandSnapshot winningHand = null)
+            WinningHandSnapshot winningHand = null,
+            TalentFanBreakdownMessage talentFanBreakdown = null)
         {
+            _talentFanPresentation.ApplyLive(talentFanBreakdown);
             _winningHandView?.Show(winningHand);
             _titleLabel.text = isTsumo ? "自  摸" : "荣  胡";
             _titleLabel.style.color = new StyleColor(new Color(1f, 0.26f, 0.26f));
@@ -180,6 +197,12 @@ namespace MahjongGame.UI
             StartCoroutine(RollScoreRoutine(fanDetails));
 
             Invoke(nameof(FadeIn), 0.05f);
+        }
+
+        public void ReceiveRecoveryTalentFanBreakdown(
+            TalentFanBreakdownMessage talentFanBreakdown)
+        {
+            _talentFanPresentation.ApplyRecovery(talentFanBreakdown);
         }
 
         /// <summary>

@@ -163,7 +163,8 @@ namespace MahjongGame.Core.Network
         }
 
         public void OnPlayerWin(int winnerId, int totalFan, List<string> fanDetails, bool isSelfDraw,
-            WinKind winKind, int loserId, WinningHandSnapshot winningHand)
+            WinKind winKind, int loserId, WinningHandSnapshot winningHand,
+            TalentFanBreakdownMessage talentFanBreakdown)
         {
             var msg = new PlayerWinMessage
             {
@@ -174,6 +175,7 @@ namespace MahjongGame.Core.Network
                 winKind = winKind,
                 loserId = loserId,
                 winningHand = winningHand,
+                talentFanBreakdown = TalentFanBreakdownMessage.Clone(talentFanBreakdown),
                 scores = GetScoreSnapshot(),
                 completedRounds = GetCompletedRoundsAfterCurrentRound()
             };

@@ -344,7 +344,8 @@ namespace MahjongGame.Core.Network
                         loserId = winResult.LoserId,
                         isDrawGame = false,
                         isSessionOver = false,
-                        winningHand = WinningHandSnapshotCodec.Normalize(message.winningHand)
+                        winningHand = WinningHandSnapshotCodec.Normalize(message.winningHand),
+                        talentFanBreakdown = TalentFanBreakdownMessage.Clone(message.talentFanBreakdown)
                     };
                     snapshot.activeDecision = null;
                     snapshot.mainTurnDrawnTile = null;
@@ -818,7 +819,8 @@ namespace MahjongGame.Core.Network
                 loserId = winResult.LoserId,
                 isDrawGame = result.isDrawGame,
                 isSessionOver = result.isSessionOver,
-                winningHand = WinningHandSnapshotCodec.Normalize(result.winningHand)
+                winningHand = WinningHandSnapshotCodec.Normalize(result.winningHand),
+                talentFanBreakdown = TalentFanBreakdownMessage.Clone(result.talentFanBreakdown)
             };
         }
     }

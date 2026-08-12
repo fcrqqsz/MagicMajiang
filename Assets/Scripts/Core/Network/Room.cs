@@ -557,7 +557,8 @@ namespace MahjongGame.Core.Network
                     : WinKind.Unknown),
                 LoserId = GameServer?.LoserId ?? Session.LastLoserId,
                 IsDrawGame = GameServer?.IsDrawGame ?? false,
-                WinningHand = GameServer?.WinningHandSnapshot
+                WinningHand = GameServer?.WinningHandSnapshot,
+                TalentFanBreakdown = TalentFanBreakdownMessage.Clone(GameServer?.WinTalentFanBreakdown)
             };
 
             for (int i = 0; i < _seats.Length; i++)

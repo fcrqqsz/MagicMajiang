@@ -24,12 +24,19 @@ if (args.Length == 1 && string.Equals(args[0], "talent-presentation", StringComp
     return runner.Complete();
 }
 
+if (args.Length == 1 && string.Equals(args[0], "talent-attribution", StringComparison.OrdinalIgnoreCase))
+{
+    TalentResultAttributionTests.Run(runner);
+    return runner.Complete();
+}
+
 IdentityConnectionTests.Run(runner);
 RoomSessionTests.Run(runner);
 NetworkAuthorityBoundaryTests.Run(runner);
 SnapshotReconnectTests.Run(runner);
 ActionValidationTests.Run(runner);
 TalentFoundationTests.Run(runner);
+TalentResultAttributionTests.Run(runner);
 TalentActionTests.Run(runner);
 TalentCommandClientTests.Run(runner);
 TalentPresentationTests.Run(runner);

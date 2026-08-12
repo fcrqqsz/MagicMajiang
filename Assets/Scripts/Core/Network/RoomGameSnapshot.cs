@@ -37,6 +37,7 @@ namespace MahjongGame.Core.Network
         public int LoserId = -1;
         public bool IsDrawGame;
         public WinningHandSnapshot WinningHand;
+        public TalentFanBreakdownMessage TalentFanBreakdown;
     }
 
     public sealed class RoomSnapshotSeatSource
@@ -133,7 +134,8 @@ namespace MahjongGame.Core.Network
                     isSessionOver = session?.IsSessionOver() ?? false,
                     winningHand = source.WinnerId >= 0
                         ? WinningHandSnapshotCodec.Normalize(source.WinningHand)
-                        : null
+                        : null,
+                    talentFanBreakdown = TalentFanBreakdownMessage.Clone(source.TalentFanBreakdown)
                 }
             };
 
@@ -453,5 +455,6 @@ namespace MahjongGame.Core.Network.Messages
         public bool isDrawGame;
         public bool isSessionOver;
         public WinningHandSnapshot winningHand;
+        public TalentFanBreakdownMessage talentFanBreakdown;
     }
 }

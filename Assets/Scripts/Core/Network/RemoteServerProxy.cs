@@ -155,7 +155,8 @@ namespace MahjongGame.Core.Network
                     SyncSessionAfterRound(winMsg.scores, winMsg.completedRounds);
                     _localClient.OnPlayerWin(winMsg.winnerId, winMsg.totalFan, winMsg.fanDetails?.ToList(),
                         winResult.IsSelfDraw, winResult.Kind, winResult.LoserId,
-                        WinningHandSnapshotCodec.Normalize(winMsg.winningHand));
+                        WinningHandSnapshotCodec.Normalize(winMsg.winningHand),
+                        TalentFanBreakdownMessage.Clone(winMsg.talentFanBreakdown));
                     break;
                 case "DrawGame":
                     var drawMsg = MessageSerializer.DeserializePayload<DrawGameMessage>(envelope.data);

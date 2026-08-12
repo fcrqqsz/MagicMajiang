@@ -236,7 +236,8 @@ namespace MahjongGame.Core.Agents
         }
 
         public void OnPlayerWin(int winnerId, int totalFan, List<string> fanDetails, bool isSelfDraw,
-            WinKind winKind, int loserId, WinningHandSnapshot winningHand)
+            WinKind winKind, int loserId, WinningHandSnapshot winningHand,
+            TalentFanBreakdownMessage talentFanBreakdown)
         {
             Debug.Log($"[AI {PlayerId}] 确认玩家 {winnerId} 胡牌，番数：{totalFan}");
         }

@@ -574,7 +574,8 @@ namespace MahjongGame.Core.Agents
         }
 
         public void OnPlayerWin(int winnerId, int totalFan, List<string> fanDetails, bool isSelfDraw,
-            WinKind winKind, int loserId, WinningHandSnapshot winningHand)
+            WinKind winKind, int loserId, WinningHandSnapshot winningHand,
+            TalentFanBreakdownMessage talentFanBreakdown)
         {
             _isWaitingForUI = false;
             ActionPanelController.Instance?.Hide();
@@ -582,14 +583,9 @@ namespace MahjongGame.Core.Agents
             GameHUDController.Instance?.StopTimer();
             ResultPanelController.Instance?.SetSessionInfo(GameManager.Instance?.Session);
 
-            if (winnerId == PlayerId)
-            {
-                ResultPanelController.Instance.ShowWin(totalFan, fanDetails, isSelfDraw, winningHand);
-            }
-            else
-            {
-                ResultPanelController.Instance.ShowLose(winnerId, totalFan, fanDetails, winningHand);
-            }
+            new LocalResultPresentationBridge(ResultPanelController.Instance).ShowLiveWin(
+                PlayerId, winnerId, totalFan, fanDetails, isSelfDraw, winningHand,
+                talentFanBreakdown);
         }
 
         public void OnRoundStart(int roundNumber, WindDirection prevalentWind, WindDirection seatWind, int dealerIndex)
