@@ -20,6 +20,8 @@ namespace MahjongGame.UI
         private readonly VisualElement _knownOpponentIntel;
         private readonly VisualElement _budgetTrack;
         private readonly VisualElement _budgetFill;
+        private readonly Label _deckCostLabel;
+        private readonly Label _talentCostLabel;
         private readonly Label _budgetLabel;
         private readonly VisualElement _seatLockStatus;
         private readonly Label _errorLabel;
@@ -43,6 +45,8 @@ namespace MahjongGame.UI
             _knownOpponentIntel = hudRoot.Q<VisualElement>("KnownOpponentIntel");
             _budgetTrack = hudRoot.Q<VisualElement>("BudgetTrack");
             _budgetFill = hudRoot.Q<VisualElement>("BudgetFill");
+            _deckCostLabel = hudRoot.Q<Label>("DeckCostLabel");
+            _talentCostLabel = hudRoot.Q<Label>("TalentCostLabel");
             _budgetLabel = hudRoot.Q<Label>("BudgetLabel");
             _seatLockStatus = hudRoot.Q<VisualElement>("SeatLockStatus");
             _errorLabel = hudRoot.Q<Label>("ErrorLabel");
@@ -63,6 +67,7 @@ namespace MahjongGame.UI
             _proxy.SideboardStartedReceived += HandleStarted;
             _proxy.SideboardLockedReceived += HandleLocked;
             _proxy.SideboardProgressReceived += HandleProgress;
+            _proxy.SideboardResetRequested += HandleAuthoritativeReset;
         }
 
         public void Unbind(RemoteServerProxy proxy)
@@ -71,6 +76,7 @@ namespace MahjongGame.UI
             _proxy.SideboardStartedReceived -= HandleStarted;
             _proxy.SideboardLockedReceived -= HandleLocked;
             _proxy.SideboardProgressReceived -= HandleProgress;
+            _proxy.SideboardResetRequested -= HandleAuthoritativeReset;
             _proxy = null;
             _roomService = null;
             Close();
@@ -104,6 +110,12 @@ namespace MahjongGame.UI
             Render();
         }
 
+        private void HandleAuthoritativeReset()
+        {
+            _state = SideboardPanelStatePolicy.Reset(_state);
+            Render();
+        }
+
         private void HandleCardClicked(string talentId)
         {
             if (!_state.IsEditable || _state.PrivateDraft == null) return;
@@ -112,7 +124,6 @@ namespace MahjongGame.UI
                 _state.PrivateDraft,
                 talentId,
                 !isActive,
-                null,
                 TalentRegistry.Instance);
             _state = SideboardPanelStatePolicy.UpdateDraft(_state, changed);
             Render();
@@ -160,6 +171,7 @@ namespace MahjongGame.UI
             string[] carried = draft.CarriedMainTalentIds
                 .Concat(draft.CarriedReserveTalentIds)
                 .Where(id => !string.IsNullOrWhiteSpace(id))
+                .Where(TalentRegistry.Instance.HasTalent)
                 .ToArray();
             foreach (string talentId in carried.Where(id => draft.ActiveTalentIds.Contains(id, StringComparer.Ordinal)))
                 _activeTalents?.Add(CreateTalentCard(talentId, draft));
@@ -247,8 +259,14 @@ namespace MahjongGame.UI
         {
             SideboardDraft draft = _state.PrivateDraft;
             bool hasDraft = draft != null;
+            if (_deckCostLabel != null)
+                _deckCostLabel.text = hasDraft ? $"牌山 {draft.DeckAlienation}" : "牌山 —";
+            if (_talentCostLabel != null)
+                _talentCostLabel.text = hasDraft ? $"当前生效天赋 {draft.ActiveTalentAlienation}" : "当前生效天赋 —";
             if (_budgetLabel != null)
-                _budgetLabel.text = hasDraft ? $"{draft.TotalAlienation} / {draft.AlienationLimit}" : "方案已锁定";
+                _budgetLabel.text = hasDraft
+                    ? $"总计 {draft.TotalAlienation} / {PresetName(draft.AlienationLimit)}上限 {draft.AlienationLimit}"
+                    : "方案已锁定";
             if (_budgetFill != null)
             {
                 float fill = hasDraft && draft.AlienationLimit > 0
@@ -275,21 +293,26 @@ namespace MahjongGame.UI
             if (_state.IsSubmissionPending) return "方案已提交，等待服务器确认。";
             if (_state.IsReadOnly)
             {
+                if (_state.PrivateDraft?.ErrorCode != null)
+                    return GetDraftErrorCopy(_state.PrivateDraft.ErrorCode);
+                if (_state.IsComplete) return "四席已确认，等待服务器进入下一局。";
                 return _state.LockReason == "recovery_pending_private_state"
                     ? "正在等待服务器恢复本席整备数据。"
                     : "本席方案已锁定，等待其他席位。";
             }
-            return _state.PrivateDraft?.ErrorCode switch
+            return GetDraftErrorCopy(_state.PrivateDraft?.ErrorCode);
+        }
+
+        private static string GetDraftErrorCopy(string errorCode) => errorCode switch
             {
                 SideboardDraftErrorCodes.AlienationLimitExceeded => "已超过异化上限；仍可调整，但无法锁定。",
                 SideboardDraftErrorCodes.LockedTalent => "带锁主天赋不能停用。",
                 SideboardDraftErrorCodes.UnknownTalent => "无法识别该天赋。",
                 SideboardDraftErrorCodes.NotCarried => "只能调整本局携带的九个槽位。",
                 SideboardDraftErrorCodes.DuplicateTalent => "同一天赋不能重复启用。",
-                SideboardDraftErrorCodes.InvalidSelection => "该调整无效。",
+                SideboardDraftErrorCodes.InvalidSelection => "服务器整备数据不合法，已切换为只读。",
                 _ => string.Empty
             };
-        }
 
         private void StartDeadlineDisplay()
         {
@@ -327,6 +350,13 @@ namespace MahjongGame.UI
             TalentTier.Large => "大型",
             TalentTier.Medium => "中型",
             _ => "小型"
+        };
+
+        private static string PresetName(int limit) => (AlienationPreset)limit switch
+        {
+            AlienationPreset.Low => "低档",
+            AlienationPreset.High => "高档",
+            _ => "标准档"
         };
 
         private static void SetClass(VisualElement element, string className, bool enabled)

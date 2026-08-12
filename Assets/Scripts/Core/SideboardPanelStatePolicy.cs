@@ -9,7 +9,7 @@ namespace MahjongGame.Core
     public sealed class SideboardPanelViewState
     {
         public static SideboardPanelViewState Closed { get; } = new SideboardPanelViewState(
-            false, false, false, 0, 0, null, Array.Empty<bool>(), null);
+            false, false, false, 0, 0, null, Array.Empty<bool>(), null, false);
 
         public bool IsVisible { get; }
         public bool IsReadOnly { get; }
@@ -20,6 +20,7 @@ namespace MahjongGame.Core
         public SideboardDraft PrivateDraft { get; }
         public IReadOnlyList<bool> SeatLocked { get; }
         public string LockReason { get; }
+        public bool IsComplete { get; }
 
         internal SideboardPanelViewState(
             bool isVisible,
@@ -29,7 +30,8 @@ namespace MahjongGame.Core
             long deadlineUnixMilliseconds,
             SideboardDraft privateDraft,
             IEnumerable<bool> seatLocked,
-            string lockReason)
+            string lockReason,
+            bool isComplete = false)
         {
             IsVisible = isVisible;
             IsReadOnly = isReadOnly;
@@ -39,6 +41,7 @@ namespace MahjongGame.Core
             PrivateDraft = privateDraft;
             SeatLocked = new ReadOnlyCollection<bool>((seatLocked ?? Array.Empty<bool>()).ToArray());
             LockReason = lockReason;
+            IsComplete = isComplete;
         }
 
         internal SideboardPanelViewState WithDraft(SideboardDraft draft) => new SideboardPanelViewState(
@@ -49,7 +52,8 @@ namespace MahjongGame.Core
             DeadlineUnixMilliseconds,
             draft,
             SeatLocked,
-            LockReason);
+            LockReason,
+            IsComplete);
     }
 
     public static class SideboardPanelStatePolicy
@@ -69,13 +73,13 @@ namespace MahjongGame.Core
             SideboardDraft draft = SideboardDraftPolicy.Create(started);
             return new SideboardPanelViewState(
                 true,
-                false,
+                draft.IsReadOnly,
                 false,
                 started.decisionId,
                 started.deadlineUnixMilliseconds,
                 draft,
                 Array.Empty<bool>(),
-                null);
+                draft.ErrorCode);
         }
 
         public static SideboardPanelViewState UpdateDraft(
@@ -147,7 +151,6 @@ namespace MahjongGame.Core
                     seatLocked[seat.seatIndex] = seat.locked;
             }
 
-            if (progress.isComplete) return SideboardPanelViewState.Closed;
             return new SideboardPanelViewState(
                 current.IsVisible,
                 current.IsReadOnly,
@@ -156,8 +159,12 @@ namespace MahjongGame.Core
                 current.DeadlineUnixMilliseconds,
                 current.PrivateDraft,
                 seatLocked,
-                current.LockReason);
+                current.LockReason,
+                progress.isComplete);
         }
+
+        public static SideboardPanelViewState Reset(SideboardPanelViewState current) =>
+            SideboardPanelViewState.Closed;
 
         public static SideboardPanelViewState Recover(SnapshotSideboardState state)
         {

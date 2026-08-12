@@ -20,9 +20,12 @@ internal static class SideboardTests
         TestDraftPolicyAllowsOverCapEditingButBlocksLock(runner);
         TestDraftPolicyDeepCopiesStartedAndRecoversReadOnly(runner);
         TestDraftPolicyRejectsMalformedStartedSelections(runner);
+        TestDraftPolicyMatchesTrustedLoadoutSlotAdmission(runner);
         TestPanelStateSubmitsOnceAndNeverReopensLockedDecision(runner);
+        TestPanelStateKeepsCompletedProgressUntilAuthoritativeReset(runner);
         TestPanelStateKeepsOverCapDraftEditableButCannotSubmit(runner);
         TestPanelStateRejectsWrongSeatPrivateStartAndRecoversReadOnly(runner);
+        TestRecoveryRoutesActiveSideboardToGame(runner);
         TestRemoteProxyPublishesOnlySequenceGatedSideboardEvents(runner);
         TestFullScreenSideboardArtifacts(runner);
         TestPhaseEntryByGameMode(runner);
@@ -41,14 +44,11 @@ internal static class SideboardTests
     private static void TestDraftPolicyEditsImmutableLocalCopy(RegressionRunner runner)
     {
         SideboardStartedMessage started = CreateDraftStarted();
-        TrustedPlayerLoadout loadout = CreateTrustedLoadout(
-            started.carriedMainTalentIds,
-            started.carriedReserveTalentIds);
         SideboardDraft original = SideboardDraftPolicy.Create(started);
         SideboardDraft changed = SideboardDraftPolicy.SetActive(
-            original, "interception", true, loadout, TalentRegistry.Instance);
+            original, "interception", true, TalentRegistry.Instance);
         SideboardDraft disabled = SideboardDraftPolicy.SetActive(
-            changed, "draw_reward", false, loadout, TalentRegistry.Instance);
+            changed, "draw_reward", false, TalentRegistry.Instance);
 
         runner.Check(!ReferenceEquals(original, changed)
                      && !original.ActiveTalentIds.Contains("interception")
@@ -58,7 +58,7 @@ internal static class SideboardTests
             "sideboard add and disable edits return immutable local drafts");
 
         SideboardDraft lockedAttempt = SideboardDraftPolicy.SetActive(
-            changed, "starting_capital", false, loadout, TalentRegistry.Instance);
+            changed, "starting_capital", false, TalentRegistry.Instance);
         runner.Check(lockedAttempt.ErrorCode == SideboardDraftErrorCodes.LockedTalent
                      && lockedAttempt.ActiveTalentIds.Contains("starting_capital")
                      && changed.ActiveTalentIds.Contains("starting_capital"),
@@ -68,18 +68,14 @@ internal static class SideboardTests
     private static void TestDraftPolicyRejectsLockedUnknownDuplicateAndUncarriedIds(RegressionRunner runner)
     {
         SideboardStartedMessage started = CreateDraftStarted();
-        TrustedPlayerLoadout loadout = CreateTrustedLoadout(
-            started.carriedMainTalentIds,
-            started.carriedReserveTalentIds);
         SideboardDraft original = SideboardDraftPolicy.Create(started);
         SideboardDraft unknown = SideboardDraftPolicy.SetActive(
-            original, "not_registered", true, loadout, TalentRegistry.Instance);
+            original, "not_registered", true, TalentRegistry.Instance);
         SideboardDraft uncarried = SideboardDraftPolicy.SetActive(
-            original, "peek", true, loadout, TalentRegistry.Instance);
+            original, "peek", true, TalentRegistry.Instance);
         SideboardDraft duplicate = SideboardDraftPolicy.ReplaceActive(
             original,
             new[] { "starting_capital", "draw_reward", "draw_reward" },
-            loadout,
             TalentRegistry.Instance);
 
         runner.Check(unknown.ErrorCode == SideboardDraftErrorCodes.UnknownTalent
@@ -92,18 +88,13 @@ internal static class SideboardTests
     private static void TestDraftPolicyUsesCanonicalOrderWithoutFixedActiveCount(RegressionRunner runner)
     {
         SideboardStartedMessage started = CreateDraftStarted();
-        TrustedPlayerLoadout loadout = CreateTrustedLoadout(
-            started.carriedMainTalentIds,
-            started.carriedReserveTalentIds);
         SideboardDraft draft = SideboardDraftPolicy.ReplaceActive(
             SideboardDraftPolicy.Create(started),
             new[] { "interception", "starting_capital", "midas_touch" },
-            loadout,
             TalentRegistry.Instance);
         SideboardDraft onlyLocked = SideboardDraftPolicy.ReplaceActive(
             draft,
             new[] { "starting_capital" },
-            loadout,
             TalentRegistry.Instance);
 
         runner.Check(draft.ActiveTalentIds.SequenceEqual(new[]
@@ -119,14 +110,10 @@ internal static class SideboardTests
     {
         SideboardStartedMessage started = CreateDraftStarted();
         started.currentTotalAlienation = 35;
-        TrustedPlayerLoadout loadout = CreateTrustedLoadout(
-            started.carriedMainTalentIds,
-            started.carriedReserveTalentIds);
         SideboardDraft overCap = SideboardDraftPolicy.SetActive(
             SideboardDraftPolicy.Create(started),
             "midas_touch",
             true,
-            loadout,
             TalentRegistry.Instance);
 
         runner.Check(overCap.ActiveTalentIds.Contains("midas_touch")
@@ -141,6 +128,7 @@ internal static class SideboardTests
     private static void TestDraftPolicyDeepCopiesStartedAndRecoversReadOnly(RegressionRunner runner)
     {
         SideboardStartedMessage started = CreateDraftStarted();
+        started.currentTotalAlienation = 18;
         SideboardDraft draft = SideboardDraftPolicy.Create(started);
         started.carriedMainTalentIds[3] = "mutated_main";
         started.carriedReserveTalentIds[0] = "mutated_reserve";
@@ -155,11 +143,15 @@ internal static class SideboardTests
             seatLocked = new[] { true, false, true, false }
         });
         SideboardDraft recoveryEdit = SideboardDraftPolicy.SetActive(
-            recovery, "peek", true, null, TalentRegistry.Instance);
+            recovery, "peek", true, TalentRegistry.Instance);
 
         runner.Check(draft.CarriedMainTalentIds.Contains("starting_capital")
                      && draft.CarriedReserveTalentIds.Contains("interception")
-                     && draft.ActiveTalentIds.Contains("starting_capital"),
+                     && draft.ActiveTalentIds.Contains("starting_capital")
+                     && draft.DeckAlienation == 10
+                     && draft.ActiveTalentAlienation == 8
+                     && draft.TotalAlienation == 18
+                     && draft.AlienationLimit == 40,
             "sideboard draft deep-copies every private Started collection");
         runner.Check(recovery.IsReadOnly
                      && recovery.DecisionId == 923
@@ -196,10 +188,73 @@ internal static class SideboardTests
         SideboardDraft duplicate = SideboardDraftPolicy.Create(duplicateCarried);
         SideboardDraft uncarried = SideboardDraftPolicy.Create(uncarriedActive);
 
-        runner.Check(unknown.ErrorCode == SideboardDraftErrorCodes.UnknownTalent && !unknown.CanLock
-                     && duplicate.ErrorCode == SideboardDraftErrorCodes.DuplicateTalent && !duplicate.CanLock
-                     && uncarried.ErrorCode == SideboardDraftErrorCodes.NotCarried && !uncarried.CanLock,
-            "malformed private Started ids can never become a lockable local draft");
+        runner.Check(unknown.ErrorCode == SideboardDraftErrorCodes.UnknownTalent
+                     && unknown.IsReadOnly && !unknown.CanLock
+                     && duplicate.ErrorCode == SideboardDraftErrorCodes.DuplicateTalent
+                     && duplicate.IsReadOnly && !duplicate.CanLock
+                     && uncarried.ErrorCode == SideboardDraftErrorCodes.NotCarried
+                     && uncarried.IsReadOnly && !uncarried.CanLock,
+            "malformed private Started ids degrade to readonly and can never become a lockable local draft");
+    }
+
+    private static void TestDraftPolicyMatchesTrustedLoadoutSlotAdmission(RegressionRunner runner)
+    {
+        SideboardStartedMessage wrongShape = CreateDraftStarted();
+        wrongShape.carriedMainTalentIds = wrongShape.carriedMainTalentIds.Take(5).ToArray();
+
+        SideboardStartedMessage incompatibleMainTier = CreateDraftStarted();
+        incompatibleMainTier.carriedMainTalentIds[3] = "midas_touch";
+        incompatibleMainTier.carriedReserveTalentIds[0] = null;
+        incompatibleMainTier.currentActiveTalentIds = new[] { "midas_touch", "draw_reward" };
+
+        SideboardStartedMessage nonFlexibleReserve = CreateDraftStarted();
+        nonFlexibleReserve.carriedMainTalentIds[3] = null;
+        nonFlexibleReserve.carriedReserveTalentIds[1] = "starting_capital";
+        nonFlexibleReserve.currentActiveTalentIds = new[] { "draw_reward", "starting_capital" };
+
+        SideboardStartedMessage lockedTalentMissing = CreateDraftStarted();
+        lockedTalentMissing.currentActiveTalentIds = new[] { "draw_reward" };
+
+        SideboardStartedMessage[] malformed =
+        {
+            wrongShape, incompatibleMainTier, nonFlexibleReserve, lockedTalentMissing
+        };
+        SideboardDraft[] drafts = malformed.Select(SideboardDraftPolicy.Create).ToArray();
+        bool[] serverAccepted = malformed.Take(3).Select(started =>
+            PlayerLoadoutCodec.TryDecode(CreateAdmissionMessage(started), out _, out _)).ToArray();
+        TrustedPlayerLoadout lockedLoadout = CreateTrustedLoadout(
+            lockedTalentMissing.carriedMainTalentIds,
+            lockedTalentMissing.carriedReserveTalentIds);
+        bool serverAcceptedMissingLocked = SideboardLoadoutPolicy.TryValidate(
+            lockedLoadout,
+            lockedTalentMissing.currentActiveTalentIds,
+            AlienationPreset.Low,
+            TalentRegistry.Instance,
+            out _, out _, out _);
+        SideboardPanelViewState malformedPanel = SideboardPanelStatePolicy.OpenStarted(
+            SideboardPanelViewState.Closed, wrongShape, receivedSeatIndex: 1, localSeatIndex: 1);
+        bool malformedSubmitted = SideboardPanelStatePolicy.TryBeginSubmit(
+            malformedPanel, out SideboardPanelViewState unchangedMalformedPanel, out _);
+
+        runner.Check(drafts.All(draft => draft.IsReadOnly && !draft.CanLock)
+                     && drafts.Take(3).All(draft => draft.ErrorCode == SideboardDraftErrorCodes.InvalidSelection)
+                     && drafts[3].ErrorCode == SideboardDraftErrorCodes.LockedTalent
+                     && serverAccepted.All(accepted => !accepted)
+                     && !serverAcceptedMissingLocked
+                     && malformedPanel.IsReadOnly
+                     && malformedPanel.IsVisible
+                     && !malformedSubmitted
+                     && ReferenceEquals(malformedPanel, unchangedMalformedPanel),
+            "Started uses the same strict 6+3 slot admission as trusted server loadouts and requires every locked carried talent active");
+    }
+
+    private static PlayerLoadoutMessage CreateAdmissionMessage(SideboardStartedMessage started)
+    {
+        PlayerLoadoutMessage message = PlayerLoadoutCodec.CreateMessage(
+            DeckConfig.CreateStandard(), new TalentSlotConfig(), AlienationPreset.Low);
+        message.mainTalentSlotIds = started.carriedMainTalentIds?.ToArray();
+        message.reserveTalentSlotIds = started.carriedReserveTalentIds?.ToArray();
+        return message;
     }
 
     private static void TestPanelStateSubmitsOnceAndNeverReopensLockedDecision(RegressionRunner runner)
@@ -311,6 +366,44 @@ internal static class SideboardTests
             "an unlocked recovery waits readonly until the ordered private Started restores editing");
     }
 
+    private static void TestPanelStateKeepsCompletedProgressUntilAuthoritativeReset(RegressionRunner runner)
+    {
+        SideboardPanelViewState started = SideboardPanelStatePolicy.OpenStarted(
+            SideboardPanelViewState.Closed, CreateDraftStarted(), 2, 2);
+        SideboardPanelViewState locked = SideboardPanelStatePolicy.ApplyLocked(started,
+            new SideboardLockedMessage { decisionId = 901, acceptedSelection = true, reason = "accepted" });
+        SideboardPanelViewState complete = SideboardPanelStatePolicy.ApplyProgress(locked,
+            new SideboardProgressMessage
+            {
+                decisionId = 901,
+                isComplete = true,
+                seats = Enumerable.Range(0, 4)
+                    .Select(index => new SideboardSeatLockStateMessage { seatIndex = index, locked = true })
+                    .ToArray()
+            });
+        SideboardPanelViewState reset = SideboardPanelStatePolicy.Reset(complete);
+
+        runner.Check(complete.IsVisible
+                     && complete.IsReadOnly
+                     && complete.PrivateDraft == null
+                     && complete.IsComplete
+                     && complete.SeatLocked.SequenceEqual(new[] { true, true, true, true }),
+            "complete public progress remains visible readonly with all four confirmations after the private lock");
+        runner.Check(!reset.IsVisible && !reset.IsComplete,
+            "the next authoritative phase can explicitly reset and close the completed sideboard");
+    }
+
+    private static void TestRecoveryRoutesActiveSideboardToGame(RegressionRunner runner)
+    {
+        runner.Check(ClientRecoverySceneRoutingPolicy.GetTarget(RoomState.WaitingForSideboard)
+                         == ClientRecoverySceneTarget.Game
+                     && ClientRecoverySceneRoutingPolicy.GetTarget(RoomState.WaitingForNextRound)
+                         == ClientRecoverySceneTarget.Game
+                     && ClientRecoverySceneRoutingPolicy.GetTarget(RoomState.WaitingForPlayers)
+                         == ClientRecoverySceneTarget.Lobby,
+            "recovery routes an active sideboard to Game without changing adjacent waiting-room semantics");
+    }
+
     private static void TestPanelStateKeepsOverCapDraftEditableButCannotSubmit(RegressionRunner runner)
     {
         SideboardStartedMessage started = CreateDraftStarted();
@@ -320,14 +413,10 @@ internal static class SideboardTests
             started,
             receivedSeatIndex: 0,
             localSeatIndex: 0);
-        TrustedPlayerLoadout loadout = CreateTrustedLoadout(
-            started.carriedMainTalentIds,
-            started.carriedReserveTalentIds);
         SideboardDraft overCap = SideboardDraftPolicy.SetActive(
             state.PrivateDraft,
             "midas_touch",
             true,
-            loadout,
             TalentRegistry.Instance);
         state = SideboardPanelStatePolicy.UpdateDraft(state, overCap);
         bool submitted = SideboardPanelStatePolicy.TryBeginSubmit(state, out _, out _);
@@ -335,7 +424,6 @@ internal static class SideboardTests
             state.PrivateDraft,
             "midas_touch",
             false,
-            loadout,
             TalentRegistry.Instance);
 
         runner.Check(state.IsEditable
@@ -366,7 +454,8 @@ internal static class SideboardTests
         string[] requiredNames =
         {
             "SideboardOverlay", "TitleLabel", "TimerLabel", "ActiveTalents", "ReserveCards",
-            "KnownOpponentIntel", "BudgetTrack", "BudgetFill", "BudgetLabel", "SeatLockStatus",
+            "KnownOpponentIntel", "BudgetTrack", "BudgetFill", "DeckCostLabel", "TalentCostLabel",
+            "BudgetLabel", "SeatLockStatus",
             "ErrorLabel", "LockButton"
         };
         runner.Check(requiredNames.All(name => names.Count(candidate => candidate == name) == 1),
@@ -397,6 +486,8 @@ internal static class SideboardTests
                      && controller.Contains("SideboardLockedReceived -= HandleLocked", StringComparison.Ordinal)
                      && controller.Contains("SideboardProgressReceived += HandleProgress", StringComparison.Ordinal)
                      && controller.Contains("SideboardProgressReceived -= HandleProgress", StringComparison.Ordinal)
+                     && controller.Contains("SideboardResetRequested += HandleAuthoritativeReset", StringComparison.Ordinal)
+                     && controller.Contains("SideboardResetRequested -= HandleAuthoritativeReset", StringComparison.Ordinal)
                      && controller.Contains("_deadlineSchedule?.Pause()", StringComparison.Ordinal)
                      && controller.Contains("_lockButton.clicked -= _lockClicked", StringComparison.Ordinal)
                      && controller.Contains("pair.Key.clicked -= pair.Value", StringComparison.Ordinal),
@@ -408,7 +499,10 @@ internal static class SideboardTests
             "sideboard opponent intel consumes only the privacy-preserving known-opponent projection");
         runner.Check(controller.Contains("DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()", StringComparison.Ordinal)
                      && controller.Contains("等待服务器", StringComparison.Ordinal)
+                     && controller.Contains("DeckAlienation", StringComparison.Ordinal)
+                     && controller.Contains("ActiveTalentAlienation", StringComparison.Ordinal)
                      && controller.Split("SubmitSideboard", StringSplitOptions.None).Length - 1 == 1
+                     && !controller.Contains(", null, TalentRegistry.Instance", StringComparison.Ordinal)
                      && !controller.Contains("ProcessSideboardDeadline", StringComparison.Ordinal)
                      && !controller.Contains("OnTimeout", StringComparison.Ordinal),
             "sideboard countdown displays the server deadline and never decides timeout locally");
@@ -482,12 +576,23 @@ internal static class SideboardTests
         }));
         var cleanupProxy = new RemoteServerProxy(new SimpleAIClient(2, null), cleanupService);
         int cleanupLockedCount = 0;
+        int resetCount = 0;
         cleanupProxy.SideboardLockedReceived += (_, _) => cleanupLockedCount++;
+        cleanupProxy.SideboardResetRequested += () => resetCount++;
+        WebSocketClient.Instance.Receive(MessageSerializer.Serialize("RoundStart", 2,
+            new RoundStartMessage
+            {
+                roundNumber = 5,
+                prevalentWind = (int)WindDirection.South,
+                seatWind = (int)WindDirection.West,
+                dealerIndex = 0,
+                scores = new[] { 0, 0, 0, 0 }
+            }));
         cleanupProxy.Cleanup();
-        WebSocketClient.Instance.Receive(MessageSerializer.Serialize("SideboardLocked", 2,
+        WebSocketClient.Instance.Receive(MessageSerializer.Serialize("SideboardLocked", 3,
             new SideboardLockedMessage { decisionId = 901 }));
-        runner.Check(cleanupLockedCount == 0 && !cleanupService.IsResyncRequired,
-            "RemoteServerProxy cleanup unsubscribes sideboard callbacks on an otherwise accepted sequence");
+        runner.Check(resetCount == 1 && cleanupLockedCount == 0 && !cleanupService.IsResyncRequired,
+            "RoundStart explicitly resets sideboard presentation and proxy cleanup unsubscribes its accepted stream");
         WebSocketClient.ResetForTests();
     }
 

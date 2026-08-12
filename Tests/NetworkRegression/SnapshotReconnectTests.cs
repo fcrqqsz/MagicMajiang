@@ -962,11 +962,15 @@ internal static class SnapshotReconnectTests
                 == ClientRecoverySceneTarget.Lobby
             && ClientRecoverySceneRoutingPolicy.GetTarget(RoomState.InRound)
                 == ClientRecoverySceneTarget.Game
+            && ClientRecoverySceneRoutingPolicy.GetTarget(RoomState.WaitingForSideboard)
+                == ClientRecoverySceneTarget.Game
+            && ClientRecoverySceneRoutingPolicy.GetTarget(RoomState.WaitingForNextRound)
+                == ClientRecoverySceneTarget.Game
             && ClientRecoverySceneRoutingPolicy.GetTarget(RoomState.SessionCompleted)
                 == ClientRecoverySceneTarget.Game
             && ClientRecoverySceneRoutingPolicy.GetTarget(RoomState.Closed)
                 == ClientRecoverySceneTarget.None,
-            "Recovery snapshots must route waiting rooms to Lobby and active/completed sessions to Game.");
+            "Recovery snapshots must route pre-match rooms to Lobby and sideboard/active/completed sessions to Game.");
 
         var localSeat = new RoomSnapshotSeat
         {

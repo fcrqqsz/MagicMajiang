@@ -34,7 +34,11 @@
                 <ui:VisualElement class="sideboard-budget-group">
                     <ui:VisualElement class="sideboard-budget-heading">
                         <ui:Label text="异化预算" class="sideboard-budget-title" />
-                        <ui:Label name="BudgetLabel" text="0 / 40" class="sideboard-budget-label" />
+                        <ui:Label name="BudgetLabel" text="总计 0 / 低档上限 40" class="sideboard-budget-label" />
+                    </ui:VisualElement>
+                    <ui:VisualElement class="sideboard-budget-breakdown">
+                        <ui:Label name="DeckCostLabel" text="牌山 0" class="sideboard-budget-part" />
+                        <ui:Label name="TalentCostLabel" text="当前生效天赋 0" class="sideboard-budget-part" />
                     </ui:VisualElement>
                     <ui:VisualElement name="BudgetTrack" class="sideboard-budget-track">
                         <ui:VisualElement name="BudgetFill" class="sideboard-budget-fill" />

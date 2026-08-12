@@ -20,6 +20,7 @@ namespace MahjongGame.Core.Network
                 case RoomState.LoadingGameScene:
                 case RoomState.InRound:
                 case RoomState.WaitingForNextRound:
+                case RoomState.WaitingForSideboard:
                 case RoomState.SessionCompleted:
                     return ClientRecoverySceneTarget.Game;
                 default:

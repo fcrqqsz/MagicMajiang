@@ -27,6 +27,7 @@ namespace MahjongGame.Core.Network
         public event System.Action<int, SideboardStartedMessage> SideboardStartedReceived;
         public event System.Action<int, SideboardLockedMessage> SideboardLockedReceived;
         public event System.Action<SideboardProgressMessage> SideboardProgressReceived;
+        public event System.Action SideboardResetRequested;
 
         public RemoteServerProxy(Agents.IPlayerClient localClient, ClientRoomService roomService)
         {
@@ -99,6 +100,7 @@ namespace MahjongGame.Core.Network
                 case "RoundStart":
                     var roundMsg = MessageSerializer.DeserializePayload<RoundStartMessage>(envelope.data);
                     if (roundMsg == null) break;
+                    SideboardResetRequested?.Invoke();
                     SyncSessionAtRoundStart(roundMsg);
                     _localClient.OnRoundStart(roundMsg.roundNumber, (WindDirection)roundMsg.prevalentWind, (WindDirection)roundMsg.seatWind, roundMsg.dealerIndex);
                     break;

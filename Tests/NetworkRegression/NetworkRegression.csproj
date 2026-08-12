@@ -84,6 +84,7 @@
     <Compile Include="..\..\Assets\Scripts\Core\Network\DevelopmentAccountAuthenticator.cs" Link="DevelopmentAccountAuthenticator.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\UsernameIdentityPolicy.cs" Link="UsernameIdentityPolicy.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\PlayerLoadoutCodec.cs" Link="PlayerLoadoutCodec.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\Network\TalentLoadoutSlotPolicy.cs" Link="TalentLoadoutSlotPolicy.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\PlayerLoadoutErrorCodes.cs" Link="PlayerLoadoutErrorCodes.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\SessionScorePolicy.cs" Link="SessionScorePolicy.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\GameSession.cs" Link="GameSession.cs" />

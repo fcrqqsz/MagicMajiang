@@ -30,12 +30,12 @@ namespace MahjongGame.Core
         public IReadOnlyList<bool> SeatLocked { get; }
         public int AlienationLimit { get; }
         public int TotalAlienation { get; }
+        public int DeckAlienation { get; }
+        public int ActiveTalentAlienation => Math.Max(0, TotalAlienation - DeckAlienation);
         public bool IsOverLimit => TotalAlienation > AlienationLimit;
         public bool IsReadOnly { get; }
         public string ErrorCode { get; }
         public bool CanLock => !IsReadOnly && string.IsNullOrEmpty(ErrorCode) && !IsOverLimit;
-
-        internal int DeckAlienation { get; }
 
         internal SideboardDraft(
             long decisionId,
@@ -73,17 +73,20 @@ namespace MahjongGame.Core
         {
             if (started == null) throw new ArgumentNullException(nameof(started));
 
+            TalentRegistry registry = TalentRegistry.Instance;
             string[] main = CopySlots(started.carriedMainTalentIds, TalentSlotConfig.MainSlotCount);
             string[] reserve = CopySlots(started.carriedReserveTalentIds, TalentSlotConfig.ReserveSlotCount);
             string[] carried = EnumerateCarried(main, reserve).ToArray();
             string[] requested = NormalizeIds(started.currentActiveTalentIds).ToArray();
             var selected = new HashSet<string>(requested, StringComparer.Ordinal);
             string[] active = carried.Where(selected.Contains).ToArray();
-            int talentCost = active.Sum(TalentRegistry.Instance.GetCost);
+            int talentCost = active.Sum(registry.GetCost);
             int deckCost = Math.Max(0, started.currentTotalAlienation - talentCost);
             int limit = Math.Max(0, started.alienationLimit);
             AlienationGaugeView gauge = BuildGauge(deckCost, talentCost, limit);
-            string errorCode = GetSourceError(carried, requested, gauge.Total, gauge.Limit);
+            string errorCode = GetSourceError(started, carried, requested, talentCost, gauge.Total, gauge.Limit, registry);
+            bool isReadOnly = !string.IsNullOrEmpty(errorCode)
+                              && errorCode != SideboardDraftErrorCodes.AlienationLimitExceeded;
 
             return new SideboardDraft(
                 started.decisionId,
@@ -95,17 +98,19 @@ namespace MahjongGame.Core
                 gauge.Limit,
                 gauge.Total,
                 gauge.DeckCost,
-                false,
+                isReadOnly,
                 errorCode);
         }
 
         private static string GetSourceError(
+            SideboardStartedMessage started,
             string[] carried,
             string[] requested,
+            int talentCost,
             int totalAlienation,
-            int limit)
+            int limit,
+            TalentRegistry registry)
         {
-            TalentRegistry registry = TalentRegistry.Instance;
             if (carried.Any(id => !registry.HasTalent(id)) || requested.Any(id => !registry.HasTalent(id)))
                 return SideboardDraftErrorCodes.UnknownTalent;
             if (carried.Distinct(StringComparer.Ordinal).Count() != carried.Length
@@ -116,6 +121,24 @@ namespace MahjongGame.Core
             var carriedSet = new HashSet<string>(carried, StringComparer.Ordinal);
             if (requested.Any(id => !carriedSet.Contains(id)))
                 return SideboardDraftErrorCodes.NotCarried;
+            if (!TalentLoadoutSlotPolicy.TryBuild(
+                    started.carriedMainTalentIds,
+                    started.carriedReserveTalentIds,
+                    registry,
+                    out TalentSlotConfig rebuilt)
+                || !AlienationBudgetPolicy.IsDefined((AlienationPreset)started.alienationLimit)
+                || started.currentTotalAlienation < talentCost)
+            {
+                return SideboardDraftErrorCodes.InvalidSelection;
+            }
+            foreach (string carriedId in SideboardLoadoutPolicy.GetCarriedIdsInSlotOrder(rebuilt))
+            {
+                if (registry.GetMetadata(carriedId).SideboardPolicy == TalentSideboardPolicy.MainOnlyLocked
+                    && !requested.Contains(carriedId, StringComparer.Ordinal))
+                {
+                    return SideboardDraftErrorCodes.LockedTalent;
+                }
+            }
             return totalAlienation > limit ? SideboardDraftErrorCodes.AlienationLimitExceeded : null;
         }
 
@@ -140,7 +163,6 @@ namespace MahjongGame.Core
             SideboardDraft source,
             string talentId,
             bool isActive,
-            TrustedPlayerLoadout loadout,
             TalentRegistry registry)
         {
             if (source == null) throw new ArgumentNullException(nameof(source));
@@ -167,13 +189,12 @@ namespace MahjongGame.Core
             IEnumerable<string> replacement = isActive
                 ? source.ActiveTalentIds.Concat(new[] { normalizedId })
                 : source.ActiveTalentIds.Where(id => !string.Equals(id, normalizedId, StringComparison.Ordinal));
-            return ReplaceActive(source, replacement, loadout, registry);
+            return ReplaceActive(source, replacement, registry);
         }
 
         public static SideboardDraft ReplaceActive(
             SideboardDraft source,
             IEnumerable<string> activeTalentIds,
-            TrustedPlayerLoadout loadout,
             TalentRegistry registry)
         {
             if (source == null) throw new ArgumentNullException(nameof(source));

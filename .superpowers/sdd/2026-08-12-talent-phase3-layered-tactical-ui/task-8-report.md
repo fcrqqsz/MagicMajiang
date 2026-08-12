@@ -60,3 +60,28 @@
 - Unity/Tuanjie Editor batch execution was unavailable in the environment, so the Unity presentation controller was verified through pure policy/client integration tests plus UXML/meta/source checks rather than an Editor play-mode run.
 - An internal read-only review task did not return within the completion window and was interrupted; the parent coordinator will run the formal review.
 - The pre-existing untracked `.superpowers/brainstorm/` directory remains untouched and unstaged.
+
+## Fix Round 1 — formal review corrections
+
+### Corrections
+
+- Added `RoomState.WaitingForSideboard -> Game` to `ClientRecoverySceneRoutingPolicy`; regression coverage preserves `WaitingForPlayers -> Lobby`, `WaitingForNextRound -> Game`, and terminal behavior.
+- Changed complete `SideboardProgress` from an implicit close into a public four-seat lock/`IsComplete` merge. The locked result remains visible and readonly until the ordered next `RoundStart`, inactive recovery snapshot, unbind, or explicit reset closes it.
+- Extracted `TalentLoadoutSlotPolicy.TryBuild` from server admission and made `PlayerLoadoutCodec` plus client `SideboardStarted` validation share the exact strict 6+3 shape, duplicate, main-slot tier, reserve-slot tier, and reserve-`Flexible` rules.
+- Required every carried `MainOnlyLocked` talent to be initially active. Malformed Started payloads retain an explanatory error but are readonly, cannot submit, and cannot make an unknown talent reach metadata rendering.
+- Removed the unused `TrustedPlayerLoadout` parameter from `SetActive`/`ReplaceActive`; the production controller no longer passes a fake `null` argument.
+- Exposed readonly deck and current-active-talent alienation partitions and added private-own UI labels for deck cost, active talent cost, total, and named preset limit. No opponent budget field or projection was added.
+
+### Fix Round 1 TDD and verification
+
+- RED: focused sideboard build failed on the new no-fake-loadout API, budget partitions, `IsComplete`, and explicit `Reset` until production behavior existed.
+- GREEN: strict shape/main-tier/reserve-policy/locked-active fixtures are now checked against the same trusted server admission policies; malformed panels are visible readonly and cannot begin submission.
+- GREEN: `Locked -> complete Progress` remains visible readonly with all four seats confirmed; a real ordered `RoundStart` publishes exactly one reset, and proxy cleanup prevents later callbacks.
+- Fresh focused sideboard regression: exit 0, `Network regression tests passed.`
+- Fresh full network regression: exit 0, `Network regression tests passed.`
+- UXML parse, unique new policy meta GUID, source guards, ignored Unity csproj guard, and `git diff --check`: exit 0.
+
+### Fix Round 1 concerns
+
+- Unity/Tuanjie Editor batch execution remains unavailable; presentation changes are covered by pure policies, ordered proxy integration, source guards, and parsed UXML. Unity project refresh remains Task 12.
+- The pre-existing untracked `.superpowers/brainstorm/` directory remains untouched and is excluded from the commit.

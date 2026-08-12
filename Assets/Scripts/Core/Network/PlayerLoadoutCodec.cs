@@ -105,7 +105,8 @@ namespace MahjongGame.Core.Network
                 errorCode = PlayerLoadoutErrorCodes.InvalidDeck;
                 return false;
             }
-            if (!TryBuildTalents(message.mainTalentSlotIds, message.reserveTalentSlotIds, out _))
+            if (!TalentLoadoutSlotPolicy.TryBuild(
+                    message.mainTalentSlotIds, message.reserveTalentSlotIds, TalentRegistry.Instance, out _))
             {
                 message = null;
                 errorCode = PlayerLoadoutErrorCodes.InvalidTalent;
@@ -168,7 +169,9 @@ namespace MahjongGame.Core.Network
                 errorCode = PlayerLoadoutErrorCodes.InvalidDeck;
                 return false;
             }
-            if (!TryBuildTalents(message.mainTalentSlotIds, message.reserveTalentSlotIds, out TalentSlotConfig talents))
+            if (!TalentLoadoutSlotPolicy.TryBuild(
+                    message.mainTalentSlotIds, message.reserveTalentSlotIds, TalentRegistry.Instance,
+                    out TalentSlotConfig talents))
             {
                 errorCode = PlayerLoadoutErrorCodes.InvalidTalent;
                 return false;
@@ -191,7 +194,9 @@ namespace MahjongGame.Core.Network
             PlayerLoadoutMessage message = CreateMessage(
                 loadout.DeckConfig, loadout.TalentConfig, loadout.AlienationPreset);
             return TryBuildDeck(message.deckEntries, out DeckConfig deck)
-                   && TryBuildTalents(message.mainTalentSlotIds, message.reserveTalentSlotIds, out TalentSlotConfig talents)
+                   && TalentLoadoutSlotPolicy.TryBuild(
+                       message.mainTalentSlotIds, message.reserveTalentSlotIds, TalentRegistry.Instance,
+                       out TalentSlotConfig talents)
                 ? new TrustedPlayerLoadout(
                     TrustedPlayerLoadout.CurrentSchemaVersion,
                     deck,
@@ -232,61 +237,11 @@ namespace MahjongGame.Core.Network
             return true;
         }
 
-        private static bool TryBuildTalents(
-            string[] mainTalentSlotIds,
-            string[] reserveTalentSlotIds,
-            out TalentSlotConfig talentConfig)
-        {
-            talentConfig = null;
-            if (mainTalentSlotIds == null || mainTalentSlotIds.Length != TalentSlotConfig.MainSlotCount
-                || reserveTalentSlotIds == null || reserveTalentSlotIds.Length != TalentSlotConfig.ReserveSlotCount)
-            {
-                return false;
-            }
-
-            var rebuilt = new TalentSlotConfig
-            {
-                SlotTalentIds = NormalizeSlotIds(mainTalentSlotIds),
-                ReserveTalentIds = NormalizeSlotIds(reserveTalentSlotIds)
-            };
-            if (rebuilt.HasDuplicateCarriedIds()) return false;
-
-            for (int slotIndex = 0; slotIndex < TalentSlotConfig.MainSlotCount; slotIndex++)
-            {
-                string talentId = rebuilt.SlotTalentIds[slotIndex];
-                if (string.IsNullOrEmpty(talentId)) continue;
-                if (!TalentRegistry.Instance.HasTalent(talentId)
-                    || !rebuilt.CanEquip(slotIndex, TalentRegistry.Instance.GetTier(talentId))) return false;
-            }
-            for (int slotIndex = 0; slotIndex < TalentSlotConfig.ReserveSlotCount; slotIndex++)
-            {
-                string talentId = rebuilt.ReserveTalentIds[slotIndex];
-                if (string.IsNullOrEmpty(talentId)) continue;
-                if (!TalentRegistry.Instance.HasTalent(talentId)
-                    || !rebuilt.CanEquipReserve(slotIndex, TalentRegistry.Instance.GetTier(talentId))
-                    || TalentRegistry.Instance.GetMetadata(talentId).SideboardPolicy != TalentSideboardPolicy.Flexible)
-                {
-                    return false;
-                }
-            }
-
-            talentConfig = rebuilt;
-            return true;
-        }
-
         private static string[] CopySlotIds(string[] source, int length)
         {
             string[] copy = new string[length];
             if (source != null) Array.Copy(source, copy, Math.Min(source.Length, length));
             return copy;
-        }
-
-        private static string[] NormalizeSlotIds(string[] source)
-        {
-            string[] normalized = new string[source.Length];
-            for (int i = 0; i < source.Length; i++)
-                normalized[i] = string.IsNullOrWhiteSpace(source[i]) ? null : source[i].Trim();
-            return normalized;
         }
 
         private static IEnumerable<(Suit Suit, int Value)> EnumerateLegalTileTypes()

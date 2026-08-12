@@ -223,6 +223,17 @@
     justify-content: space-between;
 }
 
+.sideboard-budget-breakdown {
+    flex-direction: row;
+    margin-top: 4px;
+}
+
+.sideboard-budget-part {
+    color: rgb(169, 179, 164);
+    font-size: 13px;
+    margin-right: 22px;
+}
+
 .sideboard-budget-title,
 .sideboard-budget-label {
     color: rgb(213, 198, 155);
