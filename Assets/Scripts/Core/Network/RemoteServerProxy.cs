@@ -30,7 +30,6 @@ namespace MahjongGame.Core.Network
             _localClient = localClient;
             _roomService = roomService ?? throw new System.ArgumentNullException(nameof(roomService));
             _roomService.AcceptedSequenceEnvelope += HandleAcceptedSequenceEnvelope;
-            _roomService.ReconnectSnapshotApplied += HandleReconnectSnapshot;
             GameHUDController.Instance?.BindServerProxy(this);
             (_localClient as ITalentActionPresentationClient)?.BindTalentActionPresentation(this);
         }
@@ -45,7 +44,6 @@ namespace MahjongGame.Core.Network
         public void Cleanup()
         {
             _roomService.AcceptedSequenceEnvelope -= HandleAcceptedSequenceEnvelope;
-            _roomService.ReconnectSnapshotApplied -= HandleReconnectSnapshot;
             (_localClient as ITalentActionPresentationClient)?.UnbindTalentActionPresentation(this);
             GameHUDController.Instance?.UnbindServerProxy(this);
         }
@@ -213,11 +211,6 @@ namespace MahjongGame.Core.Network
                     Debug.LogWarning($"[RemoteServerProxy] Unhandled message type: {envelope.type}");
                     break;
             }
-        }
-
-        private void HandleReconnectSnapshot(RoomGameSnapshot snapshot)
-        {
-            ApplyCurrentTalentRecoveryProjection();
         }
 
         private void ClearTalentActionsPresentation(bool clearDecisionId = true)

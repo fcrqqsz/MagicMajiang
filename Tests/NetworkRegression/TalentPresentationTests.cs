@@ -275,10 +275,12 @@ internal static class TalentPresentationTests
             "LocalPlayerClient binds ordered talent UI state and cleans it at local presentation boundaries");
         runner.Check(proxy.Contains("BindTalentActionPresentation(this)", StringComparison.Ordinal)
             && proxy.Contains("UnbindTalentActionPresentation(this)", StringComparison.Ordinal)
+            && !proxy.Contains("ReconnectSnapshotApplied", StringComparison.Ordinal)
+            && !proxy.Contains("HandleReconnectSnapshot", StringComparison.Ordinal)
             && proxy.Contains("ClearTalentActionsPresentation(clearDecisionId: false);", StringComparison.Ordinal)
             && proxy.IndexOf("ClearTalentActionsPresentation(clearDecisionId: false);", StringComparison.Ordinal)
                < proxy.IndexOf("var msg = new ClientActionMessage", StringComparison.Ordinal),
-            "RemoteServerProxy owns the local talent UI subscription and clears supplemental controls before base submission");
+            "RemoteServerProxy owns live talent UI subscriptions, leaves recovery to GameManager, and clears supplemental controls before base submission");
         int restoreIndex = gameManager.IndexOf("_localPlayer?.RestoreFromSnapshot(snapshot);", StringComparison.Ordinal);
         int talentReplayIndex = gameManager.IndexOf("_currentClientProxy?.ApplyCurrentTalentRecoveryProjection();", StringComparison.Ordinal);
         runner.Check(restoreIndex >= 0 && talentReplayIndex > restoreIndex,

@@ -14,6 +14,7 @@ internal static class TalentCommandClientTests
     {
         RemoteProxySerializesTalentActionFromAuthoritativeMainDecision(runner);
         RemoteProxyBindsAndUnbindsTalentPresentationClient(runner);
+        SameSceneRecoveryPublishesTalentProjectionOnce(runner);
         CurrentSnapshotTalentProjectionReplaysAfterSceneConstruction(runner);
         RemoteProxyPublishesOrderedTalentPresentationBoundaries(runner);
         BaseActionClearsTalentPresentationWithoutLosingDecision(runner);
@@ -39,21 +40,22 @@ internal static class TalentCommandClientTests
         proxy.Value.TalentRuntimeEventReceived += _ => runtimeFeedback++;
 
         proxy.Value.ApplyCurrentTalentRecoveryProjection();
-        proxy.Value.ApplyCurrentTalentRecoveryProjection();
+        int recoveryPickerResets = pickerResets;
+        int recoveryPresentations = presentations.Count;
         WebSocketClient.Instance.SentMessages.Clear();
         proxy.Value.SubmitAction(ClientAction.Discard(0, new TileData(Suit.Man, 3, 101)));
         ClientActionMessage submitted = GetOnlySentPayload<ClientActionMessage>("Action");
 
-        runner.Check(pickerResets == 3
-            && presentations.Count == 3
+        runner.Check(recoveryPickerResets == 1
+            && recoveryPresentations == 1
             && presentations[0].DecisionId == MainDecisionId
             && presentations[0].Options.Single().TalentId == "interception"
             && presentations[0].Options.Single().TargetSeatIndex == 2
-            && presentations[1].DecisionId == MainDecisionId
-            && presentations[1].Options.Single().TalentId == "interception"
-            && presentations[2].DecisionId == 0
+            && pickerResets == 2
+            && presentations.Count == 2
+            && presentations[1].DecisionId == 0
             && submitted?.decisionId == MainDecisionId,
-            "a proxy created after snapshot application idempotently replays long decision and talent options before base submission");
+            "a proxy created after snapshot application explicitly replays long decision and talent options once before base submission");
         runner.Check(runtimeFeedback == 0,
             "replaying current talent recovery projection is silent and emits no historical runtime feedback");
 
@@ -155,12 +157,56 @@ internal static class TalentCommandClientTests
     {
         using ClientRoomService service = CreateService(CreateMainTurnSnapshot());
         var presentationClient = new TalentPresentationClientStub();
+        var replacementClient = new TalentPresentationClientStub();
         var proxy = new RemoteServerProxy(presentationClient, service);
         runner.Check(presentationClient.BindCount == 1 && presentationClient.LastProxy == proxy,
             "RemoteServerProxy binds the local supplemental talent presentation at construction");
+
+        int pickerResets = 0;
+        var presentations = new List<(long DecisionId, int Count)>();
+        proxy.TalentPickerResetRequested += () => pickerResets++;
+        proxy.TalentActionsChanged += (decisionId, options) =>
+            presentations.Add((decisionId, options?.Count ?? 0));
+        proxy.SetLocalClient(replacementClient);
+        proxy.ApplyCurrentTalentRecoveryProjection();
+        runner.Check(presentationClient.UnbindCount == 1
+                     && replacementClient.BindCount == 1
+                     && pickerResets == 1
+                     && presentations.Count == 1
+                     && presentations[0] == (MainDecisionId, 1),
+            "a newly bound local presentation receives one explicit replay even when the authoritative projection is unchanged");
+
         proxy.Cleanup();
-        runner.Check(presentationClient.UnbindCount == 1 && presentationClient.LastProxy == proxy,
+        runner.Check(presentationClient.UnbindCount == 1
+                     && replacementClient.UnbindCount == 1
+                     && replacementClient.LastProxy == proxy,
             "RemoteServerProxy unbinds the local supplemental talent presentation during cleanup");
+    }
+
+    private static void SameSceneRecoveryPublishesTalentProjectionOnce(RegressionRunner runner)
+    {
+        using ClientRoomService service = CreateLiveRoomService();
+        using var proxy = new ProxyLifetime(new RemoteServerProxy(new TalentPresentationClientStub(), service));
+        int pickerResets = 0;
+        int actionPresentations = 0;
+        int runtimeFeedback = 0;
+        proxy.Value.TalentPickerResetRequested += () => pickerResets++;
+        proxy.Value.TalentActionsChanged += (_, _) => actionPresentations++;
+        proxy.Value.TalentRuntimeEventReceived += _ => runtimeFeedback++;
+
+        // Mirrors NetworkManager -> GameManager after the same service has applied the envelope.
+        service.ReconnectSnapshotApplied += _ => proxy.Value.ApplyCurrentTalentRecoveryProjection();
+        WebSocketClient.Instance.Receive(MessageSerializer.Serialize("ReconnectState", 0, new ReconnectStateMessage
+        {
+            baselineSeq = 2,
+            snapshot = CreateMainTurnSnapshot(),
+            missedMessages = Array.Empty<NetworkMessageEnvelope>()
+        }));
+
+        runner.Check(pickerResets == 1 && actionPresentations == 1,
+            "same-scene recovery has one presentation owner and publishes one picker reset plus one action refresh");
+        runner.Check(runtimeFeedback == 0,
+            "same-scene recovery does not replay historical runtime feedback");
     }
 
     private static void LiveMainTurnDecisionAuthorizesTalentAction(RegressionRunner runner)
