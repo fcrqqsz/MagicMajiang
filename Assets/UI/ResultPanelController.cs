@@ -97,7 +97,7 @@ namespace MahjongGame.UI
             SetSessionInfo(session);
             if (result.isSessionOver)
             {
-                if (_session != null) ShowSessionResult();
+                if (_session != null) ShowSessionResult(isRecovery: true);
                 return;
             }
             if (result.isDrawGame)
@@ -237,7 +237,7 @@ namespace MahjongGame.UI
         /// <summary>
         /// 显示最终总结算面板
         /// </summary>
-        private void ShowSessionResult()
+        private void ShowSessionResult(bool isRecovery = false)
         {
             _talentFanPresentation.ApplyLive(null);
             _winningHandView?.Hide();
@@ -268,7 +268,7 @@ namespace MahjongGame.UI
             _btnRestart.text = "返回主菜单";
             _isShowingFinalResult = true;
 
-            ShowOverlay(isRecovery: false);
+            ShowOverlay(isRecovery);
         }
 
         private static bool IsLocalSeat(int seatIndex)
@@ -505,14 +505,19 @@ namespace MahjongGame.UI
         private void ShowOverlay(bool isRecovery)
         {
             CancelInvoke(nameof(FadeIn));
+            ResultOverlayPresentation presentation =
+                ResultOverlayPresentationPolicy.Build(isRecovery);
+            _overlay.RemoveFromClassList("overlay--visible");
             _overlay.style.display = DisplayStyle.Flex;
-            if (isRecovery)
+            if (presentation.ShowImmediately)
             {
+                _overlay.style.opacity = 1f;
                 _overlay.AddToClassList("overlay--visible");
                 return;
             }
 
-            Invoke(nameof(FadeIn), 0.05f);
+            _overlay.style.opacity = StyleKeyword.Null;
+            if (presentation.Animate) Invoke(nameof(FadeIn), 0.05f);
         }
 
         private void FadeIn()

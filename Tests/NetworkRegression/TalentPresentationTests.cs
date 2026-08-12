@@ -131,6 +131,18 @@ internal static class TalentPresentationTests
                      && recovered.Rows.Select(row => row.IsNegative)
                          .SequenceEqual(result.Rows.Select(row => row.IsNegative)),
             "live and recovery projections build the same result view");
+
+        ResultOverlayPresentation roundRecovery =
+            ResultOverlayPresentationPolicy.Build(isRecovery: true);
+        ResultOverlayPresentation sessionFinalRecovery =
+            ResultOverlayPresentationPolicy.Build(isRecovery: true);
+        ResultOverlayPresentation live =
+            ResultOverlayPresentationPolicy.Build(isRecovery: false);
+        runner.Check(roundRecovery.ShowImmediately && !roundRecovery.Animate
+                     && sessionFinalRecovery.ShowImmediately && !sessionFinalRecovery.Animate,
+            "round and session-final recovery both request an immediate authoritative overlay");
+        runner.Check(!live.ShowImmediately && live.Animate,
+            "live result presentation retains the intentional fade animation");
     }
 
     private static void RunTalentResultPanelArtifactTests(RegressionRunner runner)
@@ -195,8 +207,12 @@ internal static class TalentPresentationTests
             "result presentation never parses MCR detail strings or re-sums an animated total");
         runner.Check(controller.Contains("RenderDraw(playerStatuses, isRecovery: false)", StringComparison.Ordinal)
                      && CountOccurrences(controller, "HideTalentResult();") >= 4
-                     && CountOccurrences(controller, "ShowSessionResult();") == 2
-                     && controller.Contains("if (isRecovery)", StringComparison.Ordinal)
+                     && CountOccurrences(controller, "ShowSessionResult();") == 1
+                     && controller.Contains("ShowSessionResult(isRecovery: true)", StringComparison.Ordinal)
+                     && controller.Contains("ResultOverlayPresentationPolicy.Build(isRecovery)", StringComparison.Ordinal)
+                     && controller.Contains("_overlay.style.opacity = 1f", StringComparison.Ordinal)
+                     && controller.Contains("_overlay.style.opacity = StyleKeyword.Null", StringComparison.Ordinal)
+                     && controller.Contains("CancelInvoke(nameof(FadeIn))", StringComparison.Ordinal)
                      && controller.Contains("_btnRestart.clicked -= OnRestartClicked", StringComparison.Ordinal)
                      && controller.Contains("_winningHandView?.Dispose()", StringComparison.Ordinal),
             "draw session-final recovery and teardown follow explicit non-feedback presentation paths");

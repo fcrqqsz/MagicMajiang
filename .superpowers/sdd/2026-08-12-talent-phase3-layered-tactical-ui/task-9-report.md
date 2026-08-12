@@ -54,3 +54,25 @@
 
 - Unity/Tuanjie Editor batch execution is deferred to Task 12. Presentation compilation was checked through the existing generated project plus temporary validation-only missing-source inclusion, and behavior/layout through pure regression tests, parsed UXML, meta, and source guards.
 - The pre-existing untracked `.superpowers/brainstorm/` directory remains untouched and excluded from the commit.
+
+## Fix Round 1 — session-final recovery overlay
+
+### Review verification and correction
+
+- Verified the Important review finding: recovered round wins and draws passed `isRecovery: true` into `ShowOverlay`, but recovered session-final results called the live-only `ShowSessionResult()` path, which fixed `ShowOverlay(false)` and queued `FadeIn`.
+- Added `ResultOverlayPresentationPolicy` as a narrow pure decision: recovery is immediate and non-animated; live results animate and are not immediate.
+- `ApplyRecoveryResult` now calls `ShowSessionResult(isRecovery: true)`. The continue-button/live session-final path retains the default `false` behavior.
+- `ShowOverlay` always cancels a pending `FadeIn` and removes the prior visible class before presenting. Recovery sets `display: flex`, inline opacity `1`, and the visible class immediately. Live presentation clears the inline opacity back to USS control before scheduling the existing fade.
+- Round-result and draw recovery continue to pass `true` through the same overlay policy. Draw/session-final still hide the hero, breakdown, and winning hand; recovery does not add any toast or audio path.
+
+### Fix Round 1 TDD and verification
+
+- RED: focused regression failed with six expected missing-type errors for `ResultOverlayPresentation` and `ResultOverlayPresentationPolicy`.
+- GREEN: focused regression passed after implementing immediate recovery versus animated live overlay decisions and controller source guards for session-final, round, and draw paths.
+- Full regression initially exposed an older source guard that required both session-final callers to use the exact live-only `ShowSessionResult();` spelling. The guard now requires one explicit recovery call and one live default call; full regression then passed.
+- Fresh focused and full verification, UXML parse, unique policy meta, source cleanup, ignored/generated project guard, and `git diff --check` are recorded before the Fix Round 1 commit.
+
+### Fix Round 1 concern ledger
+
+- Reviewer-noted `GameManager` round-number observation is pre-existing and outside the Task 9 diff; it is left unchanged for final review triage.
+- Unity/Tuanjie Editor verification remains Task 12, and the ignored generated project files remain untouched.

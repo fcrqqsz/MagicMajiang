@@ -96,8 +96,9 @@ internal static class NetworkAuthorityBoundaryTests
             "Result fallback never reloads the Game scene.");
         runner.Check(Count(result, "ReturnToLobby();") == 1,
             "Only the final summary view exits to the lobby.");
-        runner.Check(Count(result, "ShowSessionResult();") == 2,
-            "Completed matches show the final summary before leaving the room.");
+        runner.Check(Count(result, "ShowSessionResult();") == 1
+                     && Count(result, "ShowSessionResult(isRecovery: true);") == 1,
+            "Completed live and recovered matches show the final summary before leaving the room.");
     }
 
     private static void TestUnitySourceBoundaries(RegressionRunner runner)

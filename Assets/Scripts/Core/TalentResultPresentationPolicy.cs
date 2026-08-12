@@ -23,6 +23,26 @@ namespace MahjongGame.Core
         public bool HasMismatchDiagnostic { get; set; }
     }
 
+    public readonly struct ResultOverlayPresentation
+    {
+        public bool ShowImmediately { get; }
+        public bool Animate { get; }
+
+        public ResultOverlayPresentation(bool showImmediately, bool animate)
+        {
+            ShowImmediately = showImmediately;
+            Animate = animate;
+        }
+    }
+
+    public static class ResultOverlayPresentationPolicy
+    {
+        public static ResultOverlayPresentation Build(bool isRecovery) =>
+            new ResultOverlayPresentation(
+                showImmediately: isRecovery,
+                animate: !isRecovery);
+    }
+
     public static class TalentResultPresentationPolicy
     {
         public static TalentResultView BuildAcceptedWin(
