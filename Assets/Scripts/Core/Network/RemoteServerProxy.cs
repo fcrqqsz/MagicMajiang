@@ -24,6 +24,9 @@ namespace MahjongGame.Core.Network
         public event System.Action<long, IReadOnlyList<TalentActionOption>> TalentActionsChanged;
         public event System.Action<TalentRuntimeEventMessage> TalentRuntimeEventReceived;
         public event System.Action<TalentActionResolvedMessage> TalentActionResolvedReceived;
+        public event System.Action<int, SideboardStartedMessage> SideboardStartedReceived;
+        public event System.Action<int, SideboardLockedMessage> SideboardLockedReceived;
+        public event System.Action<SideboardProgressMessage> SideboardProgressReceived;
 
         public RemoteServerProxy(Agents.IPlayerClient localClient, ClientRoomService roomService)
         {
@@ -203,9 +206,21 @@ namespace MahjongGame.Core.Network
                 case "RoomReady":
                 case "RoomClosed":
                 case "RoomError":
+                    break;
                 case "SideboardStarted":
+                    var sideboardStarted = MessageSerializer.DeserializePayload<SideboardStartedMessage>(envelope.data);
+                    if (sideboardStarted != null)
+                        SideboardStartedReceived?.Invoke(_roomService.SeatIndex, sideboardStarted);
+                    break;
                 case "SideboardLocked":
+                    var sideboardLocked = MessageSerializer.DeserializePayload<SideboardLockedMessage>(envelope.data);
+                    if (sideboardLocked != null)
+                        SideboardLockedReceived?.Invoke(_roomService.SeatIndex, sideboardLocked);
+                    break;
                 case "SideboardProgress":
+                    var sideboardProgress = MessageSerializer.DeserializePayload<SideboardProgressMessage>(envelope.data);
+                    if (sideboardProgress != null)
+                        SideboardProgressReceived?.Invoke(sideboardProgress);
                     break;
                 default:
                     Debug.LogWarning($"[RemoteServerProxy] Unhandled message type: {envelope.type}");

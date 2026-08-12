@@ -1,5 +1,6 @@
 <ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" editor-extension-mode="False">
     <Style src="project://database/Assets/UI/GameHUD/GameHUDStyles.uss" />
+    <ui:Template name="SideboardPanel" src="project://database/Assets/UI/SideboardPanel.uxml" />
     <ui:VisualElement name="HUDRoot" class="hud-root" picking-mode="Ignore">
 
         <!-- 左上角信息栏 -->
@@ -88,6 +89,9 @@
 
         <!-- 中央安全区强反馈，不接收输入 -->
         <ui:Label name="TalentToast" text="" class="talent-toast" picking-mode="Ignore" />
+
+        <!-- 原版全屏中场战术备牌；仅由权威 sideboard 消息打开。 -->
+        <ui:Instance template="SideboardPanel" />
 
     </ui:VisualElement>
 </ui:UXML>

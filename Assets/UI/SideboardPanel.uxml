@@ -1,0 +1,48 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" editor-extension-mode="False">
+    <Style src="project://database/Assets/UI/SideboardPanelStyles.uss" />
+    <ui:VisualElement name="SideboardOverlay" class="sideboard-overlay">
+        <ui:VisualElement class="sideboard-frame">
+            <ui:VisualElement class="sideboard-header">
+                <ui:VisualElement>
+                    <ui:Label name="TitleLabel" text="中场整备" class="sideboard-title" />
+                    <ui:Label text="调整携带天赋，锁定后等待其他席位" class="sideboard-subtitle" />
+                </ui:VisualElement>
+                <ui:VisualElement class="sideboard-timer-block">
+                    <ui:Label text="服务器剩余" class="sideboard-timer-caption" />
+                    <ui:Label name="TimerLabel" text="45" class="sideboard-timer" />
+                </ui:VisualElement>
+            </ui:VisualElement>
+
+            <ui:VisualElement class="sideboard-content">
+                <ui:VisualElement class="sideboard-loadout-column">
+                    <ui:Label text="主战编组 / ACTIVE" class="sideboard-section-title" />
+                    <ui:VisualElement name="ActiveTalents" class="sideboard-card-grid sideboard-active-grid" />
+                    <ui:Label text="战术备牌 / RESERVE" class="sideboard-section-title sideboard-section-title--reserve" />
+                    <ui:VisualElement name="ReserveCards" class="sideboard-card-grid sideboard-reserve-grid" />
+                </ui:VisualElement>
+
+                <ui:VisualElement class="sideboard-intel-column">
+                    <ui:Label text="已知对手情报" class="sideboard-section-title" />
+                    <ui:VisualElement name="KnownOpponentIntel" class="sideboard-intel-list" />
+                    <ui:Label text="仅显示比赛中已公开的天赋" class="sideboard-privacy-note" />
+                    <ui:Label text="席位确认" class="sideboard-section-title sideboard-section-title--locks" />
+                    <ui:VisualElement name="SeatLockStatus" class="sideboard-lock-status" />
+                </ui:VisualElement>
+            </ui:VisualElement>
+
+            <ui:VisualElement class="sideboard-footer">
+                <ui:VisualElement class="sideboard-budget-group">
+                    <ui:VisualElement class="sideboard-budget-heading">
+                        <ui:Label text="异化预算" class="sideboard-budget-title" />
+                        <ui:Label name="BudgetLabel" text="0 / 40" class="sideboard-budget-label" />
+                    </ui:VisualElement>
+                    <ui:VisualElement name="BudgetTrack" class="sideboard-budget-track">
+                        <ui:VisualElement name="BudgetFill" class="sideboard-budget-fill" />
+                    </ui:VisualElement>
+                    <ui:Label name="ErrorLabel" text="" class="sideboard-error" />
+                </ui:VisualElement>
+                <ui:Button name="LockButton" text="锁定方案" class="sideboard-lock-button" />
+            </ui:VisualElement>
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>

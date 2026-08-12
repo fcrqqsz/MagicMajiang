@@ -1,0 +1,276 @@
+.sideboard-overlay {
+    position: absolute;
+    left: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 36px 54px;
+    background-color: rgba(3, 10, 8, 0.96);
+    -unity-font-definition: url('project://database/Assets/Font/MSYH_UITK.asset');
+}
+
+.sideboard-overlay--visible {
+    display: flex;
+}
+
+.sideboard-frame {
+    width: 100%;
+    max-width: 1440px;
+    height: 100%;
+    max-height: 850px;
+    padding: 28px 34px 24px 34px;
+    border-width: 1px;
+    border-color: rgba(199, 170, 96, 0.72);
+    border-radius: 12px;
+    background-color: rgb(10, 25, 20);
+}
+
+.sideboard-header,
+.sideboard-footer,
+.sideboard-content,
+.sideboard-budget-heading {
+    flex-direction: row;
+}
+
+.sideboard-header {
+    height: 88px;
+    align-items: center;
+    justify-content: space-between;
+    padding-bottom: 16px;
+    border-bottom-width: 1px;
+    border-bottom-color: rgba(199, 170, 96, 0.32);
+}
+
+.sideboard-title {
+    color: rgb(244, 225, 166);
+    font-size: 34px;
+    -unity-font-style: bold;
+}
+
+.sideboard-subtitle,
+.sideboard-timer-caption,
+.sideboard-privacy-note {
+    color: rgb(138, 159, 148);
+    font-size: 14px;
+}
+
+.sideboard-timer-block {
+    min-width: 150px;
+    align-items: flex-end;
+}
+
+.sideboard-timer {
+    color: rgb(244, 225, 166);
+    font-size: 36px;
+    -unity-font-style: bold;
+}
+
+.sideboard-content {
+    flex-grow: 1;
+    padding-top: 22px;
+    padding-bottom: 18px;
+}
+
+.sideboard-loadout-column {
+    flex-grow: 1;
+    padding-right: 28px;
+}
+
+.sideboard-intel-column {
+    width: 320px;
+    padding-left: 28px;
+    border-left-width: 1px;
+    border-left-color: rgba(199, 170, 96, 0.25);
+}
+
+.sideboard-section-title {
+    margin-bottom: 10px;
+    color: rgb(205, 188, 139);
+    font-size: 16px;
+    -unity-font-style: bold;
+}
+
+.sideboard-section-title--reserve,
+.sideboard-section-title--locks {
+    margin-top: 20px;
+}
+
+.sideboard-card-grid {
+    flex-direction: row;
+    flex-wrap: wrap;
+}
+
+.sideboard-card {
+    width: 30%;
+    min-width: 190px;
+    height: 116px;
+    margin: 0 10px 10px 0;
+    padding: 13px;
+    align-items: flex-start;
+    border-width: 1px;
+    border-radius: 8px;
+    border-color: rgba(123, 145, 133, 0.45);
+    background-color: rgb(16, 37, 30);
+    color: rgb(220, 225, 216);
+    -unity-text-align: upper-left;
+}
+
+.sideboard-card:hover {
+    border-color: rgb(226, 195, 113);
+    background-color: rgb(21, 48, 38);
+}
+
+.sideboard-card--active {
+    border-color: rgb(226, 195, 113);
+    background-color: rgb(30, 59, 43);
+}
+
+.sideboard-card--stopped {
+    opacity: 0.62;
+    background-color: rgb(20, 28, 25);
+}
+
+.sideboard-card--locked {
+    border-left-width: 5px;
+    border-left-color: rgb(202, 143, 77);
+}
+
+.sideboard-card--readonly {
+    opacity: 0.7;
+}
+
+.sideboard-card__name {
+    color: rgb(245, 230, 188);
+    font-size: 18px;
+    -unity-font-style: bold;
+}
+
+.sideboard-card__meta,
+.sideboard-card__state {
+    margin-top: 6px;
+    color: rgb(160, 181, 168);
+    font-size: 13px;
+}
+
+.sideboard-card__state--active {
+    color: rgb(117, 221, 157);
+}
+
+.sideboard-card__state--stopped {
+    color: rgb(189, 148, 130);
+}
+
+.sideboard-intel-list {
+    min-height: 190px;
+}
+
+.sideboard-intel-seat {
+    margin-bottom: 10px;
+    padding: 10px 12px;
+    border-radius: 6px;
+    background-color: rgba(24, 48, 39, 0.72);
+}
+
+.sideboard-intel-seat__name {
+    color: rgb(213, 198, 155);
+    font-size: 14px;
+}
+
+.sideboard-intel-seat__known {
+    margin-top: 4px;
+    color: rgb(172, 188, 178);
+    font-size: 13px;
+    white-space: normal;
+}
+
+.sideboard-lock-status {
+    flex-direction: row;
+    flex-wrap: wrap;
+}
+
+.sideboard-seat-lock {
+    width: 46%;
+    margin: 0 8px 8px 0;
+    padding: 7px;
+    border-radius: 5px;
+    background-color: rgba(71, 79, 74, 0.48);
+    color: rgb(169, 177, 171);
+    -unity-text-align: middle-center;
+}
+
+.sideboard-seat-lock--confirmed {
+    background-color: rgba(47, 112, 75, 0.72);
+    color: rgb(168, 239, 194);
+}
+
+.sideboard-footer {
+    min-height: 108px;
+    align-items: flex-end;
+    padding-top: 18px;
+    border-top-width: 1px;
+    border-top-color: rgba(199, 170, 96, 0.32);
+}
+
+.sideboard-budget-group {
+    flex-grow: 1;
+    margin-right: 26px;
+}
+
+.sideboard-budget-heading {
+    justify-content: space-between;
+}
+
+.sideboard-budget-title,
+.sideboard-budget-label {
+    color: rgb(213, 198, 155);
+    font-size: 15px;
+}
+
+.sideboard-budget-track {
+    height: 12px;
+    margin-top: 8px;
+    overflow: hidden;
+    border-radius: 6px;
+    background-color: rgb(38, 50, 44);
+}
+
+.sideboard-budget-fill {
+    width: 0%;
+    height: 100%;
+    background-color: rgb(92, 190, 129);
+}
+
+.sideboard-budget--over .sideboard-budget-fill {
+    background-color: rgb(211, 81, 63);
+}
+
+.sideboard-error {
+    min-height: 22px;
+    margin-top: 7px;
+    color: rgb(235, 119, 96);
+    font-size: 13px;
+}
+
+.sideboard-lock-button {
+    width: 180px;
+    height: 52px;
+    border-width: 1px;
+    border-color: rgb(226, 195, 113);
+    border-radius: 8px;
+    background-color: rgb(128, 92, 37);
+    color: rgb(255, 242, 203);
+    font-size: 19px;
+    -unity-font-style: bold;
+}
+
+.sideboard-lock-button:hover {
+    background-color: rgb(157, 113, 43);
+}
+
+.sideboard-lock-button:disabled {
+    opacity: 0.45;
+    background-color: rgb(61, 66, 61);
+}
