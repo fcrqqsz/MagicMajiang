@@ -94,9 +94,45 @@ Unity/Tuanjie executable discovery found `D:\unity\2022.3.61t9\Editor\Tuanjie.ex
 
 ## Commit
 
-Pending final Task 6 commit. The SHA is reported in the parent handoff after commit succeeds.
+Initial Task 6 implementation: `6f6701472d3969e37c62d5782dd7a217583573e7`.
+
+Fix Round 1 commit message: `fix: reset transient talent feedback on recovery`. Its final SHA is reported in the parent handoff (a commit cannot contain its own stable SHA).
 
 ## Concerns
 
 - `Assembly-CSharp.csproj` is an ignored Unity-generated file. The temporary compile entries were removed exactly and it is not staged, but `apply_patch` may have changed local line endings in the touched area; no pre-edit byte copy existed, so byte-for-byte restoration was not guessed. Task 12 should let Unity Refresh regenerate this ignored project file authoritatively and then run Unity compilation.
 - Actual layout and serialized reference import still require Unity/Tuanjie scene validation in Task 12; current evidence is source compilation plus regression/static/YAML verification.
+
+## Fix Round 1 — recovery transient lifecycle, click teardown, and automated WAV regeneration
+
+### Review findings verified
+
+- `ResetForRecovery` previously stopped only the round timer/pulse; the four-row talent feed, visible toast, pending toast schedule, chip/toast tweens, and open drawer overlay could survive an authoritative recovery snapshot.
+- `BindTalentElements` previously attached own/four-seat/dismiss click handlers using callbacks that were not all removable; `OnDestroy` did not detach those UI Toolkit `clicked` subscriptions.
+- `RunTalentAudioAssetTests` previously inspected only the committed WAV. The two independent generations and byte comparison reported above were a manual verification, not an automated regression guard.
+
+### RED → GREEN evidence
+
+1. Recovery lifecycle RED added an executable pure `TalentTransientPresentationState` test covering a live strong event, atomic recovery reset, and a later higher-ID live event. Focused compilation failed as expected with `CS0246` because the state boundary did not exist. The minimal GREEN added the pure lifecycle model and connected `GameHUDController.ResetForRecovery` to `ResetTalentFeedbackForRecovery`; focused regression passed.
+2. Click teardown RED added source assertions for stored own/four-seat/dismiss callbacks, matching `clicked -=` operations, nulling callback references, and the absence of anonymous `clicked += () =>` subscriptions. Focused regression failed only that new assertion. The GREEN stores `Action` references, calls `UnbindTalentElementCallbacks` first from `OnDestroy`, removes all six subscriptions, and nulls every callback, so repeated teardown is safe; focused regression passed.
+3. WAV automation RED called a missing `RunTalentAudioGeneratorTwice` helper and failed as expected with `CS0103`. The GREEN launches PowerShell 7 twice with `ProcessStartInfo.ArgumentList` using `pwsh -NoLogo -NoProfile -File <generator> -OutputPath <explicit temp WAV>`, captures clear timeout/start/exit diagnostics, reads both files, and removes the GUID-scoped temporary directory in `finally`; focused regression passed.
+
+### Recovery and lifecycle implementation
+
+- Recovery pauses and nulls the pending toast schedule; kills/nulls only talent chip/toast tweens; restores the currently pulsed talent chip scale to `Vector2.one`; hides the toast, clears its text and opacity; clears the feed; closes all drawers and the dismiss overlay; and resets the pure transient lifecycle state.
+- The unrelated round timer pulse remains on its existing `_pulseTween` recovery path. Talent cleanup does not kill unrelated animation state.
+- Recovery clears accepted public presentation ordering only after transient cleanup and renders the authoritative snapshot directly. It does not call `TryBuild`, seed history, replay feed/toast/audio, or infer feedback from snapshot history.
+- The pure boundary verifies a subsequent ordered live event (`eventId = 2`) is accepted and repopulates feed/toast/schedule/chip/toast channels normally after recovery.
+- `OnDestroy` retains proxy event unsubscription, toast schedule pause/null, and linked tween cleanup. Own `+N`, four seat `+N`, and dismiss callbacks are also detached with null-safe stored delegates; calling the teardown path again is safe.
+
+### Automated audio and final verification
+
+The focused and full commands both completed with `Network regression tests passed.` after the final implementation. Each invocation now actually runs the generator twice in a temporary directory and checks:
+
+```text
+generated-a bytes == generated-b bytes == committed WAV bytes
+SHA256 == 3CDE4C85FF1CA03AF255E3F79097B4CD0E080F535C1733722B75D8D448939EB3
+RIFF/WAVE PCM, 48,000 Hz, stereo, 16-bit, 0.70 s, peak 29203 (<= -1 dBFS)
+```
+
+Static guards found `DOVirtual=3` and `.SetLink(gameObject)=3`; no anonymous talent `.clicked += () =>` remains. The scene still binds audio meta GUID `eb50fc0dc9224ba8b782c22acfe0fa91` at clip fileID `8300000`, with `m_PlayOnAwake: 0` and `Spatialize: 0`. `git diff --check` passed. Fix Round 1 did not touch `Assembly-CSharp.csproj`, any scene/audio/meta asset, Task 7+ UI, or `.superpowers/brainstorm/`.

@@ -105,4 +105,51 @@ namespace MahjongGame.Core
 
         public void ResetForNewMatch() => _highestEventId = 0;
     }
+
+    /// <summary>
+    /// Pure lifecycle model for talent-only transient presentation. Recovery clears this state
+    /// without changing event history, so a later ordered live event can present normally.
+    /// </summary>
+    public sealed class TalentTransientPresentationState
+    {
+        public int FeedCount { get; private set; }
+        public bool IsToastVisible { get; private set; }
+        public bool HasToastSchedule { get; private set; }
+        public bool HasChipTween { get; private set; }
+        public bool HasToastTween { get; private set; }
+        public bool HasOpenDrawer { get; private set; }
+
+        public void RecordLiveFeedback(TalentFeedbackView feedback)
+        {
+            if (feedback == null || feedback.IsSilent) return;
+            if (feedback.AppendFeed) FeedCount = System.Math.Min(4, FeedCount + 1);
+            if (feedback.PulseChip) HasChipTween = true;
+            if (feedback.ShowToast)
+            {
+                IsToastVisible = true;
+                HasToastSchedule = true;
+                HasToastTween = true;
+            }
+        }
+
+        public void OpenDrawer() => HasOpenDrawer = true;
+
+        public void CloseDrawers() => HasOpenDrawer = false;
+
+        public void HideToast()
+        {
+            IsToastVisible = false;
+            HasToastSchedule = false;
+        }
+
+        public void ResetForRecovery()
+        {
+            FeedCount = 0;
+            IsToastVisible = false;
+            HasToastSchedule = false;
+            HasChipTween = false;
+            HasToastTween = false;
+            HasOpenDrawer = false;
+        }
+    }
 }

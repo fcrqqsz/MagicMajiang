@@ -7,8 +7,10 @@ using MahjongGame.Systems;
 using MahjongGame.Talents;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Xml.Linq;
 
 internal static class TalentPresentationTests
@@ -161,6 +163,38 @@ internal static class TalentPresentationTests
             "one accepted strong event requests audio once and its duplicate requests none");
         runner.Check(!new TalentFeedbackHistory().TryBuild(ActiveAppliedEvent(), true, out _),
             "recovery never produces a talent-audio request");
+
+        var transientState = new TalentTransientPresentationState();
+        transientState.RecordLiveFeedback(firstStrong);
+        transientState.OpenDrawer();
+        runner.Check(transientState.FeedCount == 1
+            && transientState.IsToastVisible
+            && transientState.HasToastSchedule
+            && transientState.HasChipTween
+            && transientState.HasToastTween
+            && transientState.HasOpenDrawer,
+            "live strong feedback populates every transient presentation channel");
+
+        transientState.ResetForRecovery();
+        runner.Check(transientState.FeedCount == 0
+            && !transientState.IsToastVisible
+            && !transientState.HasToastSchedule
+            && !transientState.HasChipTween
+            && !transientState.HasToastTween
+            && !transientState.HasOpenDrawer,
+            "recovery atomically clears every transient talent presentation channel");
+
+        var postRecoveryEvent = ActiveAppliedEvent();
+        postRecoveryEvent.eventId = 2;
+        runner.Check(playbackHistory.TryBuild(postRecoveryEvent, false, out TalentFeedbackView postRecoveryFeedback),
+            "recovery does not seed or replay history and a new live event remains eligible");
+        transientState.RecordLiveFeedback(postRecoveryFeedback);
+        runner.Check(transientState.FeedCount == 1
+            && transientState.IsToastVisible
+            && transientState.HasToastSchedule
+            && transientState.HasChipTween
+            && transientState.HasToastTween,
+            "new live feedback works normally after recovery cleanup");
     }
 
     private static void RunLayeredTalentHudArtifactTests(RegressionRunner runner)
@@ -240,6 +274,24 @@ internal static class TalentPresentationTests
             && controller.Contains(".Pause()", StringComparison.Ordinal)
             && controller.Contains(".Kill()", StringComparison.Ordinal),
             "GameHUD cancels scheduled work and kills linked tweens during teardown");
+        runner.Check(controller.Contains("UnbindTalentElementCallbacks();", StringComparison.Ordinal)
+            && controller.Contains("_ownTalentCollapsedButton.clicked -= _ownTalentCollapsedClicked", StringComparison.Ordinal)
+            && controller.Contains("_seatTalentMoreButtons[slot].clicked -= _seatTalentMoreClicked[slot]", StringComparison.Ordinal)
+            && controller.Contains("_talentDrawerDismissLayer.clicked -= _talentDrawerDismissClicked", StringComparison.Ordinal)
+            && controller.Contains("_ownTalentCollapsedClicked = null", StringComparison.Ordinal)
+            && controller.Contains("_seatTalentMoreClicked[slot] = null", StringComparison.Ordinal)
+            && controller.Contains("_talentDrawerDismissClicked = null", StringComparison.Ordinal)
+            && !controller.Contains(".clicked += () =>", StringComparison.Ordinal),
+            "GameHUD stores and idempotently removes every talent button callback during teardown");
+        runner.Check(controller.Contains("ResetTalentFeedbackForRecovery();", StringComparison.Ordinal)
+            && controller.Contains("_toastHideSchedule?.Pause();", StringComparison.Ordinal)
+            && controller.Contains("ResetTalentChipPulse();", StringComparison.Ordinal)
+            && controller.Contains("_talentToastTween?.Kill();", StringComparison.Ordinal)
+            && controller.Contains("_talentToast.text = string.Empty", StringComparison.Ordinal)
+            && controller.Contains("_talentEffectFeed?.Clear();", StringComparison.Ordinal)
+            && controller.Contains("CloseTalentDrawers();", StringComparison.Ordinal)
+            && controller.Contains("_talentTransientState.ResetForRecovery();", StringComparison.Ordinal),
+            "snapshot recovery clears all talent-only transient controller presentation");
 
         string scene = File.ReadAllText(scenePath);
         string clipGuid = ReadMetaGuid(GetRepoPath("Assets", "Audio", "SFX", "Talent", "talent_active_generic.wav.meta"));
@@ -258,6 +310,14 @@ internal static class TalentPresentationTests
         bool assetsExist = File.Exists(scriptPath) && File.Exists(wavPath);
         runner.Check(assetsExist, "deterministic talent placeholder generator and WAV exist");
         if (!assetsExist) return;
+
+        RunTalentAudioGeneratorTwice(scriptPath, out byte[] generatedA, out byte[] generatedB);
+        byte[] committedBytes = File.ReadAllBytes(wavPath);
+        const string expectedSha256 = "3CDE4C85FF1CA03AF255E3F79097B4CD0E080F535C1733722B75D8D448939EB3";
+        runner.Check(generatedA.SequenceEqual(generatedB)
+            && generatedA.SequenceEqual(committedBytes)
+            && Convert.ToHexString(SHA256.HashData(committedBytes)) == expectedSha256,
+            "two generator runs are byte-identical and match the committed talent WAV and fixed hash");
 
         using var stream = File.OpenRead(wavPath);
         using var reader = new BinaryReader(stream);
@@ -287,6 +347,81 @@ internal static class TalentPresentationTests
             && blockAlign == 4 && riffSize + 8 == stream.Length
             && duration >= 0.60 && duration <= 0.80 && peak <= 29203,
             "talent placeholder is valid 48 kHz stereo 16-bit PCM lasting 0.60-0.80 seconds at or below -1 dBFS");
+    }
+
+    private static void RunTalentAudioGeneratorTwice(
+        string scriptPath,
+        out byte[] generatedA,
+        out byte[] generatedB)
+    {
+        generatedA = Array.Empty<byte>();
+        generatedB = Array.Empty<byte>();
+        string tempDirectory = Path.Combine(
+            Path.GetTempPath(),
+            "supermajiang-talent-audio-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDirectory);
+        try
+        {
+            string outputA = Path.Combine(tempDirectory, "generated-a.wav");
+            string outputB = Path.Combine(tempDirectory, "generated-b.wav");
+            RunTalentAudioGenerator(scriptPath, outputA);
+            RunTalentAudioGenerator(scriptPath, outputB);
+            generatedA = File.ReadAllBytes(outputA);
+            generatedB = File.ReadAllBytes(outputB);
+        }
+        finally
+        {
+            if (Directory.Exists(tempDirectory))
+                Directory.Delete(tempDirectory, recursive: true);
+        }
+    }
+
+    private static void RunTalentAudioGenerator(string scriptPath, string outputPath)
+    {
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = "pwsh",
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            CreateNoWindow = true
+        };
+        startInfo.ArgumentList.Add("-NoLogo");
+        startInfo.ArgumentList.Add("-NoProfile");
+        startInfo.ArgumentList.Add("-File");
+        startInfo.ArgumentList.Add(scriptPath);
+        startInfo.ArgumentList.Add("-OutputPath");
+        startInfo.ArgumentList.Add(outputPath);
+
+        using var process = new Process { StartInfo = startInfo };
+        try
+        {
+            process.Start();
+        }
+        catch (System.ComponentModel.Win32Exception exception)
+        {
+            throw new InvalidOperationException(
+                "PowerShell 7 executable 'pwsh' is required to verify deterministic talent audio generation.",
+                exception);
+        }
+
+        System.Threading.Tasks.Task<string> stdoutTask = process.StandardOutput.ReadToEndAsync();
+        System.Threading.Tasks.Task<string> stderrTask = process.StandardError.ReadToEndAsync();
+        if (!process.WaitForExit(60000))
+        {
+            process.Kill(entireProcessTree: true);
+            throw new TimeoutException(
+                $"Talent audio generator timed out for explicit output '{outputPath}'.");
+        }
+
+        string stdout = stdoutTask.GetAwaiter().GetResult();
+        string stderr = stderrTask.GetAwaiter().GetResult();
+        if (process.ExitCode != 0)
+        {
+            throw new InvalidOperationException(
+                $"Talent audio generator failed with exit code {process.ExitCode}. "
+                + $"stdout: {stdout} stderr: {stderr}");
+        }
     }
 
     private static int CountOccurrences(string source, string value)
