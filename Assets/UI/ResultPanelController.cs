@@ -2,7 +2,6 @@ using UnityEngine;
 using UnityEngine.UIElements;
 using UnityEngine.SceneManagement;
 using System.Collections.Generic;
-using System.Collections;
 using System.Linq;
 using MahjongGame.Core;
 using MahjongGame.Core.Network;
@@ -18,8 +17,11 @@ namespace MahjongGame.UI
         [SerializeField] private UIDocument _document;
         private VisualElement _overlay;
         private Label _titleLabel;
+        private Label _finalFanHero;
+        private VisualElement _fanBreakdown;
+        private Label _baseFanRow;
+        private VisualElement _talentContributionList;
         private ScrollView _listContainer;
-        private Label _totalLabel;
         private Button _btnRestart;
         private WinningHandStripView _winningHandView;
         private readonly TalentFanPresentationState _talentFanPresentation =
@@ -37,8 +39,11 @@ namespace MahjongGame.UI
 
             _overlay = root.Q<VisualElement>("Overlay");
             _titleLabel = root.Q<Label>("TitleLabel");
+            _finalFanHero = root.Q<Label>("FinalFanHero");
+            _fanBreakdown = root.Q<VisualElement>("FanBreakdown");
+            _baseFanRow = root.Q<Label>("BaseFanRow");
+            _talentContributionList = root.Q<VisualElement>("TalentContributionList");
             _listContainer = root.Q<ScrollView>("FanListContainer");
-            _totalLabel = root.Q<Label>("TotalScoreLabel");
             _btnRestart = root.Q<Button>("BtnRestart");
             _winningHandView = new WinningHandStripView(
                 root.Q<VisualElement>("WinningHandSection"),
@@ -48,6 +53,15 @@ namespace MahjongGame.UI
 
             // 初始隐藏
             _overlay.style.display = DisplayStyle.None;
+        }
+
+        private void OnDestroy()
+        {
+            StopAllCoroutines();
+            CancelInvoke();
+            if (_btnRestart != null) _btnRestart.clicked -= OnRestartClicked;
+            _winningHandView?.Dispose();
+            if (Instance == this) Instance = null;
         }
 
         /// <summary>
@@ -67,19 +81,20 @@ namespace MahjongGame.UI
             CancelInvoke();
             _isShowingFinalResult = false;
             _winningHandView?.Hide();
+            HideTalentResult();
             if (_overlay == null) return;
             _overlay.RemoveFromClassList("overlay--visible");
             _overlay.style.display = DisplayStyle.None;
         }
 
-        public void ApplyRecoveryResult(RoomGameSnapshot snapshot)
+        public void ApplyRecoveryResult(RoomGameSnapshot snapshot, GameSession session)
         {
             ResetForRecovery();
             new LocalResultPresentationBridge(this).ShowRecovery(snapshot);
             var result = snapshot?.result;
             if (result == null) return;
 
-            SetSessionInfo(GameManager.Instance?.Session);
+            SetSessionInfo(session);
             if (result.isSessionOver)
             {
                 if (_session != null) ShowSessionResult();
@@ -87,22 +102,21 @@ namespace MahjongGame.UI
             }
             if (result.isDrawGame)
             {
-                ShowDraw(new List<string> { "流局" });
+                RenderDraw(new List<string> { "流局" }, isRecovery: true);
                 return;
             }
             if (result.winnerId < 0) return;
 
             var details = result.fanDetails?.ToList() ?? new List<string>();
-            if (IsLocalSeat(result.winnerId))
-            {
-                ShowWin(result.fanCount, details, result.isSelfDraw, result.winningHand,
-                    result.talentFanBreakdown);
-            }
-            else
-            {
-                ShowLose(result.winnerId, result.fanCount, details, result.winningHand,
-                    result.talentFanBreakdown);
-            }
+            RenderRoundResult(
+                result.winnerId,
+                IsLocalSeat(result.winnerId),
+                result.fanCount,
+                details,
+                result.isSelfDraw,
+                result.winningHand,
+                TalentFanBreakdown,
+                isRecovery: true);
         }
 
         private void UpdateButtonText()
@@ -123,8 +137,14 @@ namespace MahjongGame.UI
 
         public void ShowDraw(List<string> playerStatuses = null)
         {
-            _talentFanPresentation.ApplyLive(null);
+            RenderDraw(playerStatuses, isRecovery: false);
+        }
+
+        private void RenderDraw(List<string> playerStatuses, bool isRecovery)
+        {
+            if (!isRecovery) _talentFanPresentation.ApplyLive(null);
             _winningHandView?.Hide();
+            HideTalentResult();
             _titleLabel.text = "流  局";
             _titleLabel.style.color = new StyleColor(new Color(0.7f, 0.7f, 0.7f));
 
@@ -148,55 +168,37 @@ namespace MahjongGame.UI
 
             AppendScoreInfo();
 
-            _totalLabel.text = "";
-
-            _overlay.style.display = DisplayStyle.Flex;
-            Invoke(nameof(FadeIn), 0.05f);
+            ShowOverlay(isRecovery);
         }
 
         public void ShowLose(int aiId, int totalFan, List<string> fanDetails,
             WinningHandSnapshot winningHand = null,
             TalentFanBreakdownMessage talentFanBreakdown = null)
         {
-            _talentFanPresentation.ApplyLive(talentFanBreakdown);
-            _winningHandView?.Show(winningHand);
-            _titleLabel.text = $"{GetPlayerDisplayName(aiId)} 胡牌";
-            _titleLabel.style.color = new StyleColor(new Color(0.5f, 0.5f, 0.8f));
-
-            _listContainer.Clear();
-
-            foreach (var detail in fanDetails)
-            {
-                Label item = new Label(detail);
-                item.AddToClassList("fan-item");
-                _listContainer.Add(item);
-            }
-
-            _totalLabel.text = $"被扣除：{totalFan} 番";
-
-            AppendScoreInfo();
-
-            _overlay.style.display = DisplayStyle.Flex;
-            Invoke(nameof(FadeIn), 0.05f);
+            RenderRoundResult(
+                aiId,
+                isLocalWinner: false,
+                totalFan,
+                fanDetails,
+                isTsumo: false,
+                winningHand,
+                talentFanBreakdown,
+                isRecovery: false);
         }
 
         public void ShowWin(int totalFan, List<string> fanDetails, bool isTsumo,
             WinningHandSnapshot winningHand = null,
             TalentFanBreakdownMessage talentFanBreakdown = null)
         {
-            _talentFanPresentation.ApplyLive(talentFanBreakdown);
-            _winningHandView?.Show(winningHand);
-            _titleLabel.text = isTsumo ? "自  摸" : "荣  胡";
-            _titleLabel.style.color = new StyleColor(new Color(1f, 0.26f, 0.26f));
-
-            _listContainer.Clear();
-            _totalLabel.text = "合计：0 番";
-
-            _overlay.style.display = DisplayStyle.Flex;
-
-            StartCoroutine(RollScoreRoutine(fanDetails));
-
-            Invoke(nameof(FadeIn), 0.05f);
+            RenderRoundResult(
+                winnerId: -1,
+                isLocalWinner: true,
+                totalFan,
+                fanDetails,
+                isTsumo,
+                winningHand,
+                talentFanBreakdown,
+                isRecovery: false);
         }
 
         public void ReceiveRecoveryTalentFanBreakdown(
@@ -237,7 +239,9 @@ namespace MahjongGame.UI
         /// </summary>
         private void ShowSessionResult()
         {
+            _talentFanPresentation.ApplyLive(null);
             _winningHandView?.Hide();
+            HideTalentResult();
             _titleLabel.text = "对战结束";
             _titleLabel.style.color = new StyleColor(new Color(1f, 0.85f, 0.4f));
 
@@ -261,12 +265,10 @@ namespace MahjongGame.UI
                 rank++;
             }
 
-            _totalLabel.text = "";
             _btnRestart.text = "返回主菜单";
             _isShowingFinalResult = true;
 
-            _overlay.style.display = DisplayStyle.Flex;
-            Invoke(nameof(FadeIn), 0.05f);
+            ShowOverlay(isRecovery: false);
         }
 
         private static bool IsLocalSeat(int seatIndex)
@@ -291,17 +293,12 @@ namespace MahjongGame.UI
             return $"AI {seatIndex + 1}";
         }
 
-        private struct FanItemData
-        {
-            public string FullText;
-            public int Score;
-        }
-
         private sealed class WinningHandStripView
         {
             private readonly VisualElement _section;
             private readonly VisualElement _row;
             private readonly List<VisualElement> _tileElements = new List<VisualElement>();
+            private readonly EventCallback<GeometryChangedEvent> _geometryChangedCallback;
             private int _groupCount;
             private int _visibleTileCount;
 
@@ -309,7 +306,14 @@ namespace MahjongGame.UI
             {
                 _section = section;
                 _row = row;
-                _row?.RegisterCallback<GeometryChangedEvent>(_ => ApplySizing());
+                _geometryChangedCallback = _ => ApplySizing();
+                _row?.RegisterCallback(_geometryChangedCallback);
+                Hide();
+            }
+
+            public void Dispose()
+            {
+                _row?.UnregisterCallback(_geometryChangedCallback);
                 Hide();
             }
 
@@ -424,55 +428,91 @@ namespace MahjongGame.UI
             }
         }
 
-        private IEnumerator RollScoreRoutine(List<string> fanDetails)
+        private void RenderRoundResult(
+            int winnerId,
+            bool isLocalWinner,
+            int acceptedFinalFan,
+            IEnumerable<string> fanDetails,
+            bool isTsumo,
+            WinningHandSnapshot winningHand,
+            TalentFanBreakdownMessage talentFanBreakdown,
+            bool isRecovery)
         {
-            List<FanItemData> parsedDetails = new List<FanItemData>();
+            if (!isRecovery) _talentFanPresentation.ApplyLive(talentFanBreakdown);
+            TalentResultView resultView = TalentResultPresentationPolicy.BuildAcceptedWin(
+                acceptedFinalFan,
+                talentFanBreakdown,
+                MahjongGame.Talents.TalentRegistry.Instance);
+            RenderTalentResult(resultView);
 
-            foreach (var detail in fanDetails)
+            _winningHandView?.Show(winningHand);
+            _titleLabel.text = isLocalWinner
+                ? (isTsumo ? "自  摸" : "荣  胡")
+                : $"{GetPlayerDisplayName(winnerId)} 胡牌";
+            _titleLabel.style.color = new StyleColor(isLocalWinner
+                ? new Color(1f, 0.26f, 0.26f)
+                : new Color(0.5f, 0.5f, 0.8f));
+
+            _listContainer.Clear();
+            foreach (string detail in fanDetails ?? Enumerable.Empty<string>())
             {
-                int score = 0;
-                int startIdx = detail.LastIndexOf('(');
-                int endIdx = detail.LastIndexOf(')');
-                if (startIdx >= 0 && endIdx > startIdx)
-                {
-                    string numStr = detail.Substring(startIdx + 1, endIdx - startIdx - 1);
-                    int.TryParse(numStr, out score);
-                }
-
-                parsedDetails.Add(new FanItemData { FullText = detail, Score = score });
-            }
-
-            parsedDetails.Sort((a, b) => b.Score.CompareTo(a.Score));
-
-            int currentTotal = 0;
-
-            foreach (var item in parsedDetails)
-            {
-                Label label = new Label(item.FullText);
+                Label label = new Label(detail ?? string.Empty);
                 label.AddToClassList("fan-item");
                 _listContainer.Add(label);
+            }
+            AppendScoreInfo();
+            ShowOverlay(isRecovery);
+        }
 
-                int targetTotal = currentTotal + item.Score;
-                float rollDuration = 0.2f;
-                float elapsed = 0f;
+        private void RenderTalentResult(TalentResultView view)
+        {
+            HideTalentResult();
+            if (view?.IsVisible != true) return;
 
-                while (elapsed < rollDuration)
-                {
-                    elapsed += Time.deltaTime;
-                    float t = elapsed / rollDuration;
-                    int tempTotal = Mathf.RoundToInt(Mathf.Lerp(currentTotal, targetTotal, t));
-                    _totalLabel.text = $"合计：{tempTotal} 番";
-                    yield return null;
-                }
-
-                currentTotal = targetTotal;
-                _totalLabel.text = $"合计：{currentTotal} 番";
-
-                yield return new WaitForSeconds(0.5f);
+            _finalFanHero.text = view.FinalFanText;
+            _finalFanHero.style.display = DisplayStyle.Flex;
+            if (view.Rows.Count == 0)
+            {
+                if (view.HasMismatchDiagnostic)
+                    Debug.LogWarning("[ResultPanel] TalentFanBreakdownMismatch");
+                return;
             }
 
-            // 番种滚动完成后追加分数信息
-            AppendScoreInfo();
+            _fanBreakdown.style.display = DisplayStyle.Flex;
+            _baseFanRow.text = view.Rows[0].Text;
+
+            foreach (TalentResultRow row in view.Rows.Skip(1))
+            {
+                var label = new Label(row.Text);
+                label.AddToClassList("breakdown-row");
+                if (row.IsNegative) label.AddToClassList("breakdown-row--negative");
+                _talentContributionList.Add(label);
+                if (row.ShouldLogWarning)
+                    Debug.LogWarning("[ResultPanel] UnknownTalentFanContribution");
+            }
+
+            if (view.HasMismatchDiagnostic)
+                Debug.LogWarning("[ResultPanel] TalentFanBreakdownMismatch");
+        }
+
+        private void HideTalentResult()
+        {
+            _talentContributionList?.Clear();
+            if (_finalFanHero != null) _finalFanHero.style.display = DisplayStyle.None;
+            if (_fanBreakdown != null) _fanBreakdown.style.display = DisplayStyle.None;
+        }
+
+        private void ShowOverlay(bool isRecovery)
+        {
+            CancelInvoke(nameof(FadeIn));
+            _overlay.style.display = DisplayStyle.Flex;
+            if (isRecovery)
+            {
+                _overlay.AddToClassList("overlay--visible");
+                return;
+            }
+
+            Invoke(nameof(FadeIn), 0.05f);
         }
 
         private void FadeIn()

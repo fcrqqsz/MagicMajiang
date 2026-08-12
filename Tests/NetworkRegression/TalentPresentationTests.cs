@@ -17,6 +17,8 @@ internal static class TalentPresentationTests
 {
     public static void Run(RegressionRunner runner)
     {
+        RunTalentResultPresentationPolicyTests(runner);
+        RunTalentResultPanelArtifactTests(runner);
         RunTalentActionPanelPolicyTests(runner);
         RunLayeredTalentHudPolicyTests(runner);
         RunTalentEventPresentationPolicyTests(runner);
@@ -28,6 +30,176 @@ internal static class TalentPresentationTests
         RunLoadoutPresetTests(runner);
         RunServerAdmissionTests(runner);
         RunClientCommandTests(runner);
+    }
+
+    private static void RunTalentResultPresentationPolicyTests(RegressionRunner runner)
+    {
+        var authoritative = new TalentFanBreakdownMessage
+        {
+            baseFan = 8,
+            finalFan = 22,
+            contributions = new[]
+            {
+                new TalentFanContributionMessage
+                    { talentId = "sheathed_edge", fanDelta = 16, sequence = 2 },
+                new TalentFanContributionMessage
+                    { talentId = "head_start", fanDelta = 2, sequence = 1 },
+                new TalentFanContributionMessage
+                    { talentId = "interception", fanDelta = -4, sequence = 3 },
+                new TalentFanContributionMessage
+                    { talentId = "dragon_ascent", fanDelta = 0, sequence = 0 }
+            }
+        };
+
+        TalentResultView result = TalentResultPresentationPolicy.Build(
+            authoritative, TalentRegistry.Instance);
+        runner.Check(result.IsVisible
+                     && result.FinalFan == 22
+                     && result.FinalFanText == "最终番 22"
+                     && result.Rows[0].Text == "基础番 8",
+            "final fan is the hero result and base fan is the first explanation row");
+        runner.Check(result.Rows.Skip(1).Select(row => row.Text).SequenceEqual(
+                new[] { "快人一步 +2", "藏锋 +16", "截流 -4" })
+                     && result.Rows.Skip(1).Select(row => row.IsNegative).SequenceEqual(
+                         new[] { false, false, true }),
+            "talent rows use stable authority order, omit zero and render signed deltas");
+
+        TalentResultView unknown = TalentResultPresentationPolicy.Build(
+            new TalentFanBreakdownMessage
+            {
+                baseFan = 8,
+                finalFan = 10,
+                contributions = new[]
+                {
+                    new TalentFanContributionMessage
+                    {
+                        talentId = "<b>protocol-text</b>",
+                        fanDelta = 2,
+                        sequence = 1
+                    }
+                }
+            },
+            TalentRegistry.Instance);
+        runner.Check(unknown.Rows[1].Text == "未知天赋 +2"
+                     && unknown.Rows[1].ShouldLogWarning
+                     && !unknown.Rows[1].Text.Contains("protocol-text", StringComparison.Ordinal),
+            "unknown talent ids render fixed local copy and request a warning without protocol text");
+
+        TalentResultView mismatch = TalentResultPresentationPolicy.Build(
+            new TalentFanBreakdownMessage
+            {
+                baseFan = 8,
+                finalFan = 99,
+                contributions = new[]
+                {
+                    new TalentFanContributionMessage
+                        { talentId = "head_start", fanDelta = 2, sequence = 1 }
+                }
+            },
+            TalentRegistry.Instance);
+        runner.Check(mismatch.FinalFan == 99
+                     && mismatch.FinalFanText == "最终番 99"
+                     && mismatch.HasMismatchDiagnostic,
+            "mismatch is diagnostic-only and preserves the authoritative final fan");
+
+        TalentResultView hidden = TalentResultPresentationPolicy.Build(null, TalentRegistry.Instance);
+        runner.Check(!hidden.IsVisible && hidden.Rows.Count == 0,
+            "draw and non-round-result callers can hide the fan breakdown with no source result");
+
+        TalentResultView acceptedWithoutAttribution =
+            TalentResultPresentationPolicy.BuildAcceptedWin(
+                18, null, TalentRegistry.Instance);
+        runner.Check(acceptedWithoutAttribution.IsVisible
+                     && acceptedWithoutAttribution.FinalFan == 18
+                     && acceptedWithoutAttribution.FinalFanText == "最终番 18"
+                     && acceptedWithoutAttribution.Rows.Count == 0,
+            "accepted wins keep the authoritative final hero when attribution is unavailable");
+
+        TalentResultView transportMismatch =
+            TalentResultPresentationPolicy.BuildAcceptedWin(
+                88, authoritative, TalentRegistry.Instance);
+        runner.Check(transportMismatch.FinalFan == 22
+                     && transportMismatch.FinalFanText == "最终番 22"
+                     && transportMismatch.HasMismatchDiagnostic,
+            "breakdown final remains authoritative when duplicate result fields disagree");
+
+        TalentResultView recovered = TalentResultPresentationPolicy.Build(
+            TalentFanBreakdownMessage.Clone(authoritative), TalentRegistry.Instance);
+        runner.Check(recovered.FinalFanText == result.FinalFanText
+                     && recovered.Rows.Select(row => row.Text)
+                         .SequenceEqual(result.Rows.Select(row => row.Text))
+                     && recovered.Rows.Select(row => row.IsNegative)
+                         .SequenceEqual(result.Rows.Select(row => row.IsNegative)),
+            "live and recovery projections build the same result view");
+    }
+
+    private static void RunTalentResultPanelArtifactTests(RegressionRunner runner)
+    {
+        string uxmlPath = GetRepoPath("Assets", "UI", "ResultPanel.uxml");
+        string stylesPath = GetRepoPath("Assets", "UI", "ResultPanelStyles.uss");
+        string controllerPath = GetRepoPath("Assets", "UI", "ResultPanelController.cs");
+        string gameManagerPath = GetRepoPath("Assets", "Scripts", "Core", "GameManager.cs");
+        bool assetsExist = File.Exists(uxmlPath)
+                           && File.Exists(stylesPath)
+                           && File.Exists(controllerPath)
+                           && File.Exists(gameManagerPath);
+        runner.Check(assetsExist, "result breakdown UI and source assets exist");
+        if (!assetsExist) return;
+
+        XDocument document = XDocument.Load(uxmlPath);
+        XElement panel = document.Descendants()
+            .Single(element => element.Attribute("name")?.Value == "Panel");
+        string[] childNames = panel.Elements()
+            .Select(element => element.Attribute("name")?.Value)
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .ToArray();
+        runner.Check(childNames.SequenceEqual(new[]
+            {
+                "TitleLabel", "FinalFanHero", "FanBreakdown", "FanListContainer",
+                "WinningHandSection", "BtnRestart"
+            }),
+            "result hierarchy fixes the hero and controls around the independent MCR scroll");
+
+        XElement breakdown = document.Descendants()
+            .Single(element => element.Attribute("name")?.Value == "FanBreakdown");
+        runner.Check(breakdown.Elements().Select(element => element.Attribute("name")?.Value)
+                         .SequenceEqual(new[] { "BaseFanRow", "TalentContributionList" })
+                     && document.Descendants().Single(element =>
+                         element.Attribute("name")?.Value == "TalentContributionList")
+                         .Name.LocalName == "ScrollView"
+                     && document.Descendants().Single(element =>
+                         element.Attribute("name")?.Value == "FanListContainer")
+                         .Name.LocalName == "ScrollView",
+            "base fan leads a bounded talent list and MCR details retain their own scroll view");
+
+        string styles = File.ReadAllText(stylesPath);
+        runner.Check(styles.Contains(".final-fan-hero", StringComparison.Ordinal)
+                     && styles.Contains(".fan-breakdown", StringComparison.Ordinal)
+                     && styles.Contains(".breakdown-row--negative", StringComparison.Ordinal)
+                     && styles.Contains("MSYH_UITK.asset", StringComparison.Ordinal)
+                     && !styles.Contains("MSYH.TTC", StringComparison.OrdinalIgnoreCase)
+                     && !styles.Contains("MSYH_SDF.asset", StringComparison.OrdinalIgnoreCase),
+            "result breakdown uses UI Toolkit styling, polarity and the supported TextCore font");
+
+        string controller = File.ReadAllText(controllerPath);
+        string gameManager = File.ReadAllText(gameManagerPath);
+        runner.Check(CountOccurrences(controller, "RenderRoundResult(") == 4
+                     && controller.Contains("BuildAcceptedWin(", StringComparison.Ordinal)
+                     && controller.Contains("TalentFanBreakdown,", StringComparison.Ordinal)
+                     && gameManager.Contains("ApplyRecoveryResult(snapshot, Session)", StringComparison.Ordinal),
+            "live win lose and GameManager recovery converge on one authoritative result renderer");
+        runner.Check(!controller.Contains("RollScoreRoutine", StringComparison.Ordinal)
+                     && !controller.Contains("LastIndexOf", StringComparison.Ordinal)
+                     && !controller.Contains("StartCoroutine", StringComparison.Ordinal)
+                     && !controller.Contains("TotalScoreLabel", StringComparison.Ordinal),
+            "result presentation never parses MCR detail strings or re-sums an animated total");
+        runner.Check(controller.Contains("RenderDraw(playerStatuses, isRecovery: false)", StringComparison.Ordinal)
+                     && CountOccurrences(controller, "HideTalentResult();") >= 4
+                     && CountOccurrences(controller, "ShowSessionResult();") == 2
+                     && controller.Contains("if (isRecovery)", StringComparison.Ordinal)
+                     && controller.Contains("_btnRestart.clicked -= OnRestartClicked", StringComparison.Ordinal)
+                     && controller.Contains("_winningHandView?.Dispose()", StringComparison.Ordinal),
+            "draw session-final recovery and teardown follow explicit non-feedback presentation paths");
     }
 
     private static void RunTalentActionPanelPolicyTests(RegressionRunner runner)

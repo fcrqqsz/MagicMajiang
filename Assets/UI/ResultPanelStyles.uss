@@ -27,16 +27,66 @@
 
 /* 标题：巨大的“胡”字 */
 .title-text {
-    font-size: 80px;
+    flex-shrink: 0;
+    font-size: 64px;
     color: #ff4444;
     -unity-font-style: bold;
-    margin-bottom: 20px;
+    margin-bottom: 12px;
     text-shadow: 2px 2px 0px #000;
+}
+
+/* 服务端最终确认番置顶；不由下方条目重新求和。 */
+.final-fan-hero {
+    display: none;
+    flex-shrink: 0;
+    width: 100%;
+    font-size: 72px;
+    color: #ff5252;
+    -unity-font-style: bold;
+    -unity-text-align: middle-center;
+    margin-bottom: 14px;
+    text-shadow: 2px 2px 0px #000;
+}
+
+.fan-breakdown {
+    display: none;
+    flex-shrink: 0;
+    width: 100%;
+    max-height: 220px;
+    padding: 12px 18px;
+    margin-bottom: 14px;
+    background-color: rgba(255, 215, 0, 0.08);
+    border-width: 1px;
+    border-color: rgba(255, 215, 0, 0.38);
+    border-radius: 10px;
+}
+
+.talent-contribution-list {
+    width: 100%;
+    max-height: 170px;
+}
+
+.breakdown-row {
+    width: 100%;
+    flex-shrink: 0;
+    font-size: 28px;
+    color: #ffe7a1;
+    margin-bottom: 5px;
+}
+
+.breakdown-row--base {
+    color: #ffffff;
+    -unity-font-style: bold;
+}
+
+.breakdown-row--negative {
+    color: #ff8a80;
 }
 
 /* 滚动列表：显示番种详情 */
 .fan-list {
     flex-grow: 1;
+    min-height: 100px;
     width: 100%;
     background-color: rgba(255, 255, 255, 0.05);
     border-radius: 10px;
@@ -56,17 +106,9 @@
     border-bottom-color: #555;
 }
 
-/* 总分显示 */
-.total-score {
-    font-size: 80px;
-    color: #ff5252;
-    -unity-font-style: bold;
-    margin-bottom: 30px;
-    text-shadow: 2px 2px 0px #000;
-}
-
 /* 按钮 */
 .restart-btn {
+    flex-shrink: 0;
     width: 250px;
     height: 80px;
     font-size: 36px;
@@ -87,7 +129,7 @@
     width: 100%;
     flex-shrink: 0;
     padding: 10px;
-    margin-bottom: 18px;
+    margin-bottom: 14px;
     background-color: rgba(255, 255, 255, 0.06);
     border-radius: 10px;
 }
