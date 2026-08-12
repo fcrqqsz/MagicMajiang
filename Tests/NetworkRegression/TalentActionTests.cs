@@ -13,6 +13,7 @@ internal static class TalentActionTests
         SupplementalTalentAdmissionRejectsResponseWindowsBeforeRuntime(runner);
         CarriedTalentActionExecutesPolymorphically(runner);
         ActiveTalentFeedbackDistinguishesAppliedEffects(runner);
+        PublicCounterEventsUseStablePresentationCategory(runner);
         InterceptionConsumesUsageBeforeTargetDefense(runner);
         InterceptionLimitsUsageAndEnumeratesOnlyEligibleTargets(runner);
         InterceptionRevalidatesEveryTargetEligibilityOnTheServer(runner);
@@ -430,6 +431,49 @@ internal static class TalentActionTests
             "blocked, duplicate, and stale requests emit zero standardized feedback events");
     }
 
+    private static void PublicCounterEventsUseStablePresentationCategory(RegressionRunner runner)
+    {
+        TalentMatchRuntime sheathedRuntime = CreateSheathedEdgeRuntime(out GameSession sheathedSession);
+        sheathedRuntime.DrainEventsForSeat(0);
+        EndNonWinningRound(sheathedRuntime, sheathedSession, winnerSeatIndex: 1);
+        TalentRuntimeEvent edge = sheathedRuntime.DrainEventsForSeat(0)
+            .Single(runtimeEvent => runtimeEvent.TalentId == "sheathed_edge");
+
+        TalentMatchRuntime interceptionRuntime = CreateInterceptionRuntime(
+            includeTargetComposure: false,
+            out GameSession interceptionSession);
+        ChargeSheathedEdge(interceptionRuntime, interceptionSession);
+        interceptionRuntime.DrainEventsForSeat(0);
+        interceptionRuntime.OpenMainDecision(ownerSeatIndex: 1, decisionId: 3000000110L);
+        TryInterceptionAt(interceptionRuntime, interceptionSession, 3000000110L, 0, "sheathed_edge");
+        TalentRuntimeEvent uses = interceptionRuntime.DrainEventsForSeat(0)
+            .Single(runtimeEvent => runtimeEvent.TalentId == "interception"
+                                    && runtimeEvent.EventType == "public_counter_changed");
+
+        TalentFeedbackView edgeFeedback = TalentEventPresentationPolicy.Build(ToMessage(edge), false);
+        TalentFeedbackView usesFeedback = TalentEventPresentationPolicy.Build(ToMessage(uses), false);
+        runner.Check(edge.EventType == "public_counter_changed"
+            && edgeFeedback.Level == TalentFeedbackLevel.Medium
+            && edgeFeedback.AppendFeed && edgeFeedback.PulseChip
+            && !edgeFeedback.ShowToast && !edgeFeedback.PlayAudio,
+            "sheathed edge public charge changes use the stable medium presentation category");
+        runner.Check(usesFeedback.Level == TalentFeedbackLevel.Medium
+            && usesFeedback.AppendFeed && usesFeedback.PulseChip
+            && !usesFeedback.ShowToast && !usesFeedback.PlayAudio,
+            "interception public use changes use the same stable medium presentation category");
+    }
+
+    private static TalentRuntimeEventMessage ToMessage(TalentRuntimeEvent runtimeEvent) => new TalentRuntimeEventMessage
+    {
+        eventId = runtimeEvent.EventId,
+        ownerSeatIndex = runtimeEvent.OwnerSeatIndex,
+        talentId = runtimeEvent.TalentId,
+        eventType = runtimeEvent.EventType,
+        visibility = (int)runtimeEvent.Visibility,
+        value = runtimeEvent.Value,
+        isScoreDelta = runtimeEvent.IsScoreDelta
+    };
+
     private static void InterceptionConsumesUsageBeforeTargetDefense(RegressionRunner runner)
     {
         TalentMatchRuntime runtime = CreateInterceptionRuntime(
@@ -476,9 +520,10 @@ internal static class TalentActionTests
                                                && runtimeEvent.EventType == "talent_revealed"
                                                && runtimeEvent.Visibility == TalentEventVisibility.Public)
                      && events.Any(runtimeEvent => runtimeEvent.TalentId == "interception"
-                                                    && runtimeEvent.EventType == "uses_remaining"
-                                                    && runtimeEvent.Value == 2),
-            "the first interception use publicly reveals its remaining uses");
+                                                    && runtimeEvent.EventType == "public_counter_changed"
+                                                    && runtimeEvent.Value == 2)
+                     && events.All(runtimeEvent => runtimeEvent.EventType != "uses_remaining"),
+            "the first interception use emits a stable public counter category without leaking its counter key");
     }
 
     private static void InterceptionLimitsUsageAndEnumeratesOnlyEligibleTargets(
@@ -537,10 +582,10 @@ internal static class TalentActionTests
             "interception has exactly three uses across the match");
         runner.Check(runtime.DrainEventsForSeat(0)
                          .Where(runtimeEvent => runtimeEvent.TalentId == "interception"
-                                                && runtimeEvent.EventType == "uses_remaining")
+                                                && runtimeEvent.EventType == "public_counter_changed")
                          .Select(runtimeEvent => runtimeEvent.Value)
                          .SequenceEqual(new[] { 2, 1, 0 }),
-            "later interceptions publicly update the sticky remaining-use counter to two one and zero");
+            "later interceptions publish stable counter updates with their visible values");
     }
 
     private static void InterceptionRevalidatesEveryTargetEligibilityOnTheServer(

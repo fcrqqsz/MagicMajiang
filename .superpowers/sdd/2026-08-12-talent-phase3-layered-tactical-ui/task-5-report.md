@@ -61,3 +61,41 @@ Committed with `feat: define layered talent feedback policies`. The final SHA is
 ## Concerns
 
 None.
+
+## Fix Round 1 — Review corrections
+
+### Verified review findings
+
+- `TalentContext.SetPublicCounter` previously used its arbitrary internal counter key as `TalentRuntimeEvent.EventType`. Real `SheathedEdgeTalent` emits `edge`; `InterceptionTalent` emits `uses_remaining`. These were neither stable presentation categories nor recognized by the feedback policy.
+- Own active entries were filtered through `TalentRegistry.HasTalent`, then all non-rendered entries were counted as collapsed. An unknown active ID could therefore disappear from the persistent row and incorrectly increase the collapsed count.
+- Every medium mapping set `ShowToast = true`, contrary to the feed-and-chip-only medium feedback contract.
+
+### RED → GREEN evidence
+
+1. Added the unknown-active HUD assertion before adding the item warning contract. Focused compilation failed with `CS1061`: `TalentHudItem` did not define `ShouldLogWarning`.
+2. Added reveal/blocked/public-counter medium assertions requiring `AppendFeed` and `PulseChip`, while forbidding both toast and audio. After the minimal HUD implementation, focused presentation tests failed with `reveal blocking and public counter changes are feed-and-chip medium feedback without toast or audio`.
+3. Added a real `TalentMatchRuntime` flow: a round advances Sheathed Edge’s public charge, and an Interception activation publishes its public remaining-use update. These events are converted to client DTOs and passed through the production presentation policy. After event source normalization, the existing Phase 2 tests still expected dynamic `uses_remaining`; they failed at the two stale assertions, which were updated to require `public_counter_changed` and to forbid the private counter key.
+
+GREEN commands:
+
+```powershell
+pwsh -NoLogo -NoProfile -Command "dotnet run --project Tests/NetworkRegression/NetworkRegression.csproj --no-restore -- talent-presentation"
+pwsh -NoLogo -NoProfile -Command "dotnet run --project Tests/NetworkRegression/NetworkRegression.csproj --no-restore -- talent-actions"
+```
+
+Both output `Network regression tests passed.`
+
+### Implementation
+
+- `SetPublicCounter` now emits the stable, structured category `public_counter_changed`; the visible public numeric value is retained, but the internal counter key is not transmitted as the event type. This is generic plumbing and does not branch on talent or effect IDs.
+- Medium feedback (reveal, blocked, public-charge/counter/use change) is now feed + chip emphasis only: `ShowToast = false`, `PlayAudio = false`.
+- Unknown active own talents become one visible active `未知天赋` item with `ShouldLogWarning = true` and an empty safe ID. They do not contribute to `OwnCollapsedCount`; no server name or rich text is rendered.
+- The hidden-opponent fixture now uses registered `starting_capital` with `isKnown = false`; because it would otherwise be pinned, the test proves a hidden registered entry affects neither ordering nor count.
+
+### Fix Round 1 verification and self-review
+
+Full regression output: `Network regression tests passed.`
+
+`git diff --check` succeeded. Source guard confirms the old `EmitPublic(key, value)` form and dynamic `edge`/`uses_remaining` event-type assertions are absent. Both original policy `.meta` files remain present.
+
+No Assembly-CSharp temporary project was created. `.superpowers/brainstorm/` remains excluded.

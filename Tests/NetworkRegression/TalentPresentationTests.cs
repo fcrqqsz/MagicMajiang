@@ -33,6 +33,7 @@ internal static class TalentPresentationTests
                 ownTalents = new[]
                 {
                     new SnapshotOwnTalent { talentId = "peek", isActive = true },
+                    new SnapshotOwnTalent { talentId = "<b>future_active</b>", isActive = true },
                     new SnapshotOwnTalent { talentId = "midas_touch", isActive = false },
                     new SnapshotOwnTalent { talentId = "draw_reward", isActive = false },
                     new SnapshotOwnTalent { talentId = "head_start", isActive = false }
@@ -44,7 +45,7 @@ internal static class TalentPresentationTests
                 new SnapshotKnownTalent { ownerSeatIndex = 1, talentId = "midas_touch", isKnown = true, lastPublicEventType = "active_talent_applied" },
                 new SnapshotKnownTalent { ownerSeatIndex = 1, talentId = "draw_reward", isKnown = true },
                 new SnapshotKnownTalent { ownerSeatIndex = 1, talentId = "head_start", isKnown = true },
-                new SnapshotKnownTalent { ownerSeatIndex = 1, talentId = "hidden", isKnown = false },
+                new SnapshotKnownTalent { ownerSeatIndex = 1, talentId = "starting_capital", isKnown = false },
                 new SnapshotKnownTalent { ownerSeatIndex = 2, talentId = "peek", isKnown = true }
             }
         };
@@ -57,6 +58,10 @@ internal static class TalentPresentationTests
         TalentHudView view = TalentHudProjectionPolicy.Build(snapshot, localSeatIndex: 0, publicEvents: events);
         runner.Check(view.OwnVisible.All(item => item.IsActive) && view.OwnCollapsedCount == 3,
             "only active own talents remain in the persistent hand-anchored row");
+        TalentHudItem unknownActive = view.OwnVisible.Single(item => item.ShouldLogWarning);
+        runner.Check(unknownActive.IsActive && unknownActive.ShowActiveState
+            && unknownActive.DisplayName == "未知天赋" && unknownActive.TalentId == string.Empty,
+            "an unknown active own talent stays visible with fixed safe local fallback instead of inflating collapsed state");
         runner.Check(view.Seats[1].Visible.Count == 2 && view.Seats[1].CollapsedCount == 2,
             "opponents show two authorized known talents and a +N summary");
         runner.Check(view.Seats[1].Visible.All(item => !item.ShowActiveState),
@@ -64,6 +69,9 @@ internal static class TalentPresentationTests
         runner.Check(view.Seats[1].Visible[0].TalentId == "midas_touch"
             && view.Seats[1].Visible[1].TalentId == "peek",
             "public event recency orders authorized opponent talents without inspecting hidden entries");
+        runner.Check(view.Seats[1].Visible.All(item => item.TalentId != "starting_capital")
+            && view.Seats[1].CollapsedCount == 2,
+            "a hidden registered opponent talent changes neither visible ordering nor the authorized +N count");
         runner.Check(view.Seats[2].Visible.Count == 1 && view.Seats[2].CollapsedCount == 0,
             "each opponent summary is limited to server-authorized known talents only");
 
@@ -93,8 +101,23 @@ internal static class TalentPresentationTests
             && strong.ShowToast && strong.AppendFeed && strong.PulseChip && strong.PlayAudio,
             "only standardized applied active effects produce the four-part strong feedback");
 
-        runner.Check(TalentEventPresentationPolicy.Build(BlockedEvent(), false).Level == TalentFeedbackLevel.Medium,
-            "control blocking is medium feedback");
+        TalentFeedbackView reveal = TalentEventPresentationPolicy.Build(new TalentRuntimeEventMessage
+        {
+            talentId = "peek", eventType = "talent_revealed"
+        }, false);
+        TalentFeedbackView blocked = TalentEventPresentationPolicy.Build(BlockedEvent(), false);
+        TalentFeedbackView publicCounter = TalentEventPresentationPolicy.Build(new TalentRuntimeEventMessage
+        {
+            talentId = "sheathed_edge", eventType = "public_counter_changed"
+        }, false);
+        runner.Check(reveal.Level == TalentFeedbackLevel.Medium && blocked.Level == TalentFeedbackLevel.Medium
+            && publicCounter.Level == TalentFeedbackLevel.Medium
+            && !reveal.ShowToast && !reveal.PlayAudio
+            && !blocked.ShowToast && !blocked.PlayAudio
+            && !publicCounter.ShowToast && !publicCounter.PlayAudio
+            && reveal.AppendFeed && blocked.AppendFeed && publicCounter.AppendFeed
+            && reveal.PulseChip && blocked.PulseChip && publicCounter.PulseChip,
+            "reveal blocking and public counter changes are feed-and-chip medium feedback without toast or audio");
         runner.Check(TalentEventPresentationPolicy.Build(PrivateRefresh(), false).Level == TalentFeedbackLevel.Weak,
             "ordinary projection refresh only updates chips");
         TalentFeedbackView recovery = TalentEventPresentationPolicy.Build(ActiveAppliedEvent(), true);

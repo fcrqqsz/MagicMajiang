@@ -12,6 +12,7 @@ namespace MahjongGame.Core
         public string DisplayName { get; set; }
         public bool IsActive { get; set; }
         public bool ShowActiveState { get; set; }
+        public bool ShouldLogWarning { get; set; }
     }
 
     public sealed class TalentSeatSummary
@@ -44,9 +45,9 @@ namespace MahjongGame.Core
         {
             var ownTalents = snapshot?.privateSeat?.ownTalents ?? Array.Empty<SnapshotOwnTalent>();
             var activeOwn = ownTalents
-                .Where(talent => talent != null && talent.isActive && IsKnownTalent(talent.talentId))
+                .Where(talent => talent != null && talent.isActive)
                 .OrderBy(talent => talent.talentId, StringComparer.Ordinal)
-                .Select(talent => CreateItem(talent.talentId, true, true))
+                .Select(CreateOwnItem)
                 .ToArray();
 
             var recency = BuildPublicRecency(publicEvents);
@@ -63,7 +64,7 @@ namespace MahjongGame.Core
             return new TalentHudView
             {
                 OwnVisible = activeOwn,
-                OwnCollapsedCount = ownTalents.Count(talent => talent != null) - activeOwn.Length,
+                OwnCollapsedCount = ownTalents.Count(talent => talent != null && !talent.isActive),
                 Seats = seats
             };
         }
@@ -115,6 +116,18 @@ namespace MahjongGame.Core
             IsActive = isActive,
             ShowActiveState = showActiveState
         };
+
+        private static TalentHudItem CreateOwnItem(SnapshotOwnTalent talent) =>
+            IsKnownTalent(talent.talentId)
+                ? CreateItem(talent.talentId, true, true)
+                : new TalentHudItem
+                {
+                    TalentId = string.Empty,
+                    DisplayName = "未知天赋",
+                    IsActive = true,
+                    ShowActiveState = true,
+                    ShouldLogWarning = true
+                };
 
         private static bool IsKnownTalent(string talentId) =>
             !string.IsNullOrWhiteSpace(talentId) && TalentRegistry.Instance.HasTalent(talentId);

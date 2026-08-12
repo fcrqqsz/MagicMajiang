@@ -75,7 +75,7 @@ namespace MahjongGame.Talents
             TalentStateScope scope)
         {
             State.SetCounter(key, value, scope);
-            EmitPublic(key, value);
+            EmitPublic("public_counter_changed", value);
         }
 
         public void RevealWithPublicCounter(

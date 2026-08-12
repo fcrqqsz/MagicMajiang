@@ -38,14 +38,14 @@ namespace MahjongGame.Core
                 case "active_talent_applied":
                     return Create(TalentFeedbackLevel.Strong, talentName + "已生效", true, true, true, true);
                 case "talent_revealed":
-                    return Create(TalentFeedbackLevel.Medium, talentName + "已揭示", true, true, true, false);
+                    return Create(TalentFeedbackLevel.Medium, talentName + "已揭示", false, true, true, false);
                 case "blocked_negative_effect":
-                    return Create(TalentFeedbackLevel.Medium, talentName + "已阻止负面效果", true, true, true, false);
+                    return Create(TalentFeedbackLevel.Medium, talentName + "已阻止负面效果", false, true, true, false);
                 case "public_charge_reduced":
-                    return Create(TalentFeedbackLevel.Medium, talentName + "的充能已变化", true, true, true, false);
+                    return Create(TalentFeedbackLevel.Medium, talentName + "的充能已变化", false, true, true, false);
                 case "public_counter_changed":
                 case "public_uses_changed":
-                    return Create(TalentFeedbackLevel.Medium, talentName + "的状态已变化", true, true, true, false);
+                    return Create(TalentFeedbackLevel.Medium, talentName + "的状态已变化", false, true, true, false);
                 case "private_state_refresh":
                 case "state_updated":
                     return Create(TalentFeedbackLevel.Weak, "天赋状态已更新", false, false, false, false);
