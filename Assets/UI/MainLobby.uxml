@@ -33,6 +33,14 @@
                     <ui:Label name="ModeNameLabel" text="对战模式: 单局" class="view-subtitle deck-name-display" />
                     <ui:Button name="BtnModeNext" text="&gt;" class="deck-arrow-btn" />
                 </ui:VisualElement>
+                <ui:VisualElement name="RoomPresetSelector" class="deck-selector room-preset-selector">
+                    <ui:Button name="BtnRoomPresetPrev" text="&lt;" class="deck-arrow-btn" />
+                    <ui:Label name="RoomPresetLabel" text="房间异化档位: 标准 80" class="view-subtitle deck-name-display" />
+                    <ui:Button name="BtnRoomPresetNext" text="&gt;" class="deck-arrow-btn" />
+                </ui:VisualElement>
+                <ui:VisualElement name="RoomAdmissionBlocker" class="room-admission-blocker" style="display: none;">
+                    <ui:Label name="RoomAdmissionBlockerLabel" class="room-admission-blocker-label" />
+                </ui:VisualElement>
                 <ui:Button name="MatchmakingButton" text="创建新房间" class="action-button" />
                 <ui:VisualElement class="room-controls">
                     <ui:TextField name="RoomIdInput" label="房间号（例如 R0001）" class="room-id-input" tooltip="输入其他玩家创建的房间号" />
@@ -55,6 +63,7 @@
                     <ui:VisualElement class="room-summary-section">
                         <ui:Label text="房间信息" class="room-section-title" />
                         <ui:Label name="RoomModeLabel" class="room-detail-label" />
+                        <ui:Label name="RoomPresetPublicLabel" class="room-detail-label room-alienation-label" />
                         <ui:Label name="RoomAiFillLabel" class="room-detail-label" />
                         <ui:Label name="RoomHumanCountLabel" class="room-detail-label" />
                         <ui:VisualElement class="room-summary-divider" />

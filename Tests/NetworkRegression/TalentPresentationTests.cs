@@ -6,15 +6,137 @@ using MahjongGame.Core.Network.Transport;
 using MahjongGame.Systems;
 using MahjongGame.Talents;
 using System;
+using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Xml.Linq;
 
 internal static class TalentPresentationTests
 {
     public static void Run(RegressionRunner runner)
     {
+        RunAlienationPresentationPolicyTests(runner);
+        RunTalentEditorAndLobbySourceTests(runner);
         RunLoadoutPresetTests(runner);
         RunServerAdmissionTests(runner);
         RunClientCommandTests(runner);
+    }
+
+    private static void RunTalentEditorAndLobbySourceTests(RegressionRunner runner)
+    {
+        string editorUxmlPath = GetRepoPath("Assets", "UI", "DeckEditorView.uxml");
+        XDocument editorUxml = XDocument.Load(editorUxmlPath);
+        List<string> queryNames = editorUxml.Descendants()
+            .Select(element => element.Attribute("name")?.Value)
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .ToList();
+        runner.Check(queryNames.Count == queryNames.Distinct(StringComparer.Ordinal).Count(),
+            "deck editor UXML query names stay unique");
+        runner.Check(queryNames.Contains("AlienationPresetSelector")
+            && queryNames.Contains("BtnPresetPrev")
+            && queryNames.Contains("PresetLabel")
+            && queryNames.Contains("BtnPresetNext")
+            && queryNames.Contains("AlienationTrack")
+            && queryNames.Contains("AlienationFill")
+            && queryNames.Contains("AlienationBreakdownLabel")
+            && queryNames.Contains("AlienationWarning")
+            && queryNames.Contains("MainTalentSlots")
+            && queryNames.Contains("ReserveTalentSlots")
+            && !queryNames.Contains("ScoreText"),
+            "deck editor exposes one gauge plus separate main and reserve slot containers");
+
+        string editorSource = File.ReadAllText(GetRepoPath("Assets", "UI", "DeckEditorToolkit.cs"));
+        runner.Check(editorSource.Contains("_btnSave.SetEnabled(total == 34);", StringComparison.Ordinal)
+            && !editorSource.Contains("_btnSave.SetEnabled(total == 34 && !gauge.IsOverLimit)", StringComparison.Ordinal),
+            "deck editor Save depends on 34 tiles and never on the over-limit presentation flag");
+        runner.Check(editorSource.Contains("CanEquip(slotIndex, tier)", StringComparison.Ordinal)
+            && editorSource.Contains("CanEquipReserve(slotIndex, tier)", StringComparison.Ordinal),
+            "main and reserve talent pickers use their respective slot policies");
+
+        XDocument lobbyUxml = XDocument.Load(GetRepoPath("Assets", "UI", "MainLobby.uxml"));
+        List<string> lobbyNames = lobbyUxml.Descendants()
+            .Select(element => element.Attribute("name")?.Value)
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .ToList();
+        runner.Check(lobbyNames.Count == lobbyNames.Distinct(StringComparer.Ordinal).Count()
+            && lobbyNames.Contains("RoomPresetSelector")
+            && lobbyNames.Contains("BtnRoomPresetPrev")
+            && lobbyNames.Contains("RoomPresetLabel")
+            && lobbyNames.Contains("BtnRoomPresetNext")
+            && lobbyNames.Contains("RoomAdmissionBlocker"),
+            "lobby provides a unique pending room preset selector and explicit admission blocker");
+
+        string lobbySource = File.ReadAllText(GetRepoPath("Assets", "UI", "LobbyController.cs"));
+        runner.Check(lobbySource.Contains(
+                "CreateRoom(GetSelectedGameMode(), _pendingRoomAlienationPreset, GetNickname())",
+                StringComparison.Ordinal),
+            "create-room sends the explicit pending room preset");
+        runner.Check(!lobbySource.Contains("AlienationPreset = _pendingRoomAlienationPreset", StringComparison.Ordinal)
+            && !lobbySource.Contains(".AlienationPreset = room", StringComparison.OrdinalIgnoreCase),
+            "LobbyController never writes a pending or authoritative room preset back to SavedDeck");
+        runner.Check(lobbySource.Contains("HandleRoomError(string message)", StringComparison.Ordinal)
+            && lobbySource.Contains("ShowRoomAdmissionBlocker(message);", StringComparison.Ordinal),
+            "authoritative join-room rejections open the explicit admission blocker");
+    }
+
+    private static string GetRepoPath(params string[] segments)
+    {
+        DirectoryInfo directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory != null
+            && !File.Exists(Path.Combine(directory.FullName, "ProjectSettings", "ProjectVersion.txt")))
+            directory = directory.Parent;
+        if (directory == null) throw new InvalidOperationException("Repository root not found.");
+        return Path.Combine(new[] { directory.FullName }.Concat(segments).ToArray());
+    }
+
+    private static void RunAlienationPresentationPolicyTests(RegressionRunner runner)
+    {
+        AlienationGaugeView over = AlienationGaugePolicy.Build(
+            deckCost: 28, talentCost: 17, AlienationPreset.Low);
+        runner.Check(over.Total == 45 && over.Limit == 40 && over.Fill01 == 1f
+            && over.Overflow == 5 && over.IsOverLimit && over.CanSave
+            && over.DeckCost == 28 && over.TalentCost == 17,
+            "over-cap decks remain saveable while exposing the exact overflow");
+
+        AlienationGaugeView exact = AlienationGaugePolicy.Build(
+            deckCost: 60, talentCost: 20, AlienationPreset.Standard);
+        runner.Check(exact.Total == 80 && exact.Limit == 80 && exact.Fill01 == 1f
+            && exact.Overflow == 0 && !exact.IsOverLimit && exact.CanSave,
+            "exact-limit decks fill the gauge without becoming over-cap");
+
+        AlienationGaugeView fallback = AlienationGaugePolicy.Build(
+            deckCost: -9, talentCost: -3, (AlienationPreset)999);
+        runner.Check(fallback.DeckCost == 0 && fallback.TalentCost == 0
+            && fallback.Total == 0 && fallback.Limit == 80 && fallback.Fill01 == 0f,
+            "gauge display clamps negative costs and falls back to Standard for an undefined preset");
+
+        RoomLoadoutAdmissionView mismatch = RoomLoadoutAdmissionPresentationPolicy.Validate(
+            AlienationPreset.Low, AlienationPreset.Standard, total: 35);
+        runner.Check(!mismatch.CanEnter
+            && mismatch.Code == PlayerLoadoutErrorCodes.AlienationPresetMismatch
+            && mismatch.Message.Contains("低异化 40", StringComparison.Ordinal)
+            && mismatch.Message.Contains("标准 80", StringComparison.Ordinal),
+            "room admission shows both mismatched presets");
+
+        RoomLoadoutAdmissionView overMatching = RoomLoadoutAdmissionPresentationPolicy.Validate(
+            AlienationPreset.Low, AlienationPreset.Low, total: 45);
+        runner.Check(!overMatching.CanEnter
+            && overMatching.Code == PlayerLoadoutErrorCodes.AlienationLimitExceeded
+            && overMatching.Message.Contains("45", StringComparison.Ordinal)
+            && overMatching.Message.Contains("40", StringComparison.Ordinal),
+            "matching room admission still blocks an over-cap loadout with exact values");
+
+        RoomLoadoutAdmissionView invalidDisplay = RoomLoadoutAdmissionPresentationPolicy.Validate(
+            (AlienationPreset)999, (AlienationPreset)777, total: 34);
+        runner.Check(invalidDisplay.CanEnter && string.IsNullOrEmpty(invalidDisplay.Code)
+            && invalidDisplay.Message.Contains("标准 80", StringComparison.Ordinal),
+            "undefined presets fall back to Standard only for presentation validation");
+
+        var saved = new SavedDeck { AlienationPreset = (AlienationPreset)999, AlienationScore = 123 };
+        RoomLoadoutAdmissionPresentationPolicy.Validate(
+            saved.AlienationPreset, AlienationPreset.Low, saved.AlienationScore);
+        runner.Check((int)saved.AlienationPreset == 999 && saved.AlienationScore == 123,
+            "room admission presentation never mutates a saved deck");
     }
 
     private static void RunLoadoutPresetTests(RegressionRunner runner)

@@ -30,7 +30,12 @@ namespace MahjongGame.UI
         private VisualElement _root;
         private VisualElement _mainGrid;
         private Label _totalText;
-        private Label _scoreText;
+        private VisualElement _alienationFill;
+        private Label _presetLabel;
+        private Label _alienationBreakdownLabel;
+        private Label _alienationWarning;
+        private Button _btnPresetPrev;
+        private Button _btnPresetNext;
         private Button _btnSave;
         private Button _btnExit;
         private Button _btnClearAll;
@@ -42,12 +47,15 @@ namespace MahjongGame.UI
 
         // Talent section
         private VisualElement _talentSlotsContainer;
+        private VisualElement _mainTalentSlots;
+        private VisualElement _reserveTalentSlots;
         private TalentSlotConfig _currentTalents;
 
         // 数据
         private DeckConfig _currentConfig;
         private List<SavedDeck> _savedDecks;
         private int _selectedDeckIndex;
+        private AlienationPreset _currentAlienationPreset = AlienationPreset.Standard;
 
         private List<Action> _allItemRefreshers = new List<Action>();
 
@@ -64,7 +72,12 @@ namespace MahjongGame.UI
 
             _mainGrid = _root.Q<VisualElement>("MainGrid");
             _totalText = _root.Q<Label>("TotalText");
-            _scoreText = _root.Q<Label>("ScoreText");
+            _alienationFill = _root.Q<VisualElement>("AlienationFill");
+            _presetLabel = _root.Q<Label>("PresetLabel");
+            _alienationBreakdownLabel = _root.Q<Label>("AlienationBreakdownLabel");
+            _alienationWarning = _root.Q<Label>("AlienationWarning");
+            _btnPresetPrev = _root.Q<Button>("BtnPresetPrev");
+            _btnPresetNext = _root.Q<Button>("BtnPresetNext");
             _btnSave = _root.Q<Button>("BtnSave");
             _btnExit = _root.Q<Button>("BtnExit");
             _btnClearAll = _root.Q<Button>("BtnClearAll");
@@ -73,6 +86,10 @@ namespace MahjongGame.UI
             // Sidebar
             _deckListContainer = _root.Q<VisualElement>("DeckListContainer");
             _btnNewDeck = _root.Q<Button>("BtnNewDeck");
+            _talentSlotsContainer = _root.Q<VisualElement>("TalentSlotsSection");
+            _mainTalentSlots = _root.Q<VisualElement>("MainTalentSlots");
+            _reserveTalentSlots = _root.Q<VisualElement>("ReserveTalentSlots");
+            _talentDetailLabel = _root.Q<Label>("TalentDetailLabel");
 
             // 绑定事件
             _btnSave.clicked += OnSaveClicked;
@@ -80,6 +97,8 @@ namespace MahjongGame.UI
             _btnClearAll.clicked += OnClearAllClicked;
             _btnResetAll.clicked += OnResetAllClicked;
             _btnNewDeck.clicked += OnNewDeckClicked;
+            _btnPresetPrev.clicked += OnPresetPrevClicked;
+            _btnPresetNext.clicked += OnPresetNextClicked;
 
             // 初始化默认 config 供 GenerateRows 中的 updateLocalUI 使用
             _currentConfig = DeckConfig.CreateStandard();
@@ -99,6 +118,8 @@ namespace MahjongGame.UI
             _btnClearAll.clicked -= OnClearAllClicked;
             _btnResetAll.clicked -= OnResetAllClicked;
             _btnNewDeck.clicked -= OnNewDeckClicked;
+            _btnPresetPrev.clicked -= OnPresetPrevClicked;
+            _btnPresetNext.clicked -= OnPresetNextClicked;
         }
 
         private void OnClearAllClicked() => BatchUpdateDeck(0);
@@ -180,7 +201,13 @@ namespace MahjongGame.UI
                 header.Add(btnDelete);
 
                 // Score
-                var scoreLabel = new Label($"异化值: {deck.AlienationScore}");
+                int limit = AlienationBudgetPolicy.GetLimit(AlienationBudgetPolicy.IsDefined(deck.AlienationPreset)
+                    ? deck.AlienationPreset
+                    : AlienationPreset.Standard);
+                int overflow = Math.Max(0, deck.AlienationScore - limit);
+                var scoreLabel = new Label(overflow > 0
+                    ? $"异化值: {deck.AlienationScore} / {limit}　超限 {overflow}"
+                    : $"异化值: {deck.AlienationScore} / {limit}");
                 scoreLabel.AddToClassList("deck-score-label");
 
                 item.Add(header);
@@ -238,6 +265,10 @@ namespace MahjongGame.UI
             {
                 _currentTalents = new TalentSlotConfig();
             }
+            _currentTalents.Normalize();
+            _currentAlienationPreset = AlienationBudgetPolicy.IsDefined(_savedDecks[index].AlienationPreset)
+                ? _savedDecks[index].AlienationPreset
+                : AlienationPreset.Standard;
 
             RefreshUI();
         }
@@ -261,7 +292,9 @@ namespace MahjongGame.UI
                 DeckId = Guid.NewGuid().ToString(),
                 DeckName = $"卡组 {num}",
                 AlienationScore = 0,
-                Config = DeckConfig.CreateStandard()
+                Config = DeckConfig.CreateStandard(),
+                Talents = new TalentSlotConfig(),
+                AlienationPreset = AlienationPreset.Standard
             };
             _savedDecks.Add(newDeck);
             ProfileManager.Instance?.SaveProfile();
@@ -348,7 +381,7 @@ namespace MahjongGame.UI
             // Save talent config
             string talentJson = JsonUtility.ToJson(_currentTalents);
             _savedDecks[_selectedDeckIndex].Talents = JsonUtility.FromJson<TalentSlotConfig>(talentJson);
-
+            _savedDecks[_selectedDeckIndex].AlienationPreset = _currentAlienationPreset;
             _savedDecks[_selectedDeckIndex].AlienationScore = DeckConfig.CalculateTotalAlienation(_currentConfig, _currentTalents);
 
             // 记录选中的卡组索引
@@ -537,12 +570,32 @@ namespace MahjongGame.UI
         private void RefreshStats()
         {
             int total = _currentConfig.GenerateTiles(0).Count;
-            int totalAlienation = DeckConfig.CalculateTotalAlienation(_currentConfig, _currentTalents);
+            _currentConfig.CalculateAlienationScore();
+            int deckCost = _currentConfig.AlienationScore;
+            int talentCost = _currentTalents.GetMainIds().Sum(TalentRegistry.Instance.GetCost);
+            AlienationGaugeView gauge = AlienationGaugePolicy.Build(deckCost, talentCost, _currentAlienationPreset);
             _totalText.text = $"Total: {total} / 34";
-            _scoreText.text = $"Alienation: {totalAlienation}";
+            _presetLabel.text = RoomLoadoutAdmissionPresentationPolicy.GetDisplayName(_currentAlienationPreset);
+            _alienationFill.style.width = Length.Percent(gauge.Fill01 * 100f);
+            _alienationFill.EnableInClassList("over-limit", gauge.IsOverLimit);
+            _alienationBreakdownLabel.text = $"牌库 {gauge.DeckCost} + 主天赋 {gauge.TalentCost} = {gauge.Total} / {gauge.Limit}";
+            _alienationWarning.text = gauge.IsOverLimit ? $"超限 {gauge.Overflow}（仍可保存）" : string.Empty;
+            _alienationWarning.style.display = gauge.IsOverLimit ? DisplayStyle.Flex : DisplayStyle.None;
             _totalText.EnableInClassList("text-green", total == 34);
             _totalText.EnableInClassList("text-white", total != 34);
             _btnSave.SetEnabled(total == 34);
+        }
+
+        private void OnPresetPrevClicked() => CycleAlienationPreset(-1);
+        private void OnPresetNextClicked() => CycleAlienationPreset(1);
+
+        private void CycleAlienationPreset(int direction)
+        {
+            AlienationPreset[] presets = { AlienationPreset.Low, AlienationPreset.Standard, AlienationPreset.High };
+            int current = Array.IndexOf(presets, _currentAlienationPreset);
+            if (current < 0) current = 1;
+            _currentAlienationPreset = presets[((current + direction) % presets.Length + presets.Length) % presets.Length];
+            RefreshStats();
         }
 
         private string GetTileImagePath(Suit suit, int value)
@@ -585,6 +638,7 @@ namespace MahjongGame.UI
         // ======================== 天赋槽 UI ========================
 
         private static readonly string[] SlotTierLabels = { "大", "中", "中", "小", "小", "小" };
+        private static readonly string[] ReserveSlotTierLabels = { "备选中", "备选小", "备选小" };
         // 分隔线插入位置：index 1 (大|中) 和 index 3 (中|小)
         private static readonly HashSet<int> SeparatorBeforeSlot = new HashSet<int> { 1, 3 };
 
@@ -592,112 +646,59 @@ namespace MahjongGame.UI
 
         private void GenerateTalentSlots()
         {
-            // 防止重复创建
-            if (_talentSlotsContainer != null)
+            _mainTalentSlots.Clear();
+            _reserveTalentSlots.Clear();
+            for (int i = 0; i < TalentSlotConfig.MainSlotCount; i++)
+                AddTalentSlot(_mainTalentSlots, i, false, SlotTierLabels[i]);
+            for (int i = 0; i < TalentSlotConfig.ReserveSlotCount; i++)
+                AddTalentSlot(_reserveTalentSlots, i, true, ReserveSlotTierLabels[i]);
+        }
+
+        private void AddTalentSlot(VisualElement container, int slotIndex, bool isReserve, string label)
+        {
+            if (!isReserve && SeparatorBeforeSlot.Contains(slotIndex))
             {
-                _talentSlotsContainer.RemoveFromHierarchy();
-                _talentSlotsContainer = null;
+                var separator = new VisualElement();
+                separator.AddToClassList("talent-slot-separator");
+                container.Add(separator);
             }
 
-            // 在 MainGrid 下方创建天赋区域
-            _talentSlotsContainer = new VisualElement();
-            _talentSlotsContainer.name = "TalentSlotsSection";
-            _talentSlotsContainer.AddToClassList("talent-section");
-
-            var header = new Label("天赋槽");
-            header.AddToClassList("talent-section-header");
-            _talentSlotsContainer.Add(header);
-
-            var slotsRow = new VisualElement();
-            slotsRow.style.flexDirection = FlexDirection.Row;
-            slotsRow.style.flexWrap = Wrap.NoWrap;
-            slotsRow.style.justifyContent = Justify.Center;
-            slotsRow.style.alignItems = Align.Stretch;
-
-            for (int i = 0; i < 6; i++)
+            VisualElement slot;
+            if (_talentSlotTemplate != null)
             {
-                int slotIndex = i;
+                var instance = _talentSlotTemplate.Instantiate();
+                slot = instance.Q<VisualElement>("Root") ?? instance;
+                Label tierLabel = instance.Q<Label>("TierLabel");
+                if (tierLabel != null) tierLabel.text = label;
+            }
+            else
+            {
+                slot = new VisualElement();
+                slot.AddToClassList("talent-slot");
+                var tierLabel = new Label(label); tierLabel.AddToClassList("talent-slot-tier"); slot.Add(tierLabel);
+                var nameLabel = new Label("空") { name = "NameLabel" }; nameLabel.AddToClassList("talent-slot-name"); slot.Add(nameLabel);
+                var clearButton = new Button { name = "BtnClear", text = "×" }; clearButton.AddToClassList("talent-slot-clear"); slot.Add(clearButton);
+            }
 
-                // 在品阶分组之间插入竖线分隔
-                if (SeparatorBeforeSlot.Contains(slotIndex))
+            TalentTier slotTier = isReserve
+                ? (slotIndex == 0 ? TalentTier.Medium : TalentTier.Small)
+                : TalentSlotConfig.GetSlotTier(slotIndex);
+            slot.AddToClassList(slotTier == TalentTier.Large ? "tier-large" : slotTier == TalentTier.Medium ? "tier-medium" : "tier-small");
+            slot.userData = new TalentSlotBinding(slotIndex, isReserve);
+
+            Button clear = slot.Q<Button>("BtnClear");
+            if (clear != null)
+            {
+                clear.RegisterCallback<ClickEvent>(evt =>
                 {
-                    var separator = new VisualElement();
-                    separator.style.width = 2;
-                    separator.style.backgroundColor = new Color(0.4f, 0.4f, 0.5f, 0.8f);
-                    separator.style.marginLeft = 4;
-                    separator.style.marginRight = 4;
-                    separator.style.alignSelf = Align.Stretch;
-                    slotsRow.Add(separator);
-                }
-
-                VisualElement slot;
-
-                if (_talentSlotTemplate != null)
-                {
-                    var instance = _talentSlotTemplate.Instantiate();
-                    slot = instance.Q<VisualElement>("Root") ?? instance;
-                    var tierLabel = instance.Q<Label>("TierLabel");
-                    if (tierLabel != null) tierLabel.text = SlotTierLabels[slotIndex];
-                }
-                else
-                {
-                    slot = new VisualElement();
-                    slot.AddToClassList("talent-slot");
-                    var tierLabel = new Label(SlotTierLabels[slotIndex]);
-                    tierLabel.AddToClassList("talent-slot-tier");
-                    slot.Add(tierLabel);
-                    var nameLabel = new Label("空");
-                    nameLabel.name = "NameLabel";
-                    nameLabel.AddToClassList("talent-slot-name");
-                    slot.Add(nameLabel);
-                    var btnClear = new Button() { text = "×" };
-                    btnClear.name = "BtnClear";
-                    btnClear.AddToClassList("talent-slot-clear");
-                    slot.Add(btnClear);
-                }
-
-                var tierClass = slotIndex == 0 ? "tier-large" : (slotIndex <= 2 ? "tier-medium" : "tier-small");
-                slot.AddToClassList(tierClass);
-
-                // Clear button (must register before slot click to stop propagation)
-                var clearBtn = slot.Q<Button>("BtnClear");
-                if (clearBtn != null)
-                {
-                    clearBtn.RegisterCallback<ClickEvent>(evt =>
-                    {
-                        evt.StopPropagation();
-                        _currentTalents.SlotTalentIds[slotIndex] = null;
-                        RefreshTalentSlots();
-                        RefreshStats();
-                    });
-                }
-
-                // Click to open talent picker
-                slot.RegisterCallback<ClickEvent>(evt =>
-                {
-                    ShowTalentPicker(slotIndex);
+                    evt.StopPropagation();
+                    GetTalentSlots(isReserve)[slotIndex] = null;
+                    RefreshTalentSlots();
+                    RefreshStats();
                 });
-
-                slotsRow.Add(slot);
             }
-
-            _talentSlotsContainer.Add(slotsRow);
-
-            // 天赋详情区域
-            _talentDetailLabel = new Label();
-            _talentDetailLabel.name = "TalentDetailLabel";
-            _talentDetailLabel.style.marginTop = 8;
-            _talentDetailLabel.style.paddingTop = 6;
-            _talentDetailLabel.style.paddingBottom = 6;
-            _talentDetailLabel.style.paddingLeft = 10;
-            _talentDetailLabel.style.paddingRight = 10;
-            _talentDetailLabel.style.fontSize = 12;
-            _talentDetailLabel.style.color = new Color(0.8f, 0.8f, 0.8f);
-            _talentDetailLabel.style.whiteSpace = WhiteSpace.Normal;
-            _talentDetailLabel.style.display = DisplayStyle.None;
-            _talentSlotsContainer.Add(_talentDetailLabel);
-
-            _mainGrid.parent?.Add(_talentSlotsContainer);
+            slot.RegisterCallback<ClickEvent>(_ => ShowTalentPicker(slotIndex, isReserve));
+            container.Add(slot);
         }
 
         private void RefreshTalentSlots()
@@ -707,11 +708,11 @@ namespace MahjongGame.UI
             var slots = _talentSlotsContainer.Query(className: "talent-slot").ToList();
             bool hasAnyEquipped = false;
 
-            for (int i = 0; i < Mathf.Min(slots.Count, 6); i++)
+            foreach (VisualElement slot in slots)
             {
-                var slot = slots[i];
+                if (slot.userData is not TalentSlotBinding binding) continue;
                 var nameLabel = slot.Q<Label>("NameLabel");
-                string talentId = _currentTalents?.SlotTalentIds[i];
+                string talentId = GetTalentSlots(binding.IsReserve)[binding.Index];
                 bool occupied = !string.IsNullOrEmpty(talentId);
 
                 slot.EnableInClassList("occupied", occupied);
@@ -730,7 +731,7 @@ namespace MahjongGame.UI
                 if (hasAnyEquipped)
                 {
                     var lines = new List<string>();
-                    for (int i = 0; i < 6; i++)
+                    for (int i = 0; i < TalentSlotConfig.MainSlotCount; i++)
                     {
                         string tid = _currentTalents?.SlotTalentIds[i];
                         if (string.IsNullOrEmpty(tid)) continue;
@@ -742,6 +743,12 @@ namespace MahjongGame.UI
                         string tierName = tier == TalentTier.Large ? "大" : (tier == TalentTier.Medium ? "中" : "小");
                         lines.Add($"[{SlotTierLabels[i]}槽] {name} ({tierName}) — {desc} — 异化值+{cost}");
                     }
+                    for (int i = 0; i < TalentSlotConfig.ReserveSlotCount; i++)
+                    {
+                        string tid = _currentTalents.ReserveTalentIds[i];
+                        if (string.IsNullOrEmpty(tid)) continue;
+                        lines.Add($"[{ReserveSlotTierLabels[i]}槽] {TalentRegistry.Instance.GetDisplayName(tid)} — {TalentRegistry.Instance.GetDescription(tid)} — 备选不计当前异化值");
+                    }
                     _talentDetailLabel.text = string.Join("\n", lines);
                     _talentDetailLabel.style.display = DisplayStyle.Flex;
                 }
@@ -752,32 +759,14 @@ namespace MahjongGame.UI
             }
         }
 
-        private void ShowTalentPicker(int slotIndex)
+        private void ShowTalentPicker(int slotIndex, bool isReserve)
         {
             var allIds = TalentRegistry.Instance.GetAllIds();
-            TalentTier slotTier = TalentSlotConfig.GetSlotTier(slotIndex);
-
-            // 过滤：品阶匹配 + 排除其他槽位已装备的（当前槽位的不排除，允许替换）
-            string currentSlotTalent = _currentTalents.SlotTalentIds[slotIndex];
-            var equippedInOtherSlots = new HashSet<string>();
-            for (int i = 0; i < 6; i++)
-            {
-                if (i == slotIndex) continue;
-                var tid = _currentTalents.SlotTalentIds[i];
-                if (!string.IsNullOrEmpty(tid)) equippedInOtherSlots.Add(tid);
-            }
-
-            var available = allIds.Where(id =>
-            {
-                var tier = TalentRegistry.Instance.GetTier(id);
-                return tier <= slotTier && !equippedInOtherSlots.Contains(id);
-            }).ToList();
-
-            if (available.Count == 0)
-            {
-                Debug.Log("[DeckEditor] 没有可用的天赋");
-                return;
-            }
+            string[] targetSlots = GetTalentSlots(isReserve);
+            string currentSlotTalent = targetSlots[slotIndex];
+            var carriedElsewhere = new HashSet<string>(StringComparer.Ordinal);
+            AddCarriedTalentsExceptCurrent(carriedElsewhere, _currentTalents.SlotTalentIds, slotIndex, isReserve);
+            AddCarriedTalentsExceptCurrent(carriedElsewhere, _currentTalents.ReserveTalentIds, slotIndex, !isReserve);
 
             // 创建弹出选择列表
             var overlay = new VisualElement();
@@ -787,7 +776,8 @@ namespace MahjongGame.UI
             var panel = new VisualElement();
             panel.AddToClassList("talent-picker-panel");
 
-            var title = new Label($"选择天赋 — {SlotTierLabels[slotIndex]}槽位");
+            string slotLabel = isReserve ? ReserveSlotTierLabels[slotIndex] : SlotTierLabels[slotIndex];
+            var title = new Label($"选择天赋 — {slotLabel}槽位");
             title.AddToClassList("talent-picker-title");
             panel.Add(title);
 
@@ -799,7 +789,7 @@ namespace MahjongGame.UI
             {
                 var clearItem = new Button(() =>
                 {
-                    _currentTalents.SlotTalentIds[slotIndex] = null;
+                    targetSlots[slotIndex] = null;
                     RefreshTalentSlots();
                     RefreshStats();
                     _root.Remove(overlay);
@@ -809,7 +799,7 @@ namespace MahjongGame.UI
                 scrollView.Add(clearItem);
             }
 
-            foreach (var id in available)
+            foreach (var id in allIds)
             {
                 string displayName = TalentRegistry.Instance.GetDisplayName(id);
                 string desc = TalentRegistry.Instance.GetDescription(id);
@@ -818,10 +808,18 @@ namespace MahjongGame.UI
                 string tierName = tier == TalentTier.Large ? "大" : (tier == TalentTier.Medium ? "中" : "小");
                 string tierClass = tier == TalentTier.Large ? "tier-large" : (tier == TalentTier.Medium ? "tier-medium" : "tier-small");
                 bool isCurrent = id == currentSlotTalent;
+                TalentMetadata metadata = TalentRegistry.Instance.GetMetadata(id);
+                bool allowedBySlot = isReserve
+                    ? _currentTalents.CanEquipReserve(slotIndex, tier)
+                    : _currentTalents.CanEquip(slotIndex, tier);
+                bool allowedByMetadata = !isReserve || metadata.SideboardPolicy == TalentSideboardPolicy.Flexible;
+                bool isDuplicate = carriedElsewhere.Contains(id);
+                bool canSelect = allowedBySlot && allowedByMetadata && !isDuplicate;
 
                 var item = new VisualElement();
                 item.AddToClassList("talent-picker-item");
                 if (isCurrent) item.AddToClassList("current-equipped");
+                if (!canSelect) item.AddToClassList("talent-picker-item-disabled");
 
                 var nameLabel = new Label(displayName);
                 nameLabel.AddToClassList("talent-picker-item-name");
@@ -845,9 +843,17 @@ namespace MahjongGame.UI
 
                 item.Add(metaRow);
 
+                if (!canSelect)
+                {
+                    var reason = new Label(isDuplicate ? "已在其他槽位携带" : !allowedByMetadata ? "该天赋只能装入主槽" : "品阶不符合此槽位");
+                    reason.AddToClassList("talent-picker-item-reason");
+                    item.Add(reason);
+                }
+
                 item.RegisterCallback<ClickEvent>(evt =>
                 {
-                    _currentTalents.SlotTalentIds[slotIndex] = id;
+                    if (!canSelect) return;
+                    targetSlots[slotIndex] = id;
                     RefreshTalentSlots();
                     RefreshStats();
                     _root.Remove(overlay);
@@ -872,6 +878,37 @@ namespace MahjongGame.UI
             });
 
             _root.Add(overlay);
+        }
+
+        private string[] GetTalentSlots(bool isReserve) => isReserve
+            ? _currentTalents.ReserveTalentIds
+            : _currentTalents.SlotTalentIds;
+
+        private static void AddCarriedTalentsExceptCurrent(
+            ISet<string> destination,
+            IReadOnlyList<string> source,
+            int currentIndex,
+            bool skipCurrentIndex)
+        {
+            if (source == null) return;
+            for (int index = 0; index < source.Count; index++)
+            {
+                string id = source[index];
+                if (skipCurrentIndex && index == currentIndex) continue;
+                if (!string.IsNullOrWhiteSpace(id)) destination.Add(id);
+            }
+        }
+
+        private sealed class TalentSlotBinding
+        {
+            public int Index { get; }
+            public bool IsReserve { get; }
+
+            public TalentSlotBinding(int index, bool isReserve)
+            {
+                Index = index;
+                IsReserve = isReserve;
+            }
         }
 
         private void RefreshUI()

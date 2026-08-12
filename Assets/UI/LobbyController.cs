@@ -42,12 +42,15 @@ namespace MahjongGame.UI
         private TextField roomIdInput;
         private Button joinRoomButton;
         private Label roomStatusLabel;
+        private VisualElement roomAdmissionBlocker;
+        private Label roomAdmissionBlockerLabel;
 
         // Dedicated room view
         private VisualElement roomSeatRows;
         private Label roomIdLabel;
         private Label roomStateLabel;
         private Label roomModeLabel;
+        private Label roomPresetPublicLabel;
         private Label roomAiFillLabel;
         private Label roomHumanCountLabel;
         private Label roomLocalDeckLabel;
@@ -63,6 +66,10 @@ namespace MahjongGame.UI
         private Button btnModePrev;
         private Button btnModeNext;
         private static readonly string[] GameModeNames = { "单局", "东风局", "半庄", "全庄" };
+        private Label roomPresetLabel;
+        private Button btnRoomPresetPrev;
+        private Button btnRoomPresetNext;
+        private AlienationPreset _pendingRoomAlienationPreset = AlienationPreset.Standard;
         
         // Settings Elements
         private Slider masterVolumeSlider;
@@ -110,11 +117,14 @@ namespace MahjongGame.UI
             roomIdInput = root.Q<TextField>("RoomIdInput");
             joinRoomButton = root.Q<Button>("JoinRoomButton");
             roomStatusLabel = root.Q<Label>("RoomStatusLabel");
+            roomAdmissionBlocker = root.Q<VisualElement>("RoomAdmissionBlocker");
+            roomAdmissionBlockerLabel = root.Q<Label>("RoomAdmissionBlockerLabel");
 
             roomSeatRows = root.Q<VisualElement>("RoomSeatRows");
             roomIdLabel = root.Q<Label>("RoomIdLabel");
             roomStateLabel = root.Q<Label>("RoomStateLabel");
             roomModeLabel = root.Q<Label>("RoomModeLabel");
+            roomPresetPublicLabel = root.Q<Label>("RoomPresetPublicLabel");
             roomAiFillLabel = root.Q<Label>("RoomAiFillLabel");
             roomHumanCountLabel = root.Q<Label>("RoomHumanCountLabel");
             roomLocalDeckLabel = root.Q<Label>("RoomLocalDeckLabel");
@@ -127,6 +137,9 @@ namespace MahjongGame.UI
             modeNameLabel = root.Q<Label>("ModeNameLabel");
             btnModePrev = root.Q<Button>("BtnModePrev");
             btnModeNext = root.Q<Button>("BtnModeNext");
+            roomPresetLabel = root.Q<Label>("RoomPresetLabel");
+            btnRoomPresetPrev = root.Q<Button>("BtnRoomPresetPrev");
+            btnRoomPresetNext = root.Q<Button>("BtnRoomPresetNext");
 
             masterVolumeSlider = root.Q<Slider>("MasterVolumeSlider");
             musicVolumeSlider = root.Q<Slider>("MusicVolumeSlider");
@@ -146,6 +159,8 @@ namespace MahjongGame.UI
             if (btnDeckNext != null) btnDeckNext.clicked += OnDeckNextClicked;
             if (btnModePrev != null) btnModePrev.clicked += OnModePrevClicked;
             if (btnModeNext != null) btnModeNext.clicked += OnModeNextClicked;
+            if (btnRoomPresetPrev != null) btnRoomPresetPrev.clicked += OnRoomPresetPrevClicked;
+            if (btnRoomPresetNext != null) btnRoomPresetNext.clicked += OnRoomPresetNextClicked;
 
             if (ProfileManager.Instance != null && ProfileManager.Instance.CurrentProfile != null)
             {
@@ -191,6 +206,8 @@ namespace MahjongGame.UI
             if (btnDeckNext != null) btnDeckNext.clicked -= OnDeckNextClicked;
             if (btnModePrev != null) btnModePrev.clicked -= OnModePrevClicked;
             if (btnModeNext != null) btnModeNext.clicked -= OnModeNextClicked;
+            if (btnRoomPresetPrev != null) btnRoomPresetPrev.clicked -= OnRoomPresetPrevClicked;
+            if (btnRoomPresetNext != null) btnRoomPresetNext.clicked -= OnRoomPresetNextClicked;
 
             if (deckEditorToolkit != null)
             {
@@ -254,6 +271,7 @@ namespace MahjongGame.UI
             settings.SelectedGameMode = ((settings.SelectedGameMode + direction) % count + count) % count;
             ProfileManager.Instance.SaveProfile();
             RefreshGameModeDisplay();
+            RefreshPendingRoomPresetDisplay();
         }
 
         private void RefreshGameModeDisplay()
@@ -268,6 +286,25 @@ namespace MahjongGame.UI
                 modeIdx = 0;
 
             modeNameLabel.text = $"对战模式: {GameModeNames[modeIdx]}";
+        }
+
+        private void OnRoomPresetPrevClicked() => CyclePendingRoomPreset(-1);
+        private void OnRoomPresetNextClicked() => CyclePendingRoomPreset(1);
+
+        private void CyclePendingRoomPreset(int direction)
+        {
+            AlienationPreset[] presets = { AlienationPreset.Low, AlienationPreset.Standard, AlienationPreset.High };
+            int index = System.Array.IndexOf(presets, _pendingRoomAlienationPreset);
+            if (index < 0) index = 1;
+            _pendingRoomAlienationPreset = presets[((index + direction) % presets.Length + presets.Length) % presets.Length];
+            HideRoomAdmissionBlocker();
+            RefreshPendingRoomPresetDisplay();
+        }
+
+        private void RefreshPendingRoomPresetDisplay()
+        {
+            if (roomPresetLabel != null)
+                roomPresetLabel.text = $"房间异化档位: {RoomLoadoutAdmissionPresentationPolicy.GetDisplayName(_pendingRoomAlienationPreset)}";
         }
 
         private void CycleDeck(int direction)
@@ -404,6 +441,7 @@ namespace MahjongGame.UI
             if (roomIdLabel != null) roomIdLabel.text = $"房间 {room.RoomId}";
             if (roomStateLabel != null) roomStateLabel.text = GetRoomStateText(room.RoomState);
             if (roomModeLabel != null) roomModeLabel.text = $"对局模式：{GetGameModeText(room.GameMode)}";
+            if (roomPresetPublicLabel != null) roomPresetPublicLabel.text = $"异化档位：{RoomLoadoutAdmissionPresentationPolicy.GetDisplayName(room.AlienationPreset)}";
             if (roomAiFillLabel != null) roomAiFillLabel.text = $"AI 补位：{(room.AiFillEnabled ? "已开启" : "已关闭")}";
 
             int humanCount = 0;
@@ -414,7 +452,7 @@ namespace MahjongGame.UI
             if (roomHumanCountLabel != null) roomHumanCountLabel.text = $"真人玩家：{humanCount}/4";
 
             if (roomLocalDeckLabel != null) roomLocalDeckLabel.text = $"牌库：{GetSelectedDeckName()}";
-            if (roomLocalAlienationLabel != null) roomLocalAlienationLabel.text = $"服务器确认异化值：{room.OwnTotalAlienation}";
+            if (roomLocalAlienationLabel != null) roomLocalAlienationLabel.text = $"本家异化：{room.OwnTotalAlienation} / {AlienationBudgetPolicy.GetLimit(room.AlienationPreset)}";
             if (roomLoadoutLockLabel != null) roomLoadoutLockLabel.text = "构筑已锁定（服务器已确认）";
 
             bool localReady = room.SeatIndex >= 0 && room.SeatIndex < room.Seats.Length && room.Seats[room.SeatIndex] != null && room.Seats[room.SeatIndex].isReady;
@@ -466,7 +504,7 @@ namespace MahjongGame.UI
 
             row.Name.text = string.IsNullOrWhiteSpace(seat.displayName) ? $"玩家 {seatIndex + 1}" : seat.displayName;
             row.Kind.text = seat.isAi ? "AI" : "真人";
-            row.Alienation.text = $"异化档位：{(int)alienationPreset}";
+            row.Alienation.text = $"档位：{RoomLoadoutAdmissionPresentationPolicy.GetDisplayName(alienationPreset)}";
             row.Ready.text = seat.isReady ? "已准备" : "未准备";
         }
 
@@ -517,12 +555,24 @@ namespace MahjongGame.UI
                 return;
             }
 
-            if (!NetworkManager.Instance.RoomService.CreateRoom(GetSelectedGameMode(), GetNickname())) return;
+            SavedDeck selectedDeck = GetSelectedSavedDeck();
+            AlienationPreset loadoutPreset = selectedDeck?.AlienationPreset ?? AlienationPreset.Standard;
+            int total = selectedDeck?.AlienationScore ?? 0;
+            RoomLoadoutAdmissionView admission = RoomLoadoutAdmissionPresentationPolicy.Validate(
+                loadoutPreset, _pendingRoomAlienationPreset, total);
+            if (!admission.CanEnter)
+            {
+                ShowRoomAdmissionBlocker(admission.Message);
+                return;
+            }
+            HideRoomAdmissionBlocker();
+            if (!NetworkManager.Instance.RoomService.CreateRoom(GetSelectedGameMode(), _pendingRoomAlienationPreset, GetNickname())) return;
             SetRoomStatus("正在创建新房间；房间号由服务器分配。");
         }
 
         private void OnJoinRoomClicked()
         {
+            HideRoomAdmissionBlocker();
             if (NetworkManager.Instance == null || string.IsNullOrWhiteSpace(roomIdInput?.value)) { SetRoomStatus("请输入要加入的房间号。"); return; }
             if (!NetworkManager.Instance.RoomService.JoinRoom(roomIdInput.value, GetNickname())) return;
             SetRoomStatus("正在加入房间...");
@@ -552,6 +602,26 @@ namespace MahjongGame.UI
         }
 
         private string GetNickname() => ProfileManager.Instance?.CurrentProfile?.Nickname ?? "Player";
+
+        private static SavedDeck GetSelectedSavedDeck()
+        {
+            var profile = ProfileManager.Instance?.CurrentProfile;
+            if (profile?.SavedDecks == null || profile.SavedDecks.Count == 0) return null;
+            int index = profile.SelectedDeckIndex;
+            return index >= 0 && index < profile.SavedDecks.Count ? profile.SavedDecks[index] : null;
+        }
+
+        private void ShowRoomAdmissionBlocker(string message)
+        {
+            if (roomAdmissionBlockerLabel != null) roomAdmissionBlockerLabel.text = message;
+            if (roomAdmissionBlocker != null) roomAdmissionBlocker.style.display = DisplayStyle.Flex;
+            SetRoomStatus(message);
+        }
+
+        private void HideRoomAdmissionBlocker()
+        {
+            if (roomAdmissionBlocker != null) roomAdmissionBlocker.style.display = DisplayStyle.None;
+        }
 
         private void SubscribeRoomService()
         {
@@ -603,6 +673,7 @@ namespace MahjongGame.UI
 
         private void HandleRoomError(string message)
         {
+            ShowRoomAdmissionBlocker(message);
             SetRoomStatus(message);
             if (NetworkManager.Instance?.RoomService?.HasRoom == true && roomWaitingLabel != null)
                 roomWaitingLabel.text = message;

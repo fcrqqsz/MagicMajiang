@@ -4,7 +4,18 @@
             <ui:VisualElement class="header-container">
                 <ui:VisualElement class="header-stats">
                     <ui:Label name="TotalText" text="Total: 0 / 34" class="stat-label" />
-                    <ui:Label name="ScoreText" text="Alienation: 0" class="stat-label" />
+                    <ui:VisualElement class="alienation-gauge-panel">
+                        <ui:VisualElement name="AlienationPresetSelector" class="alienation-selector">
+                            <ui:Button name="BtnPresetPrev" text="‹" class="preset-arrow" />
+                            <ui:Label name="PresetLabel" text="标准 80" class="preset-label" />
+                            <ui:Button name="BtnPresetNext" text="›" class="preset-arrow" />
+                        </ui:VisualElement>
+                        <ui:VisualElement name="AlienationTrack" class="alienation-track">
+                            <ui:VisualElement name="AlienationFill" class="alienation-fill" />
+                        </ui:VisualElement>
+                        <ui:Label name="AlienationBreakdownLabel" class="alienation-breakdown" />
+                        <ui:Label name="AlienationWarning" class="alienation-warning" />
+                    </ui:VisualElement>
                 </ui:VisualElement>
                 <ui:VisualElement class="header-controls">
                     <ui:Button name="BtnClearAll" text="清空" class="control-btn" />
@@ -15,6 +26,13 @@
             <ui:ScrollView class="grid-scroll-view">
                 <ui:VisualElement name="MainGrid" class="main-grid">
                     <!-- Each row will be created dynamically in C# -->
+                </ui:VisualElement>
+                <ui:VisualElement name="TalentSlotsSection" class="talent-section">
+                    <ui:Label text="主天赋（开局激活）" class="talent-section-header" />
+                    <ui:VisualElement name="MainTalentSlots" class="talent-slots-row" />
+                    <ui:Label text="备选天赋（局间调整）" class="talent-section-header talent-reserve-header" />
+                    <ui:VisualElement name="ReserveTalentSlots" class="talent-slots-row" />
+                    <ui:Label name="TalentDetailLabel" class="talent-detail-label" />
                 </ui:VisualElement>
             </ui:ScrollView>
 

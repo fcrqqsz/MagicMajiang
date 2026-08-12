@@ -34,6 +34,7 @@
 .header-stats {
     flex-direction: row;
     align-items: center;
+    flex-grow: 1;
 }
 
 .header-controls {
@@ -51,6 +52,67 @@
 .text-red { color: #ff6b6b; }
 .text-green { color: #69f0ae; }
 .text-white { color: #ffffff; }
+
+.alienation-gauge-panel {
+    width: 430px;
+    flex-direction: row;
+    align-items: center;
+}
+
+.alienation-selector {
+    width: 132px;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    margin-right: 12px;
+}
+
+.preset-arrow {
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border-width: 0;
+    border-radius: 6px;
+    background-color: #222831;
+    color: #00fff5;
+    font-size: 20px;
+}
+
+.preset-label {
+    color: #eeeeee;
+    font-size: 15px;
+    -unity-font-style: bold;
+}
+
+.alienation-track {
+    width: 120px;
+    height: 12px;
+    overflow: hidden;
+    border-radius: 6px;
+    background-color: #222831;
+    margin-right: 12px;
+}
+
+.alienation-fill {
+    height: 12px;
+    width: 0;
+    background-color: #00adb5;
+}
+
+.alienation-fill.over-limit { background-color: #ff6b6b; }
+
+.alienation-breakdown {
+    width: 140px;
+    color: #bfc5cc;
+    font-size: 13px;
+    white-space: normal;
+}
+
+.alienation-warning {
+    color: #ff6b6b;
+    font-size: 13px;
+    -unity-font-style: bold;
+}
 
 /* 中间网格区域 */
 .grid-scroll-view {
@@ -419,6 +481,16 @@
     opacity: 0.7;
 }
 
+.talent-picker-item-disabled {
+    opacity: 0.42;
+}
+
+.talent-picker-item-reason {
+    margin-top: 4px;
+    color: #ff9b9b;
+    font-size: 12px;
+}
+
 .talent-picker-item-name {
     font-size: 17px;
     color: #EEEEEE;
@@ -491,4 +563,29 @@
 
 .talent-picker-cancel:hover {
     background-color: #555;
+}
+
+.talent-reserve-header { margin-top: 14px; }
+
+.talent-slots-row {
+    flex-direction: row;
+    flex-wrap: nowrap;
+    justify-content: center;
+    align-items: stretch;
+}
+
+.talent-slot-separator {
+    width: 2px;
+    margin-left: 4px;
+    margin-right: 4px;
+    align-self: stretch;
+    background-color: rgba(102, 102, 128, 0.8);
+}
+
+.talent-detail-label {
+    margin-top: 8px;
+    padding: 6px 10px;
+    font-size: 12px;
+    color: #cccccc;
+    white-space: normal;
 }

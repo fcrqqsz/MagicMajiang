@@ -99,6 +99,8 @@
     <Compile Include="..\..\Assets\Scripts\Core\MahjongEnums.cs" Link="MahjongEnums.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\DeckConfig.cs" Link="DeckConfig.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\AlienationPreset.cs" Link="AlienationPreset.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\AlienationGaugePolicy.cs" Link="AlienationGaugePolicy.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\RoomLoadoutAdmissionPresentationPolicy.cs" Link="RoomLoadoutAdmissionPresentationPolicy.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\ScoringOptions.cs" Link="ScoringOptions.cs" />
     <Compile Include="..\..\Assets\Scripts\Talent\TalentSlotConfig.cs" Link="TalentSlotConfig.cs" />
     <Compile Include="..\..\Assets\Scripts\Talent\TalentMetadata.cs" Link="TalentMetadata.cs" />
