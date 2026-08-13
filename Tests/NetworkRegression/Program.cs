@@ -18,6 +18,12 @@ if (args.Length == 1 && string.Equals(args[0], "sideboard", StringComparison.Ord
     return runner.Complete();
 }
 
+if (args.Length == 1 && string.Equals(args[0], "unity-asset-meta", StringComparison.OrdinalIgnoreCase))
+{
+    UnityAssetMetadataTests.Run(runner);
+    return runner.Complete();
+}
+
 if (args.Length == 1 && string.Equals(args[0], "talent-command-client", StringComparison.OrdinalIgnoreCase))
 {
     TalentCommandClientTests.Run(runner);
@@ -47,6 +53,7 @@ TalentActionTests.Run(runner);
 TalentCommandClientTests.Run(runner);
 TalentPresentationTests.Run(runner);
 SideboardTests.Run(runner);
+UnityAssetMetadataTests.Run(runner);
 AiTalentPolicyTests.Run(runner);
 AuthoritativePublicTileTransitionTests.Run(runner);
 
