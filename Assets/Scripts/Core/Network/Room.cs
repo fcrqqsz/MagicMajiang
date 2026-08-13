@@ -962,6 +962,7 @@ namespace MahjongGame.Core.Network
         {
             return (_talentRuntime?.GetSnapshotEntries() ?? Array.Empty<TalentSnapshotEntry>())
                 .Where(entry => entry.OwnerSeatIndex != requestingSeatIndex
+                                && entry.IsActive
                                 && entry.IsRevealed
                                 && !string.IsNullOrWhiteSpace(entry.TalentId))
                 .Select(entry => new SnapshotKnownTalent

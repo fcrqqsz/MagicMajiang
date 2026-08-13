@@ -72,3 +72,10 @@
 - Unity/Tuanjie Editor compilation and batch execution remain deferred to Task 12, per the phase plan. This task is verified through the real pure-C# regression assembly, runtime policy tests, Room integration tests, static authority/privacy guards, and Unity meta validation.
 - The 100-seed suite is intentionally policy/runtime coverage and does not simulate the production asynchronous `GameServer` loop end to end.
 - The pre-existing `.superpowers/brainstorm/` directory remains untouched and excluded from the commit.
+
+## Fix R1 — inactive sideboard threats
+
+- Fixed the reviewed mismatch in `Room.BuildPublicKnownOpponentTalents`: AI sideboard threat input now requires `entry.IsActive` as well as `entry.IsRevealed`. This matches the existing runtime public-charge targeting rule and does not alter the sticky public HUD snapshot, which still retains the revealed event/value for inactive carried talents.
+- RED → GREEN evidence: the focused `ai-talents` command first failed with `Room AI threat input ignores a sideboarded revealed charged talent while retaining active public opponents only`. The new closest-production fixture uses a real `TalentMatchRuntime` to charge three `sheathed_edge` entries to public value 3, then uses `ReplaceActiveSet` to swap one out. It confirms an active revealed large target promotes `interception` and `composure`, then confirms the swapped-out entry remains revealed with value 3 but no longer promotes either counter. It also excludes the requesting seat and an owner-only hidden opponent.
+- GREEN verification: focused `ai-talents`, focused `sideboard`, and the full `NetworkRegression` assembly all exit 0. The no concrete talent/effect-ID branch guard over `Room.cs`/`GameServer.cs` returned `NO_MATCH`; `git diff --check` exited 0.
+- Reviewer minors recorded only, intentionally outside this fix: no asynchronous production `GameServer` AI lifecycle E2E test was added; the existing 100-seed policy/runtime depth was not expanded; exact score effects for AI seats were not broadened.

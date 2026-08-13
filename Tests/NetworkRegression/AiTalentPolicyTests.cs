@@ -4,6 +4,7 @@ using MahjongGame.Core.Network;
 using MahjongGame.Core.Network.Messages;
 using MahjongGame.Core.Network.Transport;
 using MahjongGame.Talents;
+using System.Reflection;
 
 internal static class AiTalentPolicyTests
 {
@@ -16,6 +17,7 @@ internal static class AiTalentPolicyTests
         ActiveSubmissionUsesCurrentLongDecisionAndDoesNotLoop(runner);
         RoomFillsAiSeatsWithPresetLegalArchetypes(runner);
         SideboardRetainsLockedAndCountersPublicThreats(runner);
+        RoomAiThreatInputExcludesInactiveAndNonpublicOpponents(runner);
         SideboardFailureReturnsOriginalForImmediateLock(runner);
         OneHundredSeededPolicyRuntimeSequencesStayLegal(runner);
     }
@@ -327,6 +329,105 @@ internal static class AiTalentPolicyTests
             "AI sideboard failure returns the original verbatim for explicit original locking");
     }
 
+    private static void RoomAiThreatInputExcludesInactiveAndNonpublicOpponents(RegressionRunner runner)
+    {
+        var requester = new TalentSlotConfig();
+        requester.SlotTalentIds[0] = "sheathed_edge";
+        var activeOpponent = new TalentSlotConfig();
+        activeOpponent.SlotTalentIds[0] = "sheathed_edge";
+        var sideboardedOpponent = new TalentSlotConfig();
+        sideboardedOpponent.SlotTalentIds[0] = "sheathed_edge";
+        var hiddenOpponent = new TalentSlotConfig();
+        hiddenOpponent.SlotTalentIds[3] = "interception";
+        var runtime = new TalentMatchRuntime(
+            new Dictionary<int, TalentSlotConfig>
+            {
+                [0] = requester,
+                [1] = activeOpponent,
+                [2] = sideboardedOpponent,
+                [3] = hiddenOpponent
+            },
+            TalentRegistry.Instance);
+        var session = new GameSession(GameMode.EastOnly);
+        runtime.BeginMatch(session);
+        BeginReadyRound(runtime, session);
+        for (int round = 0; round < 3; round++)
+        {
+            runtime.EndRound(new TalentRoundOutcome { WinnerSeatIndex = 3 }, session);
+            BeginReadyRound(runtime, session);
+        }
+
+        runtime.ReplaceActiveSet(2, Array.Empty<string>());
+        TalentSnapshotEntry inactiveEntry = runtime.GetSnapshotEntries().Single(entry =>
+            entry.OwnerSeatIndex == 2 && entry.TalentId == "sheathed_edge");
+        TrustedPlayerLoadout carried = DecodeLoadout(
+            AlienationPreset.Low,
+            new[] { null, null, null, "starting_capital", "peek", "draw_reward" },
+            new[] { null, "interception", "composure" },
+            CreateTwentyAlienationDeck());
+        using var room = new Room(
+            "ai-active-threat-filter", GameMode.Single, AlienationPreset.Standard, "host", true, 64);
+        typeof(Room).GetField("_talentRuntime", BindingFlags.Instance | BindingFlags.NonPublic)
+            .SetValue(room, runtime);
+        runtime.ReplaceActiveSet(2, new[] { "sheathed_edge" });
+        SnapshotKnownTalent[] activeKnown = (SnapshotKnownTalent[])typeof(Room)
+            .GetMethod("BuildPublicKnownOpponentTalents", BindingFlags.Instance | BindingFlags.NonPublic)
+            .Invoke(room, new object[] { 0 });
+        string[] promoted = AiTalentDecisionPolicy.ChooseSideboard(
+            carried,
+            new[] { "starting_capital", "peek", "draw_reward" },
+            activeKnown,
+            AlienationPreset.Low,
+            seatIndex: 0,
+            seed: 2,
+            out bool activeAccepted);
+        runtime.ReplaceActiveSet(1, Array.Empty<string>());
+        runtime.ReplaceActiveSet(2, Array.Empty<string>());
+        SnapshotKnownTalent[] known = (SnapshotKnownTalent[])typeof(Room)
+            .GetMethod("BuildPublicKnownOpponentTalents", BindingFlags.Instance | BindingFlags.NonPublic)
+            .Invoke(room, new object[] { 0 });
+        string[] unpromoted = AiTalentDecisionPolicy.ChooseSideboard(
+            carried,
+            new[] { "starting_capital", "peek", "draw_reward" },
+            known,
+            AlienationPreset.Low,
+            seatIndex: 0,
+            seed: 2,
+            out bool inactiveAccepted);
+
+        runner.Check(!inactiveEntry.IsActive
+                     && inactiveEntry.IsRevealed
+                     && inactiveEntry.LastPublicValue == 3,
+            "sideboarded large talent retains its sticky revealed public charge state");
+        runner.Check(activeKnown.Any(talent => talent.ownerSeatIndex == 2
+                                              && talent.talentId == "sheathed_edge")
+                     && activeAccepted
+                     && promoted.Contains("interception", StringComparer.Ordinal)
+                     && promoted.Contains("composure", StringComparer.Ordinal),
+            "active revealed charged large threat promotes AI counter talents");
+        runner.Check(inactiveAccepted
+                     && !unpromoted.Contains("interception", StringComparer.Ordinal)
+                     && !unpromoted.Contains("composure", StringComparer.Ordinal),
+            "sideboarded sticky public threat does not promote AI counter talents");
+        runner.Check(!known.Any(talent => talent.ownerSeatIndex == 1)
+                     && !known.Any(talent => talent.ownerSeatIndex == 2)
+                     && !known.Any(talent => talent.ownerSeatIndex == 3)
+                     && !known.Any(talent => talent.ownerSeatIndex == 0),
+            "Room AI threat input excludes self, inactive, and hidden opponents");
+    }
+
+    private static DeckConfig CreateTwentyAlienationDeck()
+    {
+        DeckConfig deck = DeckConfig.CreateStandard();
+        foreach (Suit suit in new[] { Suit.Man, Suit.Pin })
+        {
+            deck.SetCardCount(suit, 1, 6);
+            for (int value = 2; value <= 6; value++) deck.SetCardCount(suit, value, 0);
+        }
+        deck.CalculateAlienationScore();
+        return deck;
+    }
+
     private static void OneHundredSeededPolicyRuntimeSequencesStayLegal(RegressionRunner runner)
     {
         bool legal = true;
@@ -464,10 +565,11 @@ internal static class AiTalentPolicyTests
     private static TrustedPlayerLoadout DecodeLoadout(
         AlienationPreset preset,
         string[] main,
-        string[] reserve)
+        string[] reserve,
+        DeckConfig deck = null)
     {
         PlayerLoadoutMessage message = PlayerLoadoutCodec.CreateMessage(
-            DeckConfig.CreateStandard(),
+            deck ?? DeckConfig.CreateStandard(),
             new TalentSlotConfig { SlotTalentIds = main, ReserveTalentIds = reserve },
             preset);
         if (!PlayerLoadoutCodec.TryDecode(message, preset, out TrustedPlayerLoadout loadout, out string error))
