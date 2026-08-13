@@ -8,6 +8,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="Program.cs" />
+    <Compile Include="AssemblyInfo.cs" />
     <Compile Include="RegressionRunner.cs" />
     <Compile Include="IdentityConnectionTests.cs" />
     <Compile Include="RoomSessionTests.cs" />
