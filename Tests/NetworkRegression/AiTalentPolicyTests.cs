@@ -369,6 +369,7 @@ internal static class AiTalentPolicyTests
             "ai-active-threat-filter", GameMode.Single, AlienationPreset.Standard, "host", true, 64);
         typeof(Room).GetField("_talentRuntime", BindingFlags.Instance | BindingFlags.NonPublic)
             .SetValue(room, runtime);
+        runtime.ReplaceActiveSet(1, Array.Empty<string>());
         runtime.ReplaceActiveSet(2, new[] { "sheathed_edge" });
         SnapshotKnownTalent[] activeKnown = (SnapshotKnownTalent[])typeof(Room)
             .GetMethod("BuildPublicKnownOpponentTalents", BindingFlags.Instance | BindingFlags.NonPublic)
@@ -399,8 +400,9 @@ internal static class AiTalentPolicyTests
                      && inactiveEntry.IsRevealed
                      && inactiveEntry.LastPublicValue == 3,
             "sideboarded large talent retains its sticky revealed public charge state");
-        runner.Check(activeKnown.Any(talent => talent.ownerSeatIndex == 2
-                                              && talent.talentId == "sheathed_edge")
+        runner.Check(activeKnown.Length == 1
+                     && activeKnown[0].ownerSeatIndex == 2
+                     && activeKnown[0].talentId == "sheathed_edge"
                      && activeAccepted
                      && promoted.Contains("interception", StringComparer.Ordinal)
                      && promoted.Contains("composure", StringComparer.Ordinal),
