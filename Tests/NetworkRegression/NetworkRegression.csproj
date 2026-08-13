@@ -20,6 +20,7 @@
     <Compile Include="TalentCommandClientTests.cs" />
     <Compile Include="TalentPresentationTests.cs" />
     <Compile Include="SideboardTests.cs" />
+    <Compile Include="AiTalentPolicyTests.cs" />
     <Compile Include="AuthoritativePublicTileTransitionTests.cs" />
     <Compile Include="UnityEngineStubs.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\ActionValidator.cs" Link="ActionValidator.cs" />
@@ -91,6 +92,8 @@
     <Compile Include="..\..\Assets\Scripts\Core\Network\ServerGameState.cs" Link="ServerGameState.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Interfaces\IWallService.cs" Link="IWallService.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Agents\IPlayerClient.cs" Link="IPlayerClient.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\Agents\AiTalentLoadoutFactory.cs" Link="AiTalentLoadoutFactory.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\Agents\AiTalentDecisionPolicy.cs" Link="AiTalentDecisionPolicy.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Services\WallService.cs" Link="WallService.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\TileData.cs" Link="TileData.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Meld.cs" Link="Meld.cs" />

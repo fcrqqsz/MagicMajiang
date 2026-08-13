@@ -224,7 +224,8 @@ internal static class TalentPresentationTests
         {
             TalentId = "interception",
             TargetSeatIndex = 2,
-            TargetTalentId = "sheathed_edge"
+            TargetTalentId = "sheathed_edge",
+            TargetPublicCharge = 3
         };
         var baseActions = new BaseActionAvailability { CanDiscard = true, CanHu = true };
         TalentActionPanelState state = TalentActionPanelPolicy.Open(
@@ -240,7 +241,8 @@ internal static class TalentPresentationTests
         baseActions.CanDiscard = false;
         runner.Check(state.DecisionId == 72L
             && state.BaseActions.CanDiscard
-            && state.Options.Single(option => option.TalentId == "interception").Option.TargetSeatIndex == 2,
+            && state.Options.Single(option => option.TalentId == "interception").Option.TargetSeatIndex == 2
+            && state.Options.Single(option => option.TalentId == "interception").Option.TargetPublicCharge == 3,
             "opening the talent action panel deep-copies base availability and presentation options");
 
         state = TalentActionPanelPolicy.BeginSubmit(state, "interception");

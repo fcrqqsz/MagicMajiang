@@ -35,7 +35,8 @@ namespace MahjongGame.Talents.Impl
                 {
                     TalentId = Id,
                     TargetSeatIndex = target.OwnerSeatIndex,
-                    TargetTalentId = target.TalentId
+                    TargetTalentId = target.TalentId,
+                    TargetPublicCharge = target.CurrentCharge
                 });
             }
         }

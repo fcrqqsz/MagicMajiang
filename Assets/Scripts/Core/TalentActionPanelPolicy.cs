@@ -232,7 +232,8 @@ namespace MahjongGame.Core
                 {
                     TalentId = source.TalentId,
                     TargetSeatIndex = source.TargetSeatIndex,
-                    TargetTalentId = source.TargetTalentId
+                    TargetTalentId = source.TargetTalentId,
+                    TargetPublicCharge = source.TargetPublicCharge
                 };
     }
 }

@@ -81,6 +81,7 @@ namespace MahjongGame.Core.Agents
                 SortHand();
 
                 await Task.Delay(500, ct);
+                TryUseActiveTalent();
 
                 var actions = ActionValidator.CheckSelfActions(_hand, _melds, drawnTile, _scoringOptions, _roundWind, _seatWind);
                 if (actions.HasAction)
@@ -204,6 +205,7 @@ namespace MahjongGame.Core.Agents
                         ExecutePonLocally(targetTile);
                         await Task.Delay(500, ct);
                         SortHand();
+                        TryUseActiveTalent();
                         TileData tileToDiscard = ChooseTileToDiscard();
                         _hand.Remove(tileToDiscard);
                         _server.SubmitAction(ClientAction.Discard(PlayerId, tileToDiscard));
@@ -213,6 +215,7 @@ namespace MahjongGame.Core.Agents
                         ExecuteChiLocally(targetTile, chiCombinations);
                         await Task.Delay(500, ct);
                         SortHand();
+                        TryUseActiveTalent();
                         TileData tileToDiscard = ChooseTileToDiscard();
                         _hand.Remove(tileToDiscard);
                         _server.SubmitAction(ClientAction.Discard(PlayerId, tileToDiscard));
@@ -290,6 +293,12 @@ namespace MahjongGame.Core.Agents
                 if (a.TileSuit != b.TileSuit) return a.TileSuit.CompareTo(b.TileSuit);
                 return a.Value.CompareTo(b.Value);
             });
+        }
+
+        private void TryUseActiveTalent()
+        {
+            if (_server is GameServer gameServer)
+                AiTalentDecisionPolicy.TrySubmitActiveAction(gameServer, PlayerId);
         }
 
         private static TileData CloneTile(TileData tile)

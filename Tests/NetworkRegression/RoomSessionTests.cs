@@ -312,10 +312,10 @@ internal static class RoomSessionTests
 
         runner.Check(hostAdded && guestAdded && hostSeat == 0 && guestSeat == 1 && matchReady,
             "two locked human loadouts establish the Room-owned runtime test match");
-        runner.Check(room.Session.Scores.SequenceEqual(new[] { 30, 0, 0, 0 }),
+        runner.Check(room.Session.Scores[0] == 30 && room.Session.Scores[1] == 0,
             "Room begins the talent match once after all four loadouts are locked");
-        runner.Check(CountRuntimeEvents(hostEndpoint) == 1
-                     && CountRuntimeEvents(guestEndpoint) == 1,
+        runner.Check(CountRuntimeEvents(hostEndpoint, ownerSeatIndex: 0) == 1
+                     && CountRuntimeEvents(guestEndpoint, ownerSeatIndex: 0) == 1,
             "public match-start talent events enter every human seat stream independently");
 
         bool sceneReady = room.SetReady("host", ReadyPhase.GameSceneLoaded, out _)
@@ -331,9 +331,10 @@ internal static class RoomSessionTests
 
         room.GameServer?.CompleteDrawRound();
         runner.Check(room.Session.TotalRoundsPlayed == 1
-                     && room.Session.Scores.SequenceEqual(new[] { 35, 0, 0, 0 })
-                     && CountRuntimeEvents(hostEndpoint) == 2
-                     && CountRuntimeEvents(guestEndpoint) == 2,
+                     && room.Session.Scores[0] == 35
+                     && room.Session.Scores[1] == 0
+                     && CountRuntimeEvents(hostEndpoint, ownerSeatIndex: 0) == 2
+                     && CountRuntimeEvents(guestEndpoint, ownerSeatIndex: 0) == 2,
             "Room ends a drawn round through the runtime before advancing the session");
 
         bool nextReady = room.SetReady("host", ReadyPhase.NextRound, out _)
@@ -343,22 +344,26 @@ internal static class RoomSessionTests
                      && ReferenceEquals(firstRuntime, secondRuntime)
                      && GameServer.ReceivedTalentRuntimes.Count == 2
                      && GameServer.ReceivedTalentRuntimes.All(runtime => ReferenceEquals(runtime, firstRuntime))
-                     && room.Session.Scores.SequenceEqual(new[] { 35, 0, 0, 0 }),
+                     && room.Session.Scores[0] == 35
+                     && room.Session.Scores[1] == 0,
             "the second GameServer reuses the match runtime without repeating match-start effects");
 
         room.GameServer?.CompleteDrawRound();
         runner.Check(room.Session.TotalRoundsPlayed == 2
-                     && room.Session.Scores.SequenceEqual(new[] { 40, 0, 0, 0 })
-                     && CountRuntimeEvents(hostEndpoint) == 3
-                     && CountRuntimeEvents(guestEndpoint) == 3,
+                     && room.Session.Scores[0] == 40
+                     && room.Session.Scores[1] == 0
+                     && CountRuntimeEvents(hostEndpoint, ownerSeatIndex: 0) == 3
+                     && CountRuntimeEvents(guestEndpoint, ownerSeatIndex: 0) == 3,
             "draw rewards execute exactly once in each of two Room rounds and remain seat-stream ordered");
     }
 
-    private static int CountRuntimeEvents(GameEndpoint endpoint)
+    private static int CountRuntimeEvents(GameEndpoint endpoint, int ownerSeatIndex)
     {
         return endpoint.SentMessages
             .Select(MessageSerializer.DeserializeEnvelope)
-            .Count(envelope => envelope?.type == "TalentRuntimeEvent");
+            .Where(envelope => envelope?.type == "TalentRuntimeEvent")
+            .Select(envelope => MessageSerializer.DeserializePayload<TalentRuntimeEventMessage>(envelope.data))
+            .Count(message => message?.ownerSeatIndex == ownerSeatIndex);
     }
 
     private static void TestAbnormalRoundCompletionUnwindsRoomOnce(RegressionRunner runner)

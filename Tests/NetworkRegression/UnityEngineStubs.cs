@@ -254,7 +254,7 @@ namespace MahjongGame.Core.Network
         public event System.Action<GameRoundCompletion> OnRoundFinished;
         public event System.Action OnTalentEventsAvailable;
         public MahjongGame.Talents.TalentMatchRuntime TalentRuntime { get; }
-        public NetworkDecisionContext ActiveDecision => null;
+        public NetworkDecisionContext ActiveDecision { get; private set; }
         public int RemainingWallCount => 0;
         public MahjongGame.Core.TileData LastDrawnTile => null;
         public int WinnerId { get; private set; } = -1;
@@ -270,6 +270,8 @@ namespace MahjongGame.Core.Network
         public int TalentActionSubmissionCount { get; private set; }
         public int LastTalentActionSeatIndex { get; private set; } = -1;
         public TalentActionMessage LastTalentActionMessage { get; private set; }
+        private System.Collections.Generic.IReadOnlyList<MahjongGame.Talents.TalentActionOption>
+            _availableTalentActions = System.Array.Empty<MahjongGame.Talents.TalentActionOption>();
         public MahjongGame.Talents.TalentActionResult NextTalentActionResult { get; set; } =
             MahjongGame.Talents.TalentActionResult.Reject(NetworkErrorCodes.NoActiveDecision);
 
@@ -293,7 +295,30 @@ namespace MahjongGame.Core.Network
 
         public System.Collections.Generic.IReadOnlyList<MahjongGame.Talents.TalentActionOption>
             GetAvailableTalentActionsSnapshot(int seatIndex) =>
-            System.Array.Empty<MahjongGame.Talents.TalentActionOption>();
+            ActiveDecision?.ActingSeatIndex == seatIndex
+                ? _availableTalentActions
+                : System.Array.Empty<MahjongGame.Talents.TalentActionOption>();
+
+        public void SetAiTalentDecisionForTests(
+            long decisionId,
+            int actingSeatIndex,
+            System.Collections.Generic.IReadOnlyList<MahjongGame.Talents.TalentActionOption> options,
+            MahjongGame.Talents.TalentActionResult result)
+        {
+            ActiveDecision = new NetworkDecisionContext(
+                decisionId,
+                NetworkDecisionPhase.MainTurn,
+                actingSeatIndex,
+                -1,
+                null,
+                new[] { actingSeatIndex },
+                System.Array.Empty<int>(),
+                actingSeatIndex,
+                long.MaxValue);
+            _availableTalentActions = options
+                ?? System.Array.Empty<MahjongGame.Talents.TalentActionOption>();
+            NextTalentActionResult = result;
+        }
 
         public System.Collections.Generic.List<MahjongGame.Core.TileData> GetHandSnapshot(int seatIndex) => new();
         public System.Collections.Generic.List<MahjongGame.Core.Meld> GetMeldSnapshot(int seatIndex) => new();

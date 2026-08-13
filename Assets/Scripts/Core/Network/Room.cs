@@ -684,7 +684,19 @@ namespace MahjongGame.Core.Network
                 if (_seats[i] == null)
                 {
                     if (!_aiFill) return false;
-                    _seats[i] = CreateAiSeat(i, PlayerLoadoutCodec.CreateStandardLoadout(), false);
+                    PlayerLoadoutMessage aiMessage = AiTalentLoadoutFactory.Create(
+                        AlienationPreset, i, GetAiStrategySeed(i));
+                    if (!PlayerLoadoutCodec.TryDecode(
+                            aiMessage, AlienationPreset, out TrustedPlayerLoadout aiLoadout, out _))
+                    {
+                        PlayerLoadoutCodec.TryDecode(
+                            PlayerLoadoutCodec.CreateMessage(
+                                DeckConfig.CreateStandard(), new TalentSlotConfig(), AlienationPreset),
+                            AlienationPreset,
+                            out aiLoadout,
+                            out _);
+                    }
+                    _seats[i] = CreateAiSeat(i, aiLoadout, false);
                 }
 
                 if (_seats[i].Loadout == null)
@@ -876,7 +888,8 @@ namespace MahjongGame.Core.Network
                         {
                             talentId = option.TalentId,
                             targetSeatIndex = option.TargetSeatIndex,
-                            targetTalentId = option.TargetTalentId
+                            targetTalentId = option.TargetTalentId,
+                            targetPublicCharge = option.TargetPublicCharge
                         })
                         .ToArray()
                 });
@@ -903,7 +916,32 @@ namespace MahjongGame.Core.Network
                 RoomSeat seat = _seats[seatIndex];
                 if (seat.IsAi)
                 {
-                    _sideboardTracker.LockOriginal(seatIndex, "ai_default");
+                    string[] selected = AiTalentDecisionPolicy.ChooseSideboard(
+                        seat.Loadout,
+                        _sideboardTracker.GetOriginalActiveTalentIds(seatIndex).ToArray(),
+                        BuildPublicKnownOpponentTalents(seatIndex),
+                        AlienationPreset,
+                        seatIndex,
+                        GetAiStrategySeed(seatIndex),
+                        out bool accepted);
+                    if (accepted
+                        && SideboardLoadoutPolicy.TryValidate(
+                            seat.Loadout,
+                            selected,
+                            AlienationPreset,
+                            TalentRegistry.Instance,
+                            out string[] normalized,
+                            out int totalAlienation,
+                            out _)
+                        && _sideboardTracker.TrySubmit(seatIndex, normalized, out _))
+                    {
+                        _talentRuntime.ReplaceActiveSet(seatIndex, normalized);
+                        seat.CurrentTotalAlienation = totalAlienation;
+                    }
+                    else
+                    {
+                        _sideboardTracker.LockOriginal(seatIndex, "ai_original");
+                    }
                 }
                 else if (!seat.IsOnline)
                 {
@@ -918,6 +956,33 @@ namespace MahjongGame.Core.Network
 
             BroadcastSideboardProgress();
             FinishSideboardIfAllLocked();
+        }
+
+        private SnapshotKnownTalent[] BuildPublicKnownOpponentTalents(int requestingSeatIndex)
+        {
+            return (_talentRuntime?.GetSnapshotEntries() ?? Array.Empty<TalentSnapshotEntry>())
+                .Where(entry => entry.OwnerSeatIndex != requestingSeatIndex
+                                && entry.IsRevealed
+                                && !string.IsNullOrWhiteSpace(entry.TalentId))
+                .Select(entry => new SnapshotKnownTalent
+                {
+                    ownerSeatIndex = entry.OwnerSeatIndex,
+                    talentId = entry.TalentId,
+                    isKnown = true,
+                    lastPublicEventType = entry.LastPublicEventType,
+                    lastPublicValue = entry.LastPublicValue
+                })
+                .ToArray();
+        }
+
+        private int GetAiStrategySeed(int seatIndex)
+        {
+            unchecked
+            {
+                int hash = 17;
+                foreach (char character in RoomId ?? string.Empty) hash = hash * 31 + character;
+                return hash * 31 + seatIndex;
+            }
         }
 
         private void SendSideboardStarted(int seatIndex)

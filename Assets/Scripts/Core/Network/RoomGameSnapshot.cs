@@ -252,7 +252,8 @@ namespace MahjongGame.Core.Network
                 {
                     talentId = option.TalentId,
                     targetSeatIndex = option.TargetSeatIndex,
-                    targetTalentId = option.TargetTalentId
+                    targetTalentId = option.TargetTalentId,
+                    targetPublicCharge = option.TargetPublicCharge
                 })
                 .ToArray();
         }
@@ -400,6 +401,7 @@ namespace MahjongGame.Core.Network.Messages
         public string talentId;
         public int targetSeatIndex = -1;
         public string targetTalentId;
+        public int targetPublicCharge;
     }
 
     [Serializable]

@@ -753,7 +753,8 @@ namespace MahjongGame.Core.Network
             {
                 talentId = option.talentId,
                 targetSeatIndex = option.targetSeatIndex,
-                targetTalentId = option.targetTalentId
+                targetTalentId = option.targetTalentId,
+                targetPublicCharge = option.targetPublicCharge
             }).ToArray();
 
         private static TalentActionOption[] ToTalentActionOptions(SnapshotTalentActionOption[] options) =>
@@ -761,7 +762,8 @@ namespace MahjongGame.Core.Network
             {
                 TalentId = option.talentId,
                 TargetSeatIndex = option.targetSeatIndex,
-                TargetTalentId = option.targetTalentId
+                TargetTalentId = option.targetTalentId,
+                TargetPublicCharge = option.targetPublicCharge
             }).ToArray();
 
         private static SnapshotSideboardState CloneSideboard(SnapshotSideboardState sideboard) =>
