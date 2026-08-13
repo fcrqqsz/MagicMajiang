@@ -99,6 +99,16 @@ static void JsonLineSinkWritesEscapedCompactUtf8Records(List<string> failures)
                 anonymousSessionId = "session-\"one\"",
                 eventType = "line\none"
             });
+            using (var readerStream = new FileStream(
+                       path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+            using (var reader = new StreamReader(readerStream, new UTF8Encoding(false)))
+            using (JsonDocument openWriterRecord = JsonDocument.Parse(reader.ReadLine() ?? string.Empty))
+            {
+                Check(openWriterRecord.RootElement.GetProperty("anonymousSessionId").GetString()
+                      == "session-\"one\""
+                      && openWriterRecord.RootElement.GetProperty("eventType").GetString() == "line\none",
+                    "JSONL sink flushes a complete readable record while its writer remains open", failures);
+            }
             sink.Record(new TalentTelemetryRecord
             {
                 anonymousSessionId = "session-two",

@@ -121,18 +121,7 @@ namespace MahjongGame.UI
 
         private void UpdateButtonText()
         {
-            if (_session == null)
-            {
-                _btnRestart.text = "返回主菜单";
-            }
-            else if (_session.Mode == GameMode.Single || _session.IsSessionOver())
-            {
-                _btnRestart.text = "查看总结算";
-            }
-            else
-            {
-                _btnRestart.text = "下一局";
-            }
+            _btnRestart.text = ResultSessionPresentationPolicy.GetContinueButtonText(_session);
         }
 
         public void ShowDraw(List<string> playerStatuses = null)

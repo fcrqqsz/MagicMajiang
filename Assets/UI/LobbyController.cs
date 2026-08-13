@@ -555,7 +555,7 @@ namespace MahjongGame.UI
 
             SavedDeck selectedDeck = GetSelectedSavedDeck();
             AlienationPreset loadoutPreset = selectedDeck?.AlienationPreset ?? AlienationPreset.Standard;
-            int total = selectedDeck?.AlienationScore ?? 0;
+            int total = selectedDeck?.CalculateCurrentAlienation() ?? 0;
             RoomLoadoutAdmissionView admission = RoomLoadoutAdmissionPresentationPolicy.Validate(
                 loadoutPreset, _pendingRoomAlienationPreset, total);
             if (!admission.CanEnter)

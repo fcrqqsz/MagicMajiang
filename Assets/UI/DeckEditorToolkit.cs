@@ -204,10 +204,11 @@ namespace MahjongGame.UI
                 int limit = AlienationBudgetPolicy.GetLimit(AlienationBudgetPolicy.IsDefined(deck.AlienationPreset)
                     ? deck.AlienationPreset
                     : AlienationPreset.Standard);
-                int overflow = Math.Max(0, deck.AlienationScore - limit);
+                int currentAlienation = deck.CalculateCurrentAlienation();
+                int overflow = Math.Max(0, currentAlienation - limit);
                 var scoreLabel = new Label(overflow > 0
-                    ? $"异化值: {deck.AlienationScore} / {limit}　超限 {overflow}"
-                    : $"异化值: {deck.AlienationScore} / {limit}");
+                    ? $"异化值: {currentAlienation} / {limit}　超限 {overflow}"
+                    : $"异化值: {currentAlienation} / {limit}");
                 scoreLabel.AddToClassList("deck-score-label");
 
                 item.Add(header);
@@ -382,7 +383,8 @@ namespace MahjongGame.UI
             string talentJson = JsonUtility.ToJson(_currentTalents);
             _savedDecks[_selectedDeckIndex].Talents = JsonUtility.FromJson<TalentSlotConfig>(talentJson);
             _savedDecks[_selectedDeckIndex].AlienationPreset = _currentAlienationPreset;
-            _savedDecks[_selectedDeckIndex].AlienationScore = DeckConfig.CalculateTotalAlienation(_currentConfig, _currentTalents);
+            _savedDecks[_selectedDeckIndex].AlienationScore =
+                _savedDecks[_selectedDeckIndex].CalculateCurrentAlienation();
 
             // 记录选中的卡组索引
             if (ProfileManager.Instance?.CurrentProfile != null)

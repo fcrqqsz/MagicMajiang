@@ -131,8 +131,7 @@ namespace MahjongGame.Core
             Session.Mode = (GameMode)snapshot.gameMode;
             Session.PrevalentWind = (WindDirection)snapshot.prevalentWind;
             Session.DealerIndex = Mathf.Clamp(snapshot.dealerIndex, 0, 3);
-            Session.TotalRoundsPlayed = Mathf.Clamp(snapshot.roundNumber - 1, 0, Session.GetTotalRounds());
-            Session.RoundInWind = Session.TotalRoundsPlayed % 4;
+            Session.RestoreRoundProgress(snapshot.roundNumber, snapshot.result?.isSessionOver == true);
             SessionScorePolicy.ApplyAuthoritativeScores(Session, snapshot.scores);
             if (snapshot.result != null)
             {

@@ -25,6 +25,7 @@ internal static class SnapshotReconnectTests
         TestWinningHandResultVisibility(runner);
         TestResultHandLayoutPolicy(runner);
         TestCompletedEastOnlyProjection(runner);
+        TestCompletedSessionRoundProgressRecovery(runner);
         TestClientProjection(runner);
         TestTalentRuntimeEventProjection(runner);
         TestRemoteWinningHandNotification(runner);
@@ -40,6 +41,47 @@ internal static class SnapshotReconnectTests
         TestRobKongDecisionPhase(runner);
         TestRobKongDeclarationProjection(runner);
         TestRobKongRemoteNotification(runner);
+    }
+
+    private static void TestCompletedSessionRoundProgressRecovery(RegressionRunner runner)
+    {
+        RoomGameSnapshot eastSnapshot = BuildCompletedSessionSnapshot(GameMode.EastOnly);
+        var eastOnly = new GameSession(GameMode.EastOnly)
+        {
+            PrevalentWind = (WindDirection)eastSnapshot.prevalentWind
+        };
+        eastOnly.RestoreRoundProgress(eastSnapshot.roundNumber, eastSnapshot.result.isSessionOver);
+        runner.Check(eastOnly.TotalRoundsPlayed == 4
+                     && eastOnly.IsSessionOver()
+                     && eastOnly.RoundInWind == 3
+                     && eastOnly.GetRoundLabel() == "东四局"
+                     && eastSnapshot.result.isSessionOver
+                     && ResultSessionPresentationPolicy.GetContinueButtonText(eastOnly) == "查看总结算",
+            "completed EastOnly recovery keeps the authoritative result, last-round wind and final-summary action");
+
+        RoomGameSnapshot halfSnapshot = BuildCompletedSessionSnapshot(GameMode.HalfGame);
+        var halfGame = new GameSession(GameMode.HalfGame)
+        {
+            PrevalentWind = (WindDirection)halfSnapshot.prevalentWind
+        };
+        halfGame.RestoreRoundProgress(halfSnapshot.roundNumber, halfSnapshot.result.isSessionOver);
+        runner.Check(halfGame.TotalRoundsPlayed == 8
+                     && halfGame.IsSessionOver()
+                     && halfGame.RoundInWind == 3
+                     && halfGame.GetRoundLabel() == "南四局"
+                     && halfSnapshot.result.isSessionOver
+                     && ResultSessionPresentationPolicy.GetContinueButtonText(halfGame) == "查看总结算",
+            "completed HalfGame recovery keeps the authoritative result, last-round wind and final-summary action");
+    }
+
+    private static RoomGameSnapshot BuildCompletedSessionSnapshot(GameMode mode)
+    {
+        var session = new GameSession(mode);
+        for (int round = 0; round < session.GetTotalRounds(); round++) session.AdvanceRound();
+        RoomGameSnapshotSource source = CreateEmptySnapshotSource($"{mode}-completed", RoomState.SessionCompleted);
+        source.GameMode = mode;
+        source.Session = session;
+        return RoomGameSnapshotBuilder.Build(source, 0);
     }
 
     private static void TestRuntimeSnapshotProjectionUsesRuleApprovedPrivateValues(RegressionRunner runner)

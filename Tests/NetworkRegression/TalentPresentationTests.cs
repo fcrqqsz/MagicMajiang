@@ -195,6 +195,10 @@ internal static class TalentPresentationTests
 
         string controller = File.ReadAllText(controllerPath);
         string gameManager = File.ReadAllText(gameManagerPath);
+        runner.Check(gameManager.Contains(
+                "Session.RestoreRoundProgress(snapshot.roundNumber, snapshot.result?.isSessionOver == true)",
+                StringComparison.Ordinal),
+            "GameManager restores completion progress from the authoritative snapshot result");
         runner.Check(CountOccurrences(controller, "RenderRoundResult(") == 4
                      && controller.Contains("BuildAcceptedWin(", StringComparison.Ordinal)
                      && controller.Contains("TalentFanBreakdown,", StringComparison.Ordinal)
@@ -954,6 +958,42 @@ internal static class TalentPresentationTests
 
     private static void RunAlienationPresentationPolicyTests(RegressionRunner runner)
     {
+        DeckConfig overLowConfig = BuildThirtyAlienationDeck();
+        var overLowDeck = new SavedDeck
+        {
+            Config = overLowConfig,
+            Talents = new TalentSlotConfig
+            {
+                SlotTalentIds = new[] { "midas_touch", null, null, null, null, null },
+                ReserveTalentIds = new string[TalentSlotConfig.ReserveSlotCount]
+            },
+            AlienationPreset = AlienationPreset.Low,
+            AlienationScore = 0
+        };
+        int liveOverLowTotal = overLowDeck.CalculateCurrentAlienation();
+        RoomLoadoutAdmissionView liveOverLowAdmission = RoomLoadoutAdmissionPresentationPolicy.Validate(
+            overLowDeck.AlienationPreset, AlienationPreset.Low, liveOverLowTotal);
+        runner.Check(liveOverLowTotal == 45
+                     && !liveOverLowAdmission.CanEnter
+                     && liveOverLowAdmission.Code == PlayerLoadoutErrorCodes.AlienationLimitExceeded,
+            "create-room preflight rejects the live 45-point Low loadout even when its saved cache is zero");
+        overLowDeck.Normalize();
+        runner.Check(overLowDeck.AlienationScore == 45,
+            "saved-deck normalization synchronizes a stale cached total from the live loadout");
+
+        var staleOverLimitDeck = new SavedDeck
+        {
+            Config = DeckConfig.CreateStandard(),
+            Talents = new TalentSlotConfig(),
+            AlienationPreset = AlienationPreset.Low,
+            AlienationScore = 999
+        };
+        int liveLegalTotal = staleOverLimitDeck.CalculateCurrentAlienation();
+        RoomLoadoutAdmissionView liveLegalAdmission = RoomLoadoutAdmissionPresentationPolicy.Validate(
+            staleOverLimitDeck.AlienationPreset, AlienationPreset.Low, liveLegalTotal);
+        runner.Check(liveLegalTotal == 0 && liveLegalAdmission.CanEnter,
+            "create-room preflight accepts a live legal loadout even when its saved cache is over limit");
+
         AlienationGaugeView over = AlienationGaugePolicy.Build(
             deckCost: 28, talentCost: 17, AlienationPreset.Low);
         runner.Check(over.Total == 45 && over.Limit == 40 && over.Fill01 == 1f
@@ -1000,6 +1040,15 @@ internal static class TalentPresentationTests
             saved.AlienationPreset, AlienationPreset.Low, saved.AlienationScore);
         runner.Check((int)saved.AlienationPreset == 999 && saved.AlienationScore == 123,
             "room admission presentation never mutates a saved deck");
+
+        string lobbySource = File.ReadAllText(GetRepoPath("Assets", "UI", "LobbyController.cs"));
+        string deckEditorSource = File.ReadAllText(GetRepoPath("Assets", "UI", "DeckEditorToolkit.cs"));
+        runner.Check(lobbySource.Contains("selectedDeck?.CalculateCurrentAlienation()", StringComparison.Ordinal)
+                     && !lobbySource.Contains("selectedDeck?.AlienationScore", StringComparison.Ordinal),
+            "Lobby create-room preflight reads the selected deck's live alienation total");
+        runner.Check(deckEditorSource.Contains("deck.CalculateCurrentAlienation()", StringComparison.Ordinal)
+                     && deckEditorSource.Contains("_btnSave.SetEnabled(total == 34)", StringComparison.Ordinal),
+            "deck summaries use live alienation while over-limit 34-tile decks remain saveable");
     }
 
     private static void RunLoadoutPresetTests(RegressionRunner runner)
@@ -1238,18 +1287,24 @@ internal static class TalentPresentationTests
 
     private static PlayerLoadoutMessage BuildOverLowPresetLoadout()
     {
-        DeckConfig deck = DeckConfig.CreateStandard();
-        foreach (Suit suit in new[] { Suit.Man, Suit.Pin, Suit.Sou })
-        {
-            deck.SetCardCount(suit, 1, 6);
-            for (int value = 2; value <= 6; value++) deck.SetCardCount(suit, value, 0);
-        }
+        DeckConfig deck = BuildThirtyAlienationDeck();
         var talents = new TalentSlotConfig
         {
             SlotTalentIds = new[] { "midas_touch", null, null, null, null, null },
             ReserveTalentIds = new string[TalentSlotConfig.ReserveSlotCount]
         };
         return PlayerLoadoutCodec.CreateMessage(deck, talents, AlienationPreset.Low);
+    }
+
+    private static DeckConfig BuildThirtyAlienationDeck()
+    {
+        DeckConfig deck = DeckConfig.CreateStandard();
+        foreach (Suit suit in new[] { Suit.Man, Suit.Pin, Suit.Sou })
+        {
+            deck.SetCardCount(suit, 1, 6);
+            for (int value = 2; value <= 6; value++) deck.SetCardCount(suit, value, 0);
+        }
+        return deck;
     }
 
     private static RoomErrorMessage GetLastRoomError(GameEndpoint endpoint) =>

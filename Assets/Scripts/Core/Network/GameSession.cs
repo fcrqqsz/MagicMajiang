@@ -59,6 +59,16 @@ namespace MahjongGame.Core.Network
             return TotalRoundsPlayed >= GetTotalRounds();
         }
 
+        public void RestoreRoundProgress(int roundNumber, bool isSessionOver)
+        {
+            int totalRounds = GetTotalRounds();
+            int displayedRoundIndex = Mathf.Clamp(roundNumber - 1, 0, totalRounds - 1);
+            TotalRoundsPlayed = isSessionOver
+                ? Mathf.Clamp(roundNumber, 0, totalRounds)
+                : displayedRoundIndex;
+            RoundInWind = displayedRoundIndex % 4;
+        }
+
         /// <summary>
         /// 固定轮转：东家顺移，每4局圈风推进
         /// </summary>

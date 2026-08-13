@@ -1,16 +1,17 @@
 # Phase 3 Code Checkpoint Report
 
-Date: 2026-08-14 (Asia/Shanghai)  
-Status: **DONE_WITH_CONCERNS — stop before master**  
-Baseline: `8658923`  
-Candidate branch: `codex/talent-actions-ui-unified`  
-Candidate HEAD: `bca8c54d8177f9860457601033d412cc5e2c5d7f`
+Date: 2026-08-14 (Asia/Shanghai)
+Status: **CODE CLEAN — manual smoke remains; stop before master**
+Baseline: `8658923`
+Candidate branch: `codex/talent-actions-ui-unified`
+Starting HEAD for final fix: `4ff1006`
+Candidate final commit: `HEAD` (`fix: close phase 3 checkpoint findings`; report and fix share one commit)
 
 This is the Task 12 code checkpoint only. No merge, push, master switch, Dedicated Server build, or real-player acceptance was performed.
 
-## Blocking review finding
+## Resolved blocking review finding
 
-**Important — the Sideboard UI assets have invalid committed meta GUIDs, so Tuanjie ignores the assets and `GameHUD.uxml` fails semantic import.**
+The original checkpoint found invalid Sideboard UI meta GUIDs, so Tuanjie ignored the assets and `GameHUD.uxml` failed semantic import.
 
 - `Assets/UI/SideboardPanel.uxml.meta` contains:
   `guid: t8bD64f7O7KqznzMHXmHWD79Tc7mV5cY+oTVsYfW9TsnPjFsj5ra5w=`
@@ -23,7 +24,7 @@ This is the Task 12 code checkpoint only. No merge, push, master switch, Dedicat
   - line 673: the Sideboard URI refers to an invalid asset;
   - line 686: unknown template name `SideboardPanel`.
 
-This blocks claiming that GameHUD/Sideboard instantiate successfully. Per the checkpoint brief, no unreviewed repair was made. The accepted finding must receive a RED regression, minimal fix, focused/full verification, and its own commit before this candidate can be treated as checkpoint-clean.
+This historical importer blocker was closed by commit `4ff1006`; the final refresh described below remains clean.
 
 ## Task 12 metadata repair (2026-08-14)
 
@@ -65,6 +66,8 @@ b750a73 feat: add deterministic AI talent strategy
 a8298e8 test: isolate active AI sideboard threat
 b90728d feat: add talent playtest telemetry
 bca8c54 test: exercise real game server telemetry
+4ff1006 fix: repair sideboard UI asset metadata
+HEAD fix: close phase 3 checkpoint findings
 ```
 
 ## Automated regression and build evidence
@@ -99,6 +102,16 @@ pwsh -NoLogo -NoProfile -Command "dotnet run --project Tests/GameServerTelemetry
 ```
 
 Both exited 0. Build result: 0 warnings, 0 errors. Run output: `Real GameServer telemetry regression tests passed.`
+
+The final fix adds an open-writer JSONL regression: immediately after `Record`, a separate reader opens the file and parses the complete flushed JSON object while the sink remains undisposed. This protects both production `AutoFlush = true` and `FileShare.Read`; changing the writer share to `FileShare.None` makes the reader open fail.
+
+## Final whole-branch review fixes (2026-08-14)
+
+- **M1 — stale alienation cache:** RED coverage used a cached `0` loadout whose live Low total is `45`, plus a cached `999` loadout whose live total is legal. `SavedDeck.CalculateCurrentAlienation()` now delegates to `DeckConfig.CalculateTotalAlienation(Config, Talents)`. Lobby create-room preflight and DeckEditor list summaries use the live total. Profile normalization and save synchronize `AlienationScore`; a 34-tile over-limit deck remains saveable. Join-room preset behavior was not changed, and server admission remains authoritative.
+- **M2 — completed-session recovery:** RED coverage constructs authoritative completed EastOnly-4 and HalfGame-8 snapshots. `GameSession.RestoreRoundProgress` restores `TotalRoundsPlayed` from completed `roundNumber`, while `RoundInWind` remains the last displayed round (`3`), preserving East 4 / South 4. `GameManager` passes `snapshot.result.isSessionOver`. The recovered session is over, retains the authoritative terminal result, and the shared result button policy selects `查看总结算`.
+- **Whitespace:** checkpoint Markdown hard-break whitespace and Tuanjie's empty `TalentChipTemplate.uss.meta` fields were normalized. The valid 56-character GUID, fileID `12385`, and `disableValidation: 0` are unchanged.
+- **Compatibility minor:** the Standard-default `PlayerLoadoutCodec` overloads remain for compatibility. Production room admission uses the preset-explicit overloads; no warning-producing annotation was added.
+- **Deferred coverage minors:** real AI GameServer lifecycle breadth, 100-seed deeper sequences, and exact AI score assertions remain deferred. This fix wave does not expand AI E2E scope.
 
 ## Source and diff guards
 
@@ -155,7 +168,7 @@ Exiting without the bug reporter. Application will terminate with return code 0
 
 `Library/ScriptAssemblies/Assembly-CSharp.dll` and the generated `Assembly-CSharp.csproj` were refreshed. All 16 C# files added in `8658923..HEAD` are present in the regenerated project; no temporary source inclusion was needed. This resolves the earlier Task 6 concern about stale generated-project contents/line endings.
 
-The batch log contains no `error CS...`, `Scripts have compiler errors`, or compilation-failed marker. It does contain the Sideboard UXML/meta import failure documented above. Early licensing-client signature/access-token messages were followed by successful entitlement resolution and do not change the editor's final return code.
+The final `phase3-final-unity-refresh.log` completed with editor exit code 0 and the explicit successful-batch/return-code-0 markers. Its diagnostics scan contains no `error CS...`, script compiler error, compilation-failed marker, invalid GUID, invalid dependency, unknown template, failed import, or `NullReferenceException`. Early licensing-client signature/access-token messages were followed by successful entitlement resolution and do not change the editor's final return code.
 
 The first post-refresh build required by the brief:
 
@@ -185,14 +198,14 @@ There is no existing Editor smoke harness or Unity test assembly for the request
 
 - **ActionPanel**: `Assets/UI/ActionPanel.uxml` and `ActionPanelStyles.uss` imported successfully in the Tuanjie log without an independent importer error.
 - **ResultPanel**: `Assets/UI/ResultPanel.uxml` and `ResultPanelStyles.uss` imported successfully without an independent importer error.
-- **GameHUD/Sideboard**: failed actual Unity import for the reasons in the blocking finding. Therefore panel instantiation is not accepted at either resolution.
+- **GameHUD/Sideboard**: the final batch refresh has none of the prior invalid-GUID, invalid-dependency, unknown-template, or failed-import diagnostics. This is import/compile evidence, not a visible instantiation claim.
 - **WAV source**: `talent_active_generic.wav` is a valid RIFF/WAVE PCM file: format 1, stereo, 48,000 Hz, 16-bit, 134,444 bytes. Unity imported it successfully using GUID `eb50fc0dc9224ba8b782c22acfe0fa91` with no audio import error. Its importer preloads the data and the scene serializes the same GUID into the HUD clip field. The scene AudioSource is non-spatial, `m_PlayOnAwake: 0`, and `Loop: 0`.
 - **One-shot request policy**: the fresh NetworkRegression run covered that one accepted strong event requests audio, a duplicate requests none, blocked/rejected/recovery paths request none, and the HUD uses `PlayOneShot`. Audible playback itself was not observed in batch mode.
 - **Fonts**: UI styles reference `Assets/Font/MSYH_UITK.asset`; the forbidden TTC/TMP-font guard had no matches. Shared scenes reference `PanelSettings.asset`, whose TextSettings reference is `SuperMajiangTextSettings.asset`. Refresh logged no independent font or PanelSettings import error. Visible Chinese glyph rendering was not observable in batch mode.
 - **Deck preset and over-cap semantics**: fresh NetworkRegression covered legacy preset migration, preset preservation/normalization, separate create/join preset mismatch versus over-cap errors, over-cap decks remaining saveable, and the required deck-editor query/source bindings. This is behavioral/static coverage, not a human click-through.
-- All scanned UI UXML remains XML-well-formed at source level; that does not override the actual GameHUD semantic-import failure.
+- All scanned UI UXML remains XML-well-formed at source level; final Tuanjie refresh adds semantic import/compile evidence, while visible layout remains manual.
 
-### Still requires visible manual smoke after the Sideboard meta fix
+### Still requires visible manual smoke
 
 - open deck editor, cycle the deck preset, save a 34-tile over-cap deck, and visually confirm the warning;
 - instantiate GameHUD, ActionPanel, Sideboard, and ResultPanel at 16:9 and the project's narrowest supported resolution, checking all runtime queries and layout;
@@ -201,7 +214,7 @@ There is no existing Editor smoke harness or Unity test assembly for the request
 
 ## Deferred verification and stop point
 
-- Independent whole-branch Critical/Important review is owned by the parent checkpoint workflow and is not duplicated by this report.
+- The independent whole-branch Important findings M1 and M2 were closed in this final fix wave with RED/GREEN regression evidence.
 - Dedicated Server build/run, WebSocket loopback, multiplayer matrix, multi-round real-client behavior, reconnect matrix, and real-player acceptance remain deferred exactly as required.
-- No merge, push, branch switch, or report commit was performed.
-- Stop here for Phase 3 review. Do not merge to master until the Sideboard meta/UXML import finding is fixed through the required review-fix workflow and the visible Unity smoke matrix is completed.
+- No merge, push, or branch switch was performed.
+- Stop here for Phase 3 review. Code/import gates are clean; the visible Unity smoke matrix remains user-owned and must not be inferred from batch mode.

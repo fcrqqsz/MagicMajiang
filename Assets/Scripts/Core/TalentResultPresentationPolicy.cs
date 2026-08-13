@@ -43,6 +43,17 @@ namespace MahjongGame.Core
                 animate: !isRecovery);
     }
 
+    public static class ResultSessionPresentationPolicy
+    {
+        public static string GetContinueButtonText(Network.GameSession session)
+        {
+            if (session == null) return "返回主菜单";
+            return session.Mode == GameMode.Single || session.IsSessionOver()
+                ? "查看总结算"
+                : "下一局";
+        }
+    }
+
     public static class TalentResultPresentationPolicy
     {
         public static TalentResultView BuildAcceptedWin(

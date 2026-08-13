@@ -13,12 +13,20 @@ namespace MahjongGame.Core.Network.Data
         public TalentSlotConfig Talents = new TalentSlotConfig();
         public AlienationPreset AlienationPreset = AlienationPreset.Standard;
 
+        public int CalculateCurrentAlienation()
+        {
+            return Config == null
+                ? 0
+                : DeckConfig.CalculateTotalAlienation(Config, Talents);
+        }
+
         public void Normalize()
         {
             Talents ??= new TalentSlotConfig();
             Talents.Normalize();
             if (!AlienationBudgetPolicy.IsDefined(AlienationPreset))
                 AlienationPreset = AlienationPreset.Standard;
+            AlienationScore = CalculateCurrentAlienation();
         }
     }
 }
