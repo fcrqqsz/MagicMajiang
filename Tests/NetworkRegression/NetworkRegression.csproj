@@ -120,6 +120,7 @@
     <Compile Include="..\..\Assets\Scripts\Talent\TalentMetadata.cs" Link="TalentMetadata.cs" />
     <Compile Include="..\..\Assets\Scripts\Talent\TalentRuntimeState.cs" Link="TalentRuntimeState.cs" />
     <Compile Include="..\..\Assets\Scripts\Talent\TalentRuntimeEvent.cs" Link="TalentRuntimeEvent.cs" />
+    <Compile Include="..\..\Assets\Scripts\Talent\TalentTelemetry.cs" Link="TalentTelemetry.cs" />
     <Compile Include="..\..\Assets\Scripts\Talent\TalentNegativeEffect.cs" Link="TalentNegativeEffect.cs" />
     <Compile Include="..\..\Assets\Scripts\Talent\TalentFanModifierPolicy.cs" Link="TalentFanModifierPolicy.cs" />
     <Compile Include="..\..\Assets\Scripts\Talent\TalentActionModels.cs" Link="TalentActionModels.cs" />

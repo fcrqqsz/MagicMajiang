@@ -323,6 +323,7 @@ namespace MahjongGame.Core.Network
         public System.Collections.Generic.List<MahjongGame.Core.TileData> GetHandSnapshot(int seatIndex) => new();
         public System.Collections.Generic.List<MahjongGame.Core.Meld> GetMeldSnapshot(int seatIndex) => new();
         public System.Collections.Generic.List<MahjongGame.Core.TileData> GetRiverSnapshot(int seatIndex) => new();
+        public int[] GetDrawCountsSnapshot() => new int[4];
         public MahjongGame.Core.ScoringOptions GetScoringOptionsSnapshot(int seatIndex) =>
             TalentRuntime?.BuildScoringOptions(new MahjongGame.Talents.TalentScoringContext(_session, seatIndex))
             ?? new MahjongGame.Core.ScoringOptions();

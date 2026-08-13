@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using MahjongGame.Core.Network.Messages;
 using MahjongGame.Core.Network.Transport;
+using MahjongGame.Talents;
 using UnityEngine;
 
 namespace MahjongGame.Core.Network
@@ -16,6 +17,7 @@ namespace MahjongGame.Core.Network
         private readonly TimeSpan _reconnectWindow;
         private readonly ConnectionRegistry _connections;
         private readonly IAccountAuthenticator _accountAuthenticator;
+        private readonly ITalentTelemetrySink _telemetrySink;
         private readonly Dictionary<string, Room> _rooms = new Dictionary<string, Room>();
         private int _nextRoomId = 1;
         private bool _disposed;
@@ -26,7 +28,8 @@ namespace MahjongGame.Core.Network
             ConnectionRegistry connections,
             IAccountAuthenticator accountAuthenticator = null,
             int messageCacheSize = SeatMessageStream.DefaultCacheCapacity,
-            int reconnectWindowSeconds = ServerBootstrapOptions.DefaultReconnectWindowSeconds)
+            int reconnectWindowSeconds = ServerBootstrapOptions.DefaultReconnectWindowSeconds,
+            ITalentTelemetrySink telemetrySink = null)
         {
             _maxRooms = Math.Max(1, maxRooms);
             _aiFill = aiFill;
@@ -34,6 +37,7 @@ namespace MahjongGame.Core.Network
             _reconnectWindow = TimeSpan.FromSeconds(Math.Max(1, reconnectWindowSeconds));
             _connections = connections ?? throw new ArgumentNullException(nameof(connections));
             _accountAuthenticator = accountAuthenticator ?? new DevelopmentAccountAuthenticator();
+            _telemetrySink = telemetrySink ?? NullTalentTelemetrySink.Instance;
             GameEndpoint.OnClientConnected += HandleConnected;
             GameEndpoint.OnMessageReceived += HandleMessage;
             GameEndpoint.OnClientDisconnected += HandleDisconnected;
@@ -155,7 +159,14 @@ namespace MahjongGame.Core.Network
             if (_rooms.Count >= _maxRooms) { SendError(connectionId, endpoint, "RoomLimitReached", "The server has reached its room limit."); return; }
 
             string roomId = $"R{_nextRoomId++:D4}";
-            var room = new Room(roomId, (GameMode)request.gameMode, alienationPreset, connectionId, _aiFill, _messageCacheSize);
+            var room = new Room(
+                roomId,
+                (GameMode)request.gameMode,
+                alienationPreset,
+                connectionId,
+                _aiFill,
+                _messageCacheSize,
+                _telemetrySink);
             room.OnClosed += HandleRoomClosed;
             if (!room.TryAddHuman(connectionId, endpoint, record.PlayerId, record.DisplayName, loadout, out int seat))
             {

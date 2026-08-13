@@ -18,6 +18,9 @@ namespace MahjongGame.Talents
             new Dictionary<int, List<TileData>>();
         private readonly Dictionary<int, long> _firstMainDecisionIds =
             new Dictionary<int, long>();
+        private readonly ITalentTelemetrySink _telemetrySink;
+        private readonly string _anonymousSessionId;
+        private readonly AlienationPreset _telemetryPreset;
         private RuntimePhase _phase;
         private GameSession _session;
         private object _sessionIdentity;
@@ -25,10 +28,30 @@ namespace MahjongGame.Talents
 
         public TalentMatchRuntime(
             IReadOnlyDictionary<int, TalentSlotConfig> loadouts,
-            TalentRegistry registry)
+            TalentRegistry registry) : this(
+                loadouts,
+                registry,
+                NullTalentTelemetrySink.Instance,
+                Guid.NewGuid().ToString("N"),
+                AlienationPreset.Standard)
+        {
+        }
+
+        public TalentMatchRuntime(
+            IReadOnlyDictionary<int, TalentSlotConfig> loadouts,
+            TalentRegistry registry,
+            ITalentTelemetrySink telemetrySink,
+            string anonymousSessionId,
+            AlienationPreset telemetryPreset)
         {
             if (loadouts == null) throw new ArgumentNullException(nameof(loadouts));
             if (registry == null) throw new ArgumentNullException(nameof(registry));
+            if (string.IsNullOrWhiteSpace(anonymousSessionId))
+                throw new ArgumentException("An anonymous telemetry session id is required.", nameof(anonymousSessionId));
+
+            _telemetrySink = telemetrySink ?? NullTalentTelemetrySink.Instance;
+            _anonymousSessionId = anonymousSessionId;
+            _telemetryPreset = telemetryPreset;
 
             int sequence = 0;
             foreach (KeyValuePair<int, TalentSlotConfig> loadout in loadouts)
@@ -135,6 +158,8 @@ namespace MahjongGame.Talents
                     }, isAuthoritativeScoreDelta: scoreDelta != 0);
                 }
             }
+
+            RecordTelemetry(CreateTelemetryRecord("match_start"));
         }
 
         public void BeginRound(TalentRoundContext context)
@@ -151,6 +176,7 @@ namespace MahjongGame.Talents
             _phase = RuntimePhase.RoundStarted;
             foreach (RuntimeEntry entry in GetAllActiveEntries())
                 entry.Rule.OnRoundStarted(BindRoundContext(context, entry));
+            RecordTelemetry(CreateTelemetryRecord("round_start"));
         }
 
         public void ApplyWallBuilding(TalentWallContext context)
@@ -865,7 +891,10 @@ namespace MahjongGame.Talents
             return tiles.Select(CopyTile).ToArray();
         }
 
-        public void EndRound(TalentRoundOutcome outcome, GameSession session)
+        public void EndRound(
+            TalentRoundOutcome outcome,
+            GameSession session,
+            int[] drawsPerSeat = null)
         {
             if (outcome == null) throw new ArgumentNullException(nameof(outcome));
             if (session == null) throw new ArgumentNullException(nameof(session));
@@ -905,6 +934,47 @@ namespace MahjongGame.Talents
                     }), outcome);
             }
             _phase = RuntimePhase.BetweenRounds;
+            TalentTelemetryRecord telemetryRecord = CreateTelemetryRecord("round_end");
+            telemetryRecord.completedRound = session.TotalRoundsPlayed + 1;
+            telemetryRecord.drawsPerSeat = CopyDraws(drawsPerSeat);
+            telemetryRecord.finalFan = outcome.FinalFan;
+            telemetryRecord.winnerSeatIndex = outcome.WinnerSeatIndex ?? -1;
+            RecordTelemetry(telemetryRecord);
+        }
+
+        public void RecordAcceptedWinTelemetry(
+            int winnerSeatIndex,
+            TalentFanResolution resolution,
+            int[] drawsPerSeat)
+        {
+            ValidateSeatIndex(winnerSeatIndex, nameof(winnerSeatIndex));
+            if (resolution == null) throw new ArgumentNullException(nameof(resolution));
+
+            TalentTelemetryRecord record = CreateTelemetryRecord("accepted_win");
+            record.completedRound = _session.TotalRoundsPlayed + 1;
+            record.drawsPerSeat = CopyDraws(drawsPerSeat);
+            record.baseFan = resolution.BaseFan;
+            record.eligibilityFan = resolution.EligibilityFan;
+            record.postLegalBonusFan = resolution.PostLegalBonusFan;
+            record.negativeFan = resolution.NegativeFan;
+            record.finalFan = resolution.FinalFan;
+            record.winnerSeatIndex = winnerSeatIndex;
+            RecordTelemetry(record);
+        }
+
+        public void RecordSideboardLockTelemetry(
+            int seatIndex,
+            bool accepted,
+            bool original,
+            bool timeout)
+        {
+            ValidateSeatIndex(seatIndex, nameof(seatIndex));
+            TalentTelemetryRecord record = CreateTelemetryRecord("sideboard_lock");
+            record.seatIndex = seatIndex;
+            record.sideboardAccepted = accepted;
+            record.sideboardOriginal = original;
+            record.sideboardTimeout = timeout;
+            RecordTelemetry(record);
         }
 
         public IReadOnlyList<TalentRuntimeEvent> DrainEventsForSeat(int seatIndex)
@@ -1059,10 +1129,52 @@ namespace MahjongGame.Talents
             _events.Add(runtimeEvent);
 
             if (runtimeEvent.Visibility == TalentEventVisibility.Public
+                && (string.Equals(runtimeEvent.EventType, "active_talent_applied", StringComparison.Ordinal)
+                    || string.Equals(runtimeEvent.EventType, "blocked_negative_effect", StringComparison.Ordinal)))
+            {
+                TalentTelemetryRecord telemetryRecord = CreateTelemetryRecord(runtimeEvent.EventType);
+                telemetryRecord.seatIndex = runtimeEvent.OwnerSeatIndex;
+                telemetryRecord.talentId = runtimeEvent.TalentId;
+                telemetryRecord.publicValue = runtimeEvent.Value;
+                telemetryRecord.controlApplied = string.Equals(
+                    runtimeEvent.EventType,
+                    "active_talent_applied",
+                    StringComparison.Ordinal);
+                telemetryRecord.controlBlocked = string.Equals(
+                    runtimeEvent.EventType,
+                    "blocked_negative_effect",
+                    StringComparison.Ordinal);
+                RecordTelemetry(telemetryRecord);
+            }
+
+            if (runtimeEvent.Visibility == TalentEventVisibility.Public
                 && entry.Metadata.RevealPolicy != TalentRevealPolicy.OwnerOnly)
             {
                 entry.State.IsRevealed = true;
             }
+        }
+
+        private TalentTelemetryRecord CreateTelemetryRecord(string eventType)
+        {
+            return new TalentTelemetryRecord
+            {
+                anonymousSessionId = _anonymousSessionId,
+                preset = TalentTelemetry.FormatPreset(_telemetryPreset),
+                mode = TalentTelemetry.FormatMode(_session?.Mode ?? GameMode.Single),
+                completedRound = _session?.TotalRoundsPlayed ?? 0,
+                eventType = eventType
+            };
+        }
+
+        private void RecordTelemetry(TalentTelemetryRecord record) =>
+            TalentTelemetry.RecordSafely(_telemetrySink, record);
+
+        private static int[] CopyDraws(int[] drawsPerSeat)
+        {
+            var result = new int[4];
+            if (drawsPerSeat != null)
+                Array.Copy(drawsPerSeat, result, Math.Min(drawsPerSeat.Length, result.Length));
+            return result;
         }
 
         private void EnsureReadyRound(TalentContext context, string operation)

@@ -40,6 +40,8 @@ namespace MahjongGame.Core.Network
         private readonly List<DeckConfig> _deckConfigs = new List<DeckConfig>();
         private readonly NetworkDecisionTracker _decisionTracker = new NetworkDecisionTracker();
         private readonly HashSet<string> _expiredPlayerIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        private readonly ITalentTelemetrySink _telemetrySink;
+        private readonly string _anonymousSessionId;
         private TalentMatchRuntime _talentRuntime;
         private SideboardDecisionTracker _sideboardTracker;
         private long _nextSideboardDecisionId = 1;
@@ -61,7 +63,25 @@ namespace MahjongGame.Core.Network
         public event Action<Room> OnClosed;
 
         public Room(string roomId, GameMode gameMode, AlienationPreset alienationPreset, string hostConnectionId, bool aiFill,
-            int messageCacheSize = SeatMessageStream.DefaultCacheCapacity)
+            int messageCacheSize = SeatMessageStream.DefaultCacheCapacity) : this(
+                roomId,
+                gameMode,
+                alienationPreset,
+                hostConnectionId,
+                aiFill,
+                messageCacheSize,
+                null)
+        {
+        }
+
+        public Room(
+            string roomId,
+            GameMode gameMode,
+            AlienationPreset alienationPreset,
+            string hostConnectionId,
+            bool aiFill,
+            int messageCacheSize,
+            ITalentTelemetrySink telemetrySink)
         {
             RoomId = roomId;
             GameMode = gameMode;
@@ -71,6 +91,8 @@ namespace MahjongGame.Core.Network
             HostConnectionId = hostConnectionId;
             _aiFill = aiFill;
             _messageCacheSize = Math.Max(1, messageCacheSize);
+            _telemetrySink = telemetrySink ?? NullTalentTelemetrySink.Instance;
+            _anonymousSessionId = Guid.NewGuid().ToString("N");
             Session = new GameSession(gameMode);
         }
 
@@ -458,6 +480,7 @@ namespace MahjongGame.Core.Network
                     out _))
             {
                 _sideboardTracker.LockOriginal(seatIndex, "invalid");
+                RecordSideboardLockTelemetry(seatIndex);
                 SendSideboardLocked(seatIndex);
                 BroadcastSideboardProgress();
                 FinishSideboardIfAllLocked();
@@ -467,6 +490,7 @@ namespace MahjongGame.Core.Network
 
             _talentRuntime.ReplaceActiveSet(seatIndex, normalized);
             if (!_sideboardTracker.TrySubmit(seatIndex, normalized, out errorCode)) return false;
+            RecordSideboardLockTelemetry(seatIndex);
             seat.CurrentTotalAlienation = totalAlienation;
             SendSideboardLocked(seatIndex);
             BroadcastSideboardProgress();
@@ -484,6 +508,7 @@ namespace MahjongGame.Core.Network
             {
                 if (_sideboardTracker.IsLocked(seatIndex)) continue;
                 _sideboardTracker.LockOriginal(seatIndex, "timeout");
+                RecordSideboardLockTelemetry(seatIndex);
                 SendSideboardLocked(seatIndex);
             }
             BroadcastSideboardProgress();
@@ -672,7 +697,12 @@ namespace MahjongGame.Core.Network
             for (int seatIndex = 0; seatIndex < _seats.Length; seatIndex++)
                 loadouts[seatIndex] = _seats[seatIndex].Loadout.TalentConfig;
 
-            _talentRuntime = new TalentMatchRuntime(loadouts, TalentRegistry.Instance);
+            _talentRuntime = new TalentMatchRuntime(
+                loadouts,
+                TalentRegistry.Instance,
+                _telemetrySink,
+                _anonymousSessionId,
+                AlienationPreset);
             _talentRuntime.BeginMatch(Session);
             BroadcastTalentEventsAtSafeBoundary();
         }
@@ -783,7 +813,7 @@ namespace MahjongGame.Core.Network
                         ? finishedServer.LoserId
                         : null,
                     FinalFan = finishedServer?.WinFan ?? 0
-                }, Session);
+                }, Session, finishedServer?.GetDrawCountsSnapshot());
                 BroadcastTalentEventsAtSafeBoundary();
                 if (completion?.Kind == GameRoundCompletionKind.Aborted)
                 {
@@ -937,15 +967,18 @@ namespace MahjongGame.Core.Network
                     {
                         _talentRuntime.ReplaceActiveSet(seatIndex, normalized);
                         seat.CurrentTotalAlienation = totalAlienation;
+                        RecordSideboardLockTelemetry(seatIndex);
                     }
                     else
                     {
                         _sideboardTracker.LockOriginal(seatIndex, "ai_original");
+                        RecordSideboardLockTelemetry(seatIndex);
                     }
                 }
                 else if (!seat.IsOnline)
                 {
                     _sideboardTracker.LockOriginal(seatIndex, "disconnected");
+                    RecordSideboardLockTelemetry(seatIndex);
                     SendSideboardLocked(seatIndex);
                 }
                 else
@@ -1026,6 +1059,7 @@ namespace MahjongGame.Core.Network
         {
             if (_sideboardTracker == null || _sideboardTracker.IsLocked(seatIndex)) return;
             _sideboardTracker.LockOriginal(seatIndex, reason);
+            RecordSideboardLockTelemetry(seatIndex);
             SendSideboardLocked(seatIndex);
             BroadcastSideboardProgress();
             FinishSideboardIfAllLocked();
@@ -1058,6 +1092,18 @@ namespace MahjongGame.Core.Network
         {
             if (_sideboardTracker?.AllLocked != true) return;
             EnterWaitingForNextRound();
+        }
+
+        private void RecordSideboardLockTelemetry(int seatIndex)
+        {
+            if (_sideboardTracker == null || !_sideboardTracker.IsLocked(seatIndex)) return;
+            string reason = _sideboardTracker.GetLockReason(seatIndex);
+            bool accepted = _sideboardTracker.WasSelectionAccepted(seatIndex);
+            _talentRuntime?.RecordSideboardLockTelemetry(
+                seatIndex,
+                accepted,
+                original: !accepted,
+                timeout: string.Equals(reason, "timeout", StringComparison.Ordinal));
         }
 
         private void EnterWaitingForNextRound()

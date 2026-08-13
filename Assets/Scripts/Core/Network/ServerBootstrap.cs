@@ -1,5 +1,7 @@
 using System;
+using System.IO;
 using MahjongGame.Core.Network.Transport;
+using MahjongGame.Talents;
 using UnityEngine;
 
 namespace MahjongGame.Core.Network
@@ -18,6 +20,7 @@ namespace MahjongGame.Core.Network
         public int HeartbeatTimeoutSeconds { get; private set; }
         private ConnectionRegistry _connectionRegistry;
         private RoomManager _roomManager;
+        private ITalentTelemetrySink _telemetrySink;
 
         private void Awake()
         {
@@ -37,8 +40,13 @@ namespace MahjongGame.Core.Network
             service.Port = Port;
             service.StartServer();
             _connectionRegistry = new ConnectionRegistry(HeartbeatTimeoutSeconds);
+            _telemetrySink = TalentTelemetry.CreateJsonLineSinkSafely(Path.Combine(
+                Application.persistentDataPath,
+                "Logs",
+                "talent-playtest.jsonl"));
             _roomManager = new RoomManager(MaxRooms, AiFill, _connectionRegistry, messageCacheSize: MessageCacheSize,
-                reconnectWindowSeconds: ReconnectWindowSeconds);
+                reconnectWindowSeconds: ReconnectWindowSeconds,
+                telemetrySink: _telemetrySink);
             Debug.Log($"[ServerBootstrap] ServerBootstrap started. Port={Port}, MaxRooms={MaxRooms}, AiFill={AiFill}, ReconnectWindowSeconds={ReconnectWindowSeconds}, MessageCacheSize={MessageCacheSize}, HeartbeatTimeoutSeconds={HeartbeatTimeoutSeconds}");
         }
 
@@ -46,6 +54,8 @@ namespace MahjongGame.Core.Network
         {
             _roomManager?.Dispose();
             _roomManager = null;
+            (_telemetrySink as IDisposable)?.Dispose();
+            _telemetrySink = null;
             _connectionRegistry = null;
         }
 

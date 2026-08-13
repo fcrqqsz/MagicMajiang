@@ -104,6 +104,7 @@ namespace MahjongGame.Core.Network
 
         // 服务端验证用
         private Dictionary<int, ScoringOptions> _scoringOptions = new Dictionary<int, ScoringOptions>();
+        private readonly int[] _drawCounts = new int[4];
         private readonly Dictionary<int, List<TileData>> _privateWallPreviewTiles =
             new Dictionary<int, List<TileData>>();
         private TileData _lastDiscardedTile; // 响应阶段：被打出的那张牌
@@ -122,6 +123,7 @@ namespace MahjongGame.Core.Network
         public List<TileData> GetHandSnapshot(int seatIndex) => _gameState?.GetHand(seatIndex) ?? new List<TileData>();
         public List<Meld> GetMeldSnapshot(int seatIndex) => _gameState?.GetMelds(seatIndex) ?? new List<Meld>();
         public List<TileData> GetRiverSnapshot(int seatIndex) => _gameState?.GetRiver(seatIndex) ?? new List<TileData>();
+        public int[] GetDrawCountsSnapshot() => (int[])_drawCounts.Clone();
 
         public ScoringOptions GetScoringOptionsSnapshot(int seatIndex)
         {
@@ -165,6 +167,7 @@ namespace MahjongGame.Core.Network
             LoserId = -1;
             IsDrawGame = false;
             _privateWallPreviewTiles.Clear();
+            Array.Clear(_drawCounts, 0, _drawCounts.Length);
 
             // 缓存牌库配置
             _deckConfigs = new Dictionary<int, DeckConfig>();
@@ -345,6 +348,8 @@ namespace MahjongGame.Core.Network
                 if (!_skipNextDraw)
                 {
                     _lastDrawnTile = _wallService.DrawTile();
+                    if (_currentPlayerIndex >= 0 && _currentPlayerIndex < _drawCounts.Length)
+                        _drawCounts[_currentPlayerIndex]++;
                     BroadcastWallCount();
                     _lastDrawnTile = _talentRuntime.ApplyDraw(
                         new TalentDrawContext(_session, _currentPlayerIndex, _gameState, _deckConfigs),
@@ -1350,7 +1355,10 @@ namespace MahjongGame.Core.Network
                         counterfactualResolution.FinalFan);
                 }));
             if (acceptedLegal)
+            {
                 _talentRuntime.ConfirmAcceptedWin(new TalentWinContext(_session, pid));
+                _talentRuntime.RecordAcceptedWinTelemetry(pid, serverResolution, GetDrawCountsSnapshot());
+            }
             // 断言比对：记录客户端与服务端计算差异（Phase 0 验证用）
             if (winAction.TotalFan != serverFan)
             {

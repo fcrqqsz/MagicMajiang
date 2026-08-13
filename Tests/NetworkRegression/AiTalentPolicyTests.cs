@@ -10,6 +10,10 @@ internal static class AiTalentPolicyTests
 {
     public static void Run(RegressionRunner runner)
     {
+        TelemetrySerializationIsNarrowAndPrivacySafe(runner);
+        RuntimeTelemetryEmitsAppliedAndBlockedExactlyOnce(runner);
+        MatchRoundSideboardAndWinTelemetryUsesAuthoritativeAggregates(runner);
+        ThrowingTelemetrySinkCannotInterruptRoomCompletion(runner);
         DeterministicLoadoutsPassTheAuthoritativeCodec(runner);
         ArchetypePrioritiesOccupyLegalActiveSlots(runner);
         ActivePolicyUsesOnlyAuthoritativeOptions(runner);
@@ -20,6 +24,232 @@ internal static class AiTalentPolicyTests
         RoomAiThreatInputExcludesInactiveAndNonpublicOpponents(runner);
         SideboardFailureReturnsOriginalForImmediateLock(runner);
         OneHundredSeededPolicyRuntimeSequencesStayLegal(runner);
+    }
+
+    private static void TelemetrySerializationIsNarrowAndPrivacySafe(RegressionRunner runner)
+    {
+        var record = new TalentTelemetryRecord
+        {
+            anonymousSessionId = "7ac785e44f18459bb9a9caf33a6b99cd",
+            preset = "standard",
+            mode = "half_game",
+            completedRound = 4,
+            eventType = "active_talent_applied",
+            seatIndex = 2,
+            talentId = "interception",
+            publicValue = 1,
+            drawsPerSeat = new[] { 8, 9, 7, 8 },
+            baseFan = 8,
+            eligibilityFan = 2,
+            postLegalBonusFan = 16,
+            negativeFan = -4,
+            finalFan = 22,
+            winnerSeatIndex = 2,
+            controlApplied = true,
+            controlBlocked = false,
+            sideboardAccepted = false,
+            sideboardOriginal = false,
+            sideboardTimeout = false
+        };
+
+        string json = TalentTelemetry.Serialize(record);
+        runner.Check(json.Contains("\"eventType\":\"active_talent_applied\"", StringComparison.Ordinal)
+                     && json.Contains("\"drawsPerSeat\":[8,9,7,8]", StringComparison.Ordinal)
+                     && !json.Contains('\n')
+                     && !json.Contains('\r'),
+            "telemetry serializes one compact JSON gameplay-fact object");
+
+        string[] forbiddenNameFragments =
+        {
+            "username", "displayname", "playerid", "credential", "hand", "concealed",
+            "deckorder", "peektile", "roomticket", "connectionid", "streamid"
+        };
+        string[] recordFieldNames = typeof(TalentTelemetryRecord)
+            .GetFields(BindingFlags.Instance | BindingFlags.Public)
+            .Select(field => field.Name.ToLowerInvariant())
+            .ToArray();
+        bool hasForbiddenField = recordFieldNames.Any(fieldName =>
+            forbiddenNameFragments.Any(fragment => fieldName.Contains(fragment, StringComparison.Ordinal)));
+        runner.Check(!hasForbiddenField
+                     && forbiddenNameFragments.All(fragment =>
+                         !json.Contains(fragment, StringComparison.OrdinalIgnoreCase)),
+            "telemetry record members and serialized output exclude identity and hidden state");
+    }
+
+    private static void RuntimeTelemetryEmitsAppliedAndBlockedExactlyOnce(RegressionRunner runner)
+    {
+        var sink = new MemoryTalentTelemetrySink();
+        RunInterceptionTelemetryScenario(sink, targetHasDefense: false, sessionId: "cc8b5f9622e04f28992af407c776771a");
+        RunInterceptionTelemetryScenario(sink, targetHasDefense: true, sessionId: "6f10b7d1e41d47e78998df52095ea7d2");
+
+        TalentTelemetryRecord[] applied = sink.Records
+            .Where(record => record.eventType == "active_talent_applied")
+            .ToArray();
+        TalentTelemetryRecord[] blocked = sink.Records
+            .Where(record => record.eventType == "blocked_negative_effect")
+            .ToArray();
+        runner.Check(applied.Length == 1
+                     && applied[0].seatIndex == 1
+                     && applied[0].talentId == "interception"
+                     && applied[0].controlApplied
+                     && !applied[0].controlBlocked,
+            "one authoritative applied control result emits one telemetry record");
+        runner.Check(blocked.Length == 1
+                     && blocked[0].seatIndex == 0
+                     && blocked[0].talentId == "composure"
+                     && blocked[0].controlBlocked
+                     && !blocked[0].controlApplied,
+            "one authoritative blocked control result emits one telemetry record");
+    }
+
+    private static void RunInterceptionTelemetryScenario(
+        ITalentTelemetrySink sink,
+        bool targetHasDefense,
+        string sessionId)
+    {
+        var target = new TalentSlotConfig();
+        target.SlotTalentIds[0] = "sheathed_edge";
+        if (targetHasDefense) target.SlotTalentIds[3] = "composure";
+        var actor = new TalentSlotConfig();
+        actor.SlotTalentIds[3] = "interception";
+        var runtime = new TalentMatchRuntime(
+            new Dictionary<int, TalentSlotConfig> { [0] = target, [1] = actor },
+            TalentRegistry.Instance,
+            sink,
+            sessionId,
+            AlienationPreset.Standard);
+        var session = new GameSession(GameMode.HalfGame);
+        runtime.BeginMatch(session);
+        BeginReadyRound(runtime, session);
+        for (int round = 0; round < 3; round++)
+        {
+            runtime.EndRound(new TalentRoundOutcome { WinnerSeatIndex = 2 }, session);
+            session.AdvanceRound();
+            BeginReadyRound(runtime, session);
+        }
+
+        const long DecisionId = 8000000001L;
+        runtime.OpenMainDecision(1, DecisionId);
+        TalentActionResult result = runtime.TryActivate(
+            1,
+            new TalentActionRequest
+            {
+                DecisionId = DecisionId,
+                TalentId = "interception",
+                TargetSeatIndex = 0,
+                TargetTalentId = "sheathed_edge"
+            },
+            new TalentActivationContext(
+                session, 1, TalentActivationWindow.MainTurn, DecisionId));
+        if (!result.Accepted) throw new InvalidOperationException("Telemetry fixture action was rejected.");
+
+        for (int seatIndex = 0; seatIndex < 4; seatIndex++)
+            runtime.DrainEventsForSeat(seatIndex);
+    }
+
+    private static void MatchRoundSideboardAndWinTelemetryUsesAuthoritativeAggregates(
+        RegressionRunner runner)
+    {
+        var sink = new MemoryTalentTelemetrySink();
+        var runtime = new TalentMatchRuntime(
+            new Dictionary<int, TalentSlotConfig> { [0] = new TalentSlotConfig() },
+            TalentRegistry.Instance,
+            sink,
+            "27f658e5bb9d471daaa0212ca65ba75b",
+            AlienationPreset.High);
+        var session = new GameSession(GameMode.FullGame);
+        runtime.BeginMatch(session);
+        BeginReadyRound(runtime, session);
+        runtime.RecordAcceptedWinTelemetry(
+            3,
+            new TalentFanResolution
+            {
+                IsAttributionComplete = true,
+                BaseFan = 8,
+                EligibilityFan = 2,
+                PostLegalBonusFan = 16,
+                NegativeFan = -4,
+                FinalFan = 22,
+                Contributions = new[]
+                {
+                    new TalentFanContribution
+                    {
+                        TalentId = "must_not_be_serialized",
+                        Category = TalentFanContributionCategory.PostLegal,
+                        FanDelta = 16
+                    }
+                }
+            },
+            new[] { 7, 8, 9, 10 });
+        runtime.EndRound(
+            new TalentRoundOutcome { WinnerSeatIndex = 3, FinalFan = 22 },
+            session,
+            new[] { 7, 8, 9, 10 });
+        session.AdvanceRound();
+        runtime.RecordSideboardLockTelemetry(2, accepted: false, original: true, timeout: true);
+
+        TalentTelemetryRecord[] records = sink.Records.ToArray();
+        TalentTelemetryRecord win = records.Single(record => record.eventType == "accepted_win");
+        TalentTelemetryRecord roundEnd = records.Single(record => record.eventType == "round_end");
+        TalentTelemetryRecord sideboard = records.Single(record => record.eventType == "sideboard_lock");
+        string winJson = TalentTelemetry.Serialize(win);
+        runner.Check(records.Count(record => record.eventType == "match_start") == 1
+                     && records.Count(record => record.eventType == "round_start") == 1
+                     && records.Count(record => record.eventType == "round_end") == 1
+                     && records.Count(record => record.eventType == "accepted_win") == 1
+                     && records.Count(record => record.eventType == "sideboard_lock") == 1,
+            "authoritative match, round, accepted win, and sideboard boundaries emit exactly once");
+        runner.Check(win.preset == "high"
+                     && win.mode == "full_game"
+                     && win.completedRound == 1
+                     && win.winnerSeatIndex == 3
+                     && win.baseFan == 8
+                     && win.eligibilityFan == 2
+                     && win.postLegalBonusFan == 16
+                     && win.negativeFan == -4
+                     && win.finalFan == 22
+                     && win.drawsPerSeat.SequenceEqual(new[] { 7, 8, 9, 10 })
+                     && !winJson.Contains("must_not_be_serialized", StringComparison.Ordinal),
+            "accepted-win telemetry records only Task 3 aggregate attribution and safe draw counts");
+        runner.Check(roundEnd.completedRound == 1
+                     && roundEnd.finalFan == 22
+                     && roundEnd.winnerSeatIndex == 3
+                     && sideboard.completedRound == 1
+                     && !sideboard.sideboardAccepted
+                     && sideboard.sideboardOriginal
+                     && sideboard.sideboardTimeout,
+            "round completion and original-timeout sideboard facts use completed-round authority");
+    }
+
+    private static void ThrowingTelemetrySinkCannotInterruptRoomCompletion(RegressionRunner runner)
+    {
+        TrustedPlayerLoadout loadout = DecodeEmptyLoadout(AlienationPreset.Low);
+        using var room = new Room(
+            "throwing-telemetry-room",
+            GameMode.Single,
+            AlienationPreset.Low,
+            "host",
+            true,
+            64,
+            new ThrowingTalentTelemetrySink());
+        var endpoint = new GameEndpoint();
+        bool started = room.TryAddHuman(
+                           "host", endpoint, "dev:telemetry-host", "Host", loadout, out _)
+                       && room.SetReady("host", ReadyPhase.MatchStart, out _)
+                       && room.SetReady("host", ReadyPhase.GameSceneLoaded, out _);
+        room.GameServer?.CompleteDrawRound();
+
+        runner.Check(started
+                     && room.State == RoomState.SessionCompleted
+                     && room.Session.TotalRoundsPlayed == 1
+                     && room.GameServer?.CompletionNotifications == 1,
+            "throwing telemetry sink cannot interrupt Room round completion or completion latch delivery");
+    }
+
+    private sealed class ThrowingTalentTelemetrySink : ITalentTelemetrySink
+    {
+        public void Record(TalentTelemetryRecord record) =>
+            throw new InvalidOperationException("expected telemetry sink failure");
     }
 
     private static void DeterministicLoadoutsPassTheAuthoritativeCodec(RegressionRunner runner)
