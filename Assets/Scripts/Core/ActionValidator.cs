@@ -70,7 +70,7 @@ namespace MahjongGame.Core
         /// <param name="myHand">手牌数据</param>
         /// <param name="myMelds">已有的副露</param>
         /// <param name="drawnTile">刚摸到的那张牌</param>
-        public static AllowedActions CheckSelfActions(List<TileData> myHand, List<Meld> myMelds, TileData drawnTile, ScoringOptions options = null, WindDirection roundWind = WindDirection.East, WindDirection seatWind = WindDirection.East, SelfTurnKongOptions kongOptions = null)
+        public static AllowedActions CheckSelfActions(List<TileData> myHand, List<Meld> myMelds, TileData drawnTile, ScoringOptions options = null, WindDirection roundWind = WindDirection.East, WindDirection seatWind = WindDirection.East, SelfTurnKongOptions kongOptions = null, bool isKongWin = false)
         {
             AllowedActions actions = new AllowedActions();
 
@@ -78,7 +78,7 @@ namespace MahjongGame.Core
             int fan;
             List<string> details;
 
-            if (MahjongLogic.CheckWinWithFan(myHand, myMelds, drawnTile, true, out fan, out details, roundWind, seatWind, options))
+            if (MahjongLogic.CheckWinWithFan(myHand, myMelds, drawnTile, true, out fan, out details, roundWind, seatWind, options, isKongWin: isKongWin))
             {
                 actions.CanHu = true;
             }

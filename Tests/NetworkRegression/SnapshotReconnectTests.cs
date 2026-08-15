@@ -598,9 +598,11 @@ internal static class SnapshotReconnectTests
     {
         var tracker = new NetworkDecisionTracker();
         var deadline = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() + 10000;
-        var main = tracker.OpenMainTurn(2, deadline);
+        var main = tracker.OpenMainTurn(2, deadline, isKongReplacementDraw: true);
 
         runner.Check(main.DecisionId == 1
+            && main.IsKongReplacementDraw
+            && tracker.Active.IsKongReplacementDraw
             && !tracker.TrySubmitNetworkAction(main.DecisionId, 1, ClientActionType.Discard, out var wrongController)
             && wrongController == "WrongController"
             && !tracker.TrySubmitNetworkAction(main.DecisionId, 2, ClientActionType.Pon, out var wrongPhase)
@@ -613,6 +615,7 @@ internal static class SnapshotReconnectTests
 
         var response = tracker.OpenResponse(0, new TileData(Suit.Man, 3, 0), new[] { 1, 2, 3 }, deadline);
         runner.Check(response.DecisionId == 2
+            && !response.IsKongReplacementDraw
             && !tracker.TrySubmitNetworkAction(main.DecisionId, 1, ClientActionType.Skip, out var stale)
             && stale == "StaleDecision"
             && !tracker.TrySubmitNetworkAction(response.DecisionId, 0, ClientActionType.Skip, out var ineligible)
@@ -623,7 +626,8 @@ internal static class SnapshotReconnectTests
 
         var expiredTracker = new NetworkDecisionTracker();
         var expired = expiredTracker.OpenMainTurn(0, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
-        runner.Check(!expiredTracker.TrySubmitNetworkAction(expired.DecisionId, 0, ClientActionType.Discard, out var expiredError)
+        runner.Check(!expired.IsKongReplacementDraw
+            && !expiredTracker.TrySubmitNetworkAction(expired.DecisionId, 0, ClientActionType.Discard, out var expiredError)
             && expiredError == "DecisionExpired",
             "Expired decisions must reject submissions.");
     }
@@ -728,11 +732,25 @@ internal static class SnapshotReconnectTests
             && restored.rivers[0].tiles.Single().value == 3,
             "Per-seat river DTOs must survive protocol serialization.");
 
-        source.ActiveDecision = new NetworkDecisionTracker().OpenMainTurn(0, 123456790);
+        source.ActiveDecision = new NetworkDecisionTracker().OpenMainTurn(
+            0,
+            123456790,
+            isKongReplacementDraw: true);
         source.MainTurnDrawnTile = new TileData(Suit.Pin, 8, 0);
-        runner.Check(RoomGameSnapshotBuilder.Build(source, 0).mainTurnDrawnTile?.value == 8
-            && RoomGameSnapshotBuilder.Build(source, 1).mainTurnDrawnTile == null,
-            "A main-turn drawn tile must be private to the acting seat.");
+        RoomGameSnapshot ownerMainTurn = RoomGameSnapshotBuilder.Build(source, 0);
+        RoomGameSnapshot opponentMainTurn = RoomGameSnapshotBuilder.Build(source, 1);
+        var restoredMainTurn = MessageSerializer.DeserializePayload<RoomGameSnapshot>(
+            MessageSerializer.DeserializeEnvelope(
+                MessageSerializer.Serialize("RoomSnapshot", 8, ownerMainTurn)).data);
+        var projectedState = new ClientGameState();
+        projectedState.ApplySnapshot(ownerMainTurn, 8);
+        runner.Check(ownerMainTurn.mainTurnDrawnTile?.value == 8
+            && ownerMainTurn.activeDecision.isKongReplacementDraw
+            && opponentMainTurn.mainTurnDrawnTile == null
+            && opponentMainTurn.activeDecision.isKongReplacementDraw
+            && restoredMainTurn.activeDecision.isKongReplacementDraw
+            && projectedState.Snapshot.activeDecision.isKongReplacementDraw,
+            "A replacement-draw main decision survives immutable, wire, and client snapshot projection while the tile remains private.");
     }
 
     private static void TestCompletedEastOnlyProjection(RegressionRunner runner)

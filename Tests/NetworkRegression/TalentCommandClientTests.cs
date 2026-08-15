@@ -13,6 +13,7 @@ internal static class TalentCommandClientTests
     public static void Run(RegressionRunner runner)
     {
         RemoteProxySerializesTalentActionFromAuthoritativeMainDecision(runner);
+        RemoteProxyForwardsKongReplacementDrawAuthority(runner);
         RemoteProxyBindsAndUnbindsTalentPresentationClient(runner);
         SameSceneRecoveryPublishesTalentProjectionOnce(runner);
         CurrentSnapshotTalentProjectionReplaysAfterSceneConstruction(runner);
@@ -24,6 +25,33 @@ internal static class TalentCommandClientTests
         LiveSideboardDecisionAuthorizesSubmission(runner);
         SideboardRejectsLockedWrongPhaseAndConnectionRecovery(runner);
         WebSocketClient.ResetForTests();
+    }
+
+    private static void RemoteProxyForwardsKongReplacementDrawAuthority(RegressionRunner runner)
+    {
+        using ClientRoomService service = CreateLiveRoomService();
+        var local = new TalentPresentationClientStub();
+        using var proxy = new ProxyLifetime(new RemoteServerProxy(local, service));
+
+        WebSocketClient.Instance.Receive(MessageSerializer.Serialize("TileDrawn", 3, new TileDrawnMessage
+        {
+            decisionId = MainDecisionId,
+            decision = new SnapshotDecision
+            {
+                decisionId = MainDecisionId,
+                phase = (int)NetworkDecisionPhase.MainTurn,
+                actingSeatIndex = 0,
+                controllerSeatIndex = 0,
+                eligibleSeats = new[] { 0 },
+                submittedSeats = Array.Empty<int>(),
+                deadlineUnixMilliseconds = DateTimeOffset.UtcNow.AddMinutes(1).ToUnixTimeMilliseconds(),
+                isKongReplacementDraw = true
+            },
+            tile = new SimpleTileData { suit = (int)Suit.Man, value = 5, isValid = true }
+        }));
+
+        runner.Check(local.LastDrawWasKongReplacement,
+            "RemoteServerProxy forwards the ordered main decision's replacement-draw authority to the local client");
     }
 
     private static void CurrentSnapshotTalentProjectionReplaysAfterSceneConstruction(RegressionRunner runner)
@@ -523,6 +551,7 @@ internal static class TalentCommandClientTests
         public int BindCount { get; private set; }
         public int UnbindCount { get; private set; }
         public RemoteServerProxy LastProxy { get; private set; }
+        public bool LastDrawWasKongReplacement { get; private set; }
 
         public int PlayerId => 0;
         public System.Threading.CancellationToken TurnCancellationToken { get; set; }
@@ -540,7 +569,8 @@ internal static class TalentCommandClientTests
         }
 
         public void OnGameStart(List<TileData> startingHand) { }
-        public void OnTileDrawn(TileData drawnTile) { }
+        public void OnTileDrawn(TileData drawnTile, bool isKongReplacementDraw) =>
+            LastDrawWasKongReplacement = isKongReplacementDraw;
         public void OnPlayerDrawn(int playerId) { }
         public void OnTurnWithoutDraw() { }
         public void OnWallCountChanged(int remainingCount) { }

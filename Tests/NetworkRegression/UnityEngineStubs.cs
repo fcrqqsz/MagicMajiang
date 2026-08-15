@@ -169,7 +169,7 @@ namespace MahjongGame.Core.Agents
         public int PlayerId { get; protected set; }
         public System.Threading.CancellationToken TurnCancellationToken { get; set; }
         public void OnGameStart(System.Collections.Generic.List<MahjongGame.Core.TileData> startingHand) { }
-        public void OnTileDrawn(MahjongGame.Core.TileData drawnTile) { }
+        public void OnTileDrawn(MahjongGame.Core.TileData drawnTile, bool isKongReplacementDraw) { }
         public void OnPlayerDrawn(int playerId) { }
         public void OnTurnWithoutDraw() { }
         public void OnWallCountChanged(int remainingCount) { }

@@ -236,7 +236,10 @@ namespace MahjongGame.Core.Agents
             float remainingSeconds = Mathf.Max(0.1f, (activeDecision.deadlineUnixMilliseconds - now) / 1000f);
             if ((NetworkDecisionPhase)activeDecision.phase == NetworkDecisionPhase.MainTurn)
             {
-                ResumeMainTurnDecision(snapshot.mainTurnDrawnTile?.ToTileData(), remainingSeconds);
+                ResumeMainTurnDecision(
+                    snapshot.mainTurnDrawnTile?.ToTileData(),
+                    remainingSeconds,
+                    activeDecision.isKongReplacementDraw);
                 return;
             }
 
@@ -302,7 +305,7 @@ namespace MahjongGame.Core.Agents
             if (view != null) view.DrawCard();
         }
 
-        public async void OnTileDrawn(TileData drawnTile)
+        public async void OnTileDrawn(TileData drawnTile, bool isKongReplacementDraw)
         {
             using var operationCancellation = CreateOperationCancellation();
             var ct = operationCancellation.Token;
@@ -311,7 +314,7 @@ namespace MahjongGame.Core.Agents
                 // 表现层：摸牌动画
                 _handController.DrawCardData(drawnTile);
                 await Task.Delay(300, ct);
-                await BeginMainTurnDecision(drawnTile, null, ct);
+                await BeginMainTurnDecision(drawnTile, null, isKongReplacementDraw, ct);
             }
             catch (OperationCanceledException)
             {
@@ -321,12 +324,19 @@ namespace MahjongGame.Core.Agents
             }
         }
 
-        private async void ResumeMainTurnDecision(TileData drawnTile, float? recoveryTimerSeconds)
+        private async void ResumeMainTurnDecision(
+            TileData drawnTile,
+            float? recoveryTimerSeconds,
+            bool isKongReplacementDraw = false)
         {
             using var operationCancellation = CreateOperationCancellation();
             try
             {
-                await BeginMainTurnDecision(drawnTile, recoveryTimerSeconds, operationCancellation.Token);
+                await BeginMainTurnDecision(
+                    drawnTile,
+                    recoveryTimerSeconds,
+                    isKongReplacementDraw,
+                    operationCancellation.Token);
             }
             catch (OperationCanceledException)
             {
@@ -336,14 +346,26 @@ namespace MahjongGame.Core.Agents
         }
 
         /// <summary>Offers self-actions when this main turn drew a tile, then waits for the authoritative discard.</summary>
-        private async Task BeginMainTurnDecision(TileData drawnTile, float? recoveryTimerSeconds, CancellationToken ct)
+        private async Task BeginMainTurnDecision(
+            TileData drawnTile,
+            float? recoveryTimerSeconds,
+            bool isKongReplacementDraw,
+            CancellationToken ct)
         {
             if (drawnTile != null)
             {
                 var handData = _handController.GetHandData();
                 var melds = _handController.Melds;
                 var kongOptions = _handController.GetSelfTurnKongOptions();
-                var actions = ActionValidator.CheckSelfActions(handData, melds, drawnTile, _scoringOptions, _roundWind, _seatWind, kongOptions);
+                var actions = ActionValidator.CheckSelfActions(
+                    handData,
+                    melds,
+                    drawnTile,
+                    _scoringOptions,
+                    _roundWind,
+                    _seatWind,
+                    kongOptions,
+                    isKongReplacementDraw);
                 if (actions.HasAction)
                 {
                     bool actionTaken = false;
@@ -357,7 +379,17 @@ namespace MahjongGame.Core.Agents
                         {
                             int totalFan;
                             List<string> fanDetails;
-                            MahjongLogic.CheckWinWithFan(handData, melds, drawnTile, true, out totalFan, out fanDetails, _roundWind, _seatWind, _scoringOptions);
+                            MahjongLogic.CheckWinWithFan(
+                                handData,
+                                melds,
+                                drawnTile,
+                                true,
+                                out totalFan,
+                                out fanDetails,
+                                _roundWind,
+                                _seatWind,
+                                _scoringOptions,
+                                isKongWin: isKongReplacementDraw);
 
                             var action = new ClientAction(PlayerId, ClientActionType.Hu, drawnTile);
                             action.SetHuDetails(totalFan, fanDetails);

@@ -14,6 +14,7 @@ Check(typeof(GameServer).Assembly == System.Reflection.Assembly.GetExecutingAsse
     failures);
 await RealGameServerCountsOnlyMainLoopDrawAndEmitsAcceptedWinOnce(failures);
 await ThrowingSinkCannotInterruptRealGameServerCompletion(failures);
+await RealGameServerMarksAndScoresEveryCommittedKongReplacementDraw(failures);
 JsonLineSinkWritesEscapedCompactUtf8Records(failures);
 JsonLineFactoryFallsBackToNullWhenCreationFails(failures);
 
@@ -84,6 +85,79 @@ static async Task ThrowingSinkCannotInterruptRealGameServerCompletion(List<strin
 
     Check(result.Kind == GameRoundCompletionKind.Win && completions == 1 && server.WinnerId == 0,
         "throwing telemetry sink cannot interrupt real GameServer accepted-win completion", failures);
+}
+
+static async Task RealGameServerMarksAndScoresEveryCommittedKongReplacementDraw(
+    List<string> failures)
+{
+    foreach (KongFlow flow in Enum.GetValues<KongFlow>())
+    {
+        var observedReplacement = new TaskCompletionSource<bool>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var finished = new TaskCompletionSource<GameRoundCompletion>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        GameServer server = CreateKongFlowServer(
+            flow,
+            observedReplacement,
+            out List<IPlayerClient> clients,
+            out List<DeckConfig> configs,
+            out GameSession session);
+        server.OnRoundFinished += completion => finished.TrySetResult(completion);
+
+        server.StartGame(clients, configs, session);
+        bool marked = await observedReplacement.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        if (!marked)
+        {
+            server.StopGame();
+            Check(false,
+                $"real GameServer {flow} commit must mark the immediate replacement-draw decision",
+                failures);
+            continue;
+        }
+
+        GameRoundCompletion completion = await finished.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Check(completion.Kind == GameRoundCompletionKind.Win
+              && server.WinFanDetails.Any(detail => detail.StartsWith("杠上开花("))
+              && server.WinFanDetails.All(detail => !detail.StartsWith("自摸(")),
+            $"real GameServer {flow} replacement self-draw must finish with kong win and exclude self-draw " +
+            $"(kind={completion.Kind}, fan={server.WinFan}, details={string.Join("|", server.WinFanDetails)})",
+            failures);
+    }
+}
+
+static GameServer CreateKongFlowServer(
+    KongFlow flow,
+    TaskCompletionSource<bool> observedReplacement,
+    out List<IPlayerClient> clients,
+    out List<DeckConfig> configs,
+    out GameSession session)
+{
+    var loadouts = Enumerable.Range(0, 4)
+        .ToDictionary(index => index, _ => new TalentSlotConfig());
+    var runtime = new TalentMatchRuntime(loadouts, TalentRegistry.Instance);
+    session = new GameSession(GameMode.Single);
+    runtime.BeginMatch(session);
+
+    TileData firstDraw = flow == KongFlow.Exposed
+        ? KongFixtures.Tile(Suit.Man, 9, 0)
+        : KongFixtures.Tile(Suit.Sou, 9, 0);
+    var wall = new ScriptedDrawWallService(firstDraw, KongFixtures.Tile(Suit.Dragon, 1, 0));
+    var server = new GameServer(wall, runtime, new GameServerOptions
+    {
+        ActionTimeoutMs = 1000,
+        ResponseTimeoutMs = 1000,
+        UseDebugHand = true,
+        DebugHand = Enumerable.Range(0, 13).Select(_ => KongFixtures.Tile(Suit.Pin, 1, 0)).ToList()
+    });
+    clients = Enumerable.Range(0, 4)
+        .Select(index => (IPlayerClient)new KongFlowClient(
+            index,
+            server,
+            flow,
+            observedReplacement))
+        .ToList();
+    configs = Enumerable.Range(0, 4).Select(_ => DeckConfig.CreateStandard()).ToList();
+    return server;
 }
 
 static void JsonLineSinkWritesEscapedCompactUtf8Records(List<string> failures)
@@ -255,6 +329,172 @@ sealed class DeterministicWallService : IWallService
     public List<TileData> PeekTopTiles(int count) => _tiles.Take(count).ToList();
 }
 
+enum KongFlow
+{
+    Concealed,
+    Added,
+    Exposed
+}
+
+sealed class ScriptedDrawWallService : IWallService
+{
+    private readonly TileData[] _draws;
+    private readonly Queue<TileData> _tiles = new();
+
+    public ScriptedDrawWallService(params TileData[] draws) => _draws = draws;
+    public int RemainingCount => _tiles.Count;
+
+    public void BuildWall(List<DeckConfig> playerConfigs)
+    {
+        _tiles.Clear();
+        for (int index = 0; index < 39; index++)
+            _tiles.Enqueue(KongFixtures.Tile(Suit.Sou, index % 9 + 1, index % 4));
+        foreach (TileData draw in _draws) _tiles.Enqueue(draw);
+    }
+
+    public List<TileData> GetWallTiles() => _tiles.ToList();
+    public void ShuffleWall() { }
+    public TileData DrawTile() => _tiles.Dequeue();
+    public List<TileData> PeekTopTiles(int count) => _tiles.Take(count).ToList();
+}
+
+sealed class KongFlowClient : IPlayerClient
+{
+    private readonly GameServer _server;
+    private readonly KongFlow _flow;
+    private readonly TaskCompletionSource<bool> _observedReplacement;
+    private int _ownDrawCount;
+
+    public KongFlowClient(
+        int playerId,
+        GameServer server,
+        KongFlow flow,
+        TaskCompletionSource<bool> observedReplacement)
+    {
+        PlayerId = playerId;
+        _server = server;
+        _flow = flow;
+        _observedReplacement = observedReplacement;
+    }
+
+    public int PlayerId { get; }
+    public CancellationToken TurnCancellationToken { get; set; }
+    public void OnGameStart(List<TileData> startingHand) { }
+
+    public void OnTileDrawn(TileData drawnTile, bool isKongReplacementDraw)
+    {
+        _ownDrawCount++;
+        if (_flow == KongFlow.Exposed)
+        {
+            if (PlayerId == 0 && _ownDrawCount == 1)
+            {
+                ServerGameState state = GetServerState();
+                TileData target = KongFixtures.Tile(Suit.Man, 9, 0);
+                state.InitHand(0, new List<TileData> { target });
+                state.InitHand(1, Enumerable.Range(0, 3)
+                    .Select(_ => KongFixtures.Tile(Suit.Man, 9, 1))
+                    .Concat(KongFixtures.CreateReadyTenTiles(1))
+                    .ToList());
+                Submit(new ClientAction(0, ClientActionType.Discard, target));
+            }
+            else if (PlayerId == 1 && _ownDrawCount == 1)
+            {
+                ObserveReplacementAndWin(drawnTile);
+            }
+            return;
+        }
+
+        if (PlayerId != 0) return;
+        if (_ownDrawCount == 1)
+        {
+            ServerGameState state = GetServerState();
+            TileData target = KongFixtures.Tile(Suit.Man, 9, 0);
+            if (_flow == KongFlow.Concealed)
+            {
+                state.InitHand(0, Enumerable.Range(0, 4)
+                    .Select(_ => KongFixtures.Tile(Suit.Man, 9, 0))
+                    .Concat(KongFixtures.CreateReadyTenTiles(0))
+                    .ToList());
+                Submit(new ClientAction(0, ClientActionType.AnGan, target));
+            }
+            else
+            {
+                state.InitHand(0, Enumerable.Range(0, 2)
+                    .Select(_ => KongFixtures.Tile(Suit.Man, 9, 0))
+                    .Concat(KongFixtures.CreateReadyTenTiles(0))
+                    .ToList());
+                state.ApplyMeld(0, ClientActionType.Pon, target, null);
+                state.AddTile(0, target);
+                Submit(new ClientAction(0, ClientActionType.JiaGang, target));
+            }
+        }
+        else if (_ownDrawCount == 2)
+        {
+            ObserveReplacementAndWin(drawnTile);
+        }
+    }
+
+    public void OnOtherPlayerDiscarded(int playerId, TileData discardedTile)
+    {
+        if (_flow != KongFlow.Exposed || playerId != 0 || PlayerId == 0) return;
+        Submit(PlayerId == 1
+            ? new ClientAction(PlayerId, ClientActionType.MingGan, discardedTile)
+            : ClientAction.Skip(PlayerId));
+    }
+
+    public void OnAddedKongDeclared(int playerId, TileData targetTile)
+    {
+        if (_flow == KongFlow.Added && PlayerId != playerId)
+            Submit(ClientAction.Skip(PlayerId));
+    }
+
+    private void ObserveReplacementAndWin(TileData drawnTile)
+    {
+        NetworkDecisionContext decision = _server.ActiveDecision;
+        bool marked = decision?.IsKongReplacementDraw == true;
+        _observedReplacement.TrySetResult(marked);
+        if (!marked) return;
+        Submit(new ClientAction(PlayerId, ClientActionType.Hu, drawnTile));
+    }
+
+    private void Submit(ClientAction action)
+    {
+        NetworkDecisionContext decision = _server.ActiveDecision;
+        _server.SubmitNetworkAction(PlayerId, decision.DecisionId, action, out _);
+    }
+
+    private ServerGameState GetServerState() => (ServerGameState)typeof(GameServer)
+        .GetField("_gameState", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+        .GetValue(_server);
+
+    public void OnPlayerDrawn(int playerId) { }
+    public void OnTurnWithoutDraw() { }
+    public void OnWallCountChanged(int remainingCount) { }
+    public void OnActionResolved(int playerId, ClientActionType actionType, TileData targetTile, int[] chiCombinations = null) { }
+    public void OnDrawGame() { }
+    public void OnPlayerWin(int playerId, int totalFan, List<string> fanDetails, bool isSelfDraw,
+        WinKind winKind, int loserId, WinningHandSnapshot winningHand,
+        TalentFanBreakdownMessage talentFanBreakdown) { }
+    public void OnRoundStart(int roundNumber, WindDirection prevalentWind, WindDirection seatWind, int dealerIndex) { }
+    public void OnSessionEnd(int[] finalScores) { }
+    public void OnTimeout(TileData autoDiscardedTile) { }
+    public void OnTalentInfo(ScoringOptions scoringOptions) { }
+    public void OnPeekWallTiles(List<TileData> topTiles) { }
+}
+
+static class KongFixtures
+{
+    public static TileData Tile(Suit suit, int value, int ownerId) => new(suit, value, ownerId);
+
+    public static List<TileData> CreateReadyTenTiles(int ownerId) => new()
+    {
+        Tile(Suit.Man, 2, ownerId), Tile(Suit.Man, 3, ownerId), Tile(Suit.Man, 4, ownerId),
+        Tile(Suit.Man, 5, ownerId), Tile(Suit.Man, 6, ownerId), Tile(Suit.Man, 7, ownerId),
+        Tile(Suit.Pin, 2, ownerId), Tile(Suit.Pin, 3, ownerId), Tile(Suit.Pin, 4, ownerId),
+        Tile(Suit.Dragon, 1, ownerId)
+    };
+}
+
 sealed class WinningClient : IPlayerClient
 {
     private readonly GameServer _server;
@@ -273,7 +513,7 @@ sealed class WinningClient : IPlayerClient
     public int PlayerId { get; }
     public CancellationToken TurnCancellationToken { get; set; }
     public void OnGameStart(List<TileData> startingHand) { }
-    public void OnTileDrawn(TileData drawnTile)
+    public void OnTileDrawn(TileData drawnTile, bool isKongReplacementDraw)
     {
         if (PlayerId != 0) return;
         _beforeWinningSubmission?.Invoke(_server, drawnTile);

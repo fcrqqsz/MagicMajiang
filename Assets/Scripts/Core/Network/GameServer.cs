@@ -90,6 +90,8 @@ namespace MahjongGame.Core.Network
 
         // 临时流转控制
         private bool _skipNextDraw = false;
+        private bool _pendingKongReplacementDraw;
+        private bool _currentDrawIsKongReplacement;
         private TileData _lastDrawnTile; // 记录当前摸牌，供超时自动出牌使用
 
         /// <summary>The draw that opened the current main decision, if this main turn drew a tile.</summary>
@@ -166,6 +168,8 @@ namespace MahjongGame.Core.Network
             WinningHandSnapshot = null;
             LoserId = -1;
             IsDrawGame = false;
+            _pendingKongReplacementDraw = false;
+            _currentDrawIsKongReplacement = false;
             _privateWallPreviewTiles.Clear();
             Array.Clear(_drawCounts, 0, _drawCounts.Length);
 
@@ -244,6 +248,8 @@ namespace MahjongGame.Core.Network
         public void StopGame()
         {
             _isGameActive = false;
+            _pendingKongReplacementDraw = false;
+            _currentDrawIsKongReplacement = false;
             CloseActiveDecision();
             
             // 取消当前的回合等待 CTS
@@ -340,7 +346,12 @@ namespace MahjongGame.Core.Network
 
                 var currentPlayer = _clients[_currentPlayerIndex];
                 _pendingActionTcs = new TaskCompletionSource<ClientAction>();
-                var mainDecision = _decisionTracker.OpenMainTurn(_currentPlayerIndex, GetDeadlineUnixMilliseconds(ActionTimeoutMs));
+                _currentDrawIsKongReplacement = !_skipNextDraw && _pendingKongReplacementDraw;
+                if (!_skipNextDraw) _pendingKongReplacementDraw = false;
+                var mainDecision = _decisionTracker.OpenMainTurn(
+                    _currentPlayerIndex,
+                    GetDeadlineUnixMilliseconds(ActionTimeoutMs),
+                    _currentDrawIsKongReplacement);
                 _talentRuntime.OpenMainDecision(_currentPlayerIndex, mainDecision.DecisionId);
                 SetRemoteDecision(currentPlayer, mainDecision);
 
@@ -364,7 +375,7 @@ namespace MahjongGame.Core.Network
                     OnTurnStarted?.Invoke(_currentPlayerIndex, ActionTimeoutMs / 1000f);
 
                     // 这里发送给当前玩家具体牌数据
-                    currentPlayer.OnTileDrawn(_lastDrawnTile);
+                    currentPlayer.OnTileDrawn(_lastDrawnTile, _currentDrawIsKongReplacement);
 
                     // 广播给其他人，某人摸牌了 (不包含具体牌数据)
                     for (int i = 0; i < _clients.Count; i++)
@@ -426,6 +437,7 @@ namespace MahjongGame.Core.Network
                         Debug.LogError($"[GameServer] Could not commit concealed kong for player {_currentPlayerIndex}.");
                         continue;
                     }
+                    _pendingKongReplacementDraw = true;
                     OnTalentEventsAvailable?.Invoke();
                     continue; // 直接重新循环
                 }
@@ -464,6 +476,7 @@ namespace MahjongGame.Core.Network
                         Debug.LogError($"[GameServer] Could not commit added kong for player {_currentPlayerIndex}.");
                         continue;
                     }
+                    _pendingKongReplacementDraw = true;
                     continue;
                 }
                 else if (action.ActionType == ClientActionType.Discard)
@@ -565,6 +578,7 @@ namespace MahjongGame.Core.Network
                             {
                                 // 杠牌需要摸岭上开花，不跳过摸牌
                                 _skipNextDraw = false;
+                                _pendingKongReplacementDraw = true;
                             }
                             else
                             {
@@ -1245,7 +1259,8 @@ namespace MahjongGame.Core.Network
                     roundWind,
                     seatWind,
                     options,
-                    isRobKongWin))
+                    isRobKongWin,
+                    isKongWin: isSelfDraw && _currentDrawIsKongReplacement))
             {
                 return false;
             }
@@ -1270,6 +1285,7 @@ namespace MahjongGame.Core.Network
 
             // 确定胡的那张牌
             TileData winTile = winTileOverride ?? (isSelfDraw ? _lastDrawnTile : _lastDiscardedTile);
+            bool isKongWin = isSelfDraw && _currentDrawIsKongReplacement;
 
             // 服务端权威重算番数
             bool acceptedLegal = TryResolveWin(
@@ -1298,7 +1314,8 @@ namespace MahjongGame.Core.Network
                                 roundWind,
                                 seatWind,
                                 candidateOptions,
-                                isRobKongWin)));
+                                isRobKongWin,
+                                isKongWin)));
                     if (attribution.FinalFan == serverFan)
                     {
                         serverResolution = attribution;
@@ -1342,7 +1359,8 @@ namespace MahjongGame.Core.Network
                         roundWind,
                         seatWind,
                         counterfactualOptions,
-                        isRobKongWin);
+                        isRobKongWin,
+                        isKongWin);
                     if (!isLegal) return new TalentWinEvaluation(false, 0);
 
                     TalentFanResolution counterfactualResolution =
@@ -1408,12 +1426,17 @@ namespace MahjongGame.Core.Network
             });
             OnTalentEventsAvailable?.Invoke();
 
+            _pendingKongReplacementDraw = false;
+            _currentDrawIsKongReplacement = false;
+
             TryCompleteRound(GameRoundCompletionKind.Win);
         }
 
         private void HandleDrawGame()
         {
             _isGameActive = false;
+            _pendingKongReplacementDraw = false;
+            _currentDrawIsKongReplacement = false;
             CloseActiveDecision();
             OnTurnEnded?.Invoke();
             IsDrawGame = true;
@@ -1429,6 +1452,8 @@ namespace MahjongGame.Core.Network
         private void AbortRound(Exception error)
         {
             _isGameActive = false;
+            _pendingKongReplacementDraw = false;
+            _currentDrawIsKongReplacement = false;
             CloseActiveDecision();
             try
             {

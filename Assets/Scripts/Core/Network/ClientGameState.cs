@@ -801,7 +801,8 @@ namespace MahjongGame.Core.Network
                 eligibleSeats = CloneInts(decision.eligibleSeats),
                 submittedSeats = CloneInts(decision.submittedSeats),
                 controllerSeatIndex = decision.controllerSeatIndex,
-                deadlineUnixMilliseconds = decision.deadlineUnixMilliseconds
+                deadlineUnixMilliseconds = decision.deadlineUnixMilliseconds,
+                isKongReplacementDraw = decision.isKongReplacementDraw
             };
         }
 

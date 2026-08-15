@@ -88,10 +88,10 @@ namespace MahjongGame.Core.Network
         public void OnTurnWithoutDraw() => _remote.OnTurnWithoutDraw();
         public void OnWallCountChanged(int remainingCount) => _remote.OnWallCountChanged(remainingCount);
 
-        public void OnTileDrawn(TileData drawnTile)
+        public void OnTileDrawn(TileData drawnTile, bool isKongReplacementDraw)
         {
-            _remote.OnTileDrawn(drawnTile);
-            if (_temporaryAiOwnsDecision) _temporaryAi.OnTileDrawn(drawnTile);
+            _remote.OnTileDrawn(drawnTile, isKongReplacementDraw);
+            if (_temporaryAiOwnsDecision) _temporaryAi.OnTileDrawn(drawnTile, isKongReplacementDraw);
         }
 
         public void OnOtherPlayerDiscarded(int playerId, TileData discardedTile)

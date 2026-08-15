@@ -121,7 +121,9 @@ namespace MahjongGame.Core.Network
                     var drawnMsg = MessageSerializer.DeserializePayload<TileDrawnMessage>(envelope.data);
                     _activeDecisionId = drawnMsg?.decisionId ?? 0;
                     GameHUDController.Instance?.CloseTalentDrawers();
-                    _localClient.OnTileDrawn(drawnMsg.tile?.ToTileData());
+                    _localClient.OnTileDrawn(
+                        drawnMsg.tile?.ToTileData(),
+                        drawnMsg.decision?.isKongReplacementDraw ?? false);
                     break;
                 case "PlayerDrew":
                     var pDrewMsg = MessageSerializer.DeserializePayload<PlayerDrewMessage>(envelope.data);

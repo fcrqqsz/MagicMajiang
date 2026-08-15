@@ -20,13 +20,13 @@ namespace MahjongGame.Core
         /// <summary>
         /// 完整胡牌判定 (含8番起胡校验)
         /// </summary>
-        public static bool CheckWinWithFan(List<TileData> hand, List<Meld> melds, TileData winTile, bool isSelfDraw, out int totalFan, out List<string> fanDetails, WindDirection roundWind = WindDirection.East, WindDirection seatWind = WindDirection.East, ScoringOptions options = null, bool isRobKongWin = false)
+        public static bool CheckWinWithFan(List<TileData> hand, List<Meld> melds, TileData winTile, bool isSelfDraw, out int totalFan, out List<string> fanDetails, WindDirection roundWind = WindDirection.East, WindDirection seatWind = WindDirection.East, ScoringOptions options = null, bool isRobKongWin = false, bool isKongWin = false)
         {
             totalFan = 0;
             fanDetails = null;
 
             FanEvaluation evaluation = EvaluateBestFan(
-                hand, melds, winTile, isSelfDraw, roundWind, seatWind, options, isRobKongWin);
+                hand, melds, winTile, isSelfDraw, roundWind, seatWind, options, isRobKongWin, isKongWin);
             if (!evaluation.HasWinningShape || evaluation.Fan < 8) return false;
 
             totalFan = evaluation.Fan;
@@ -45,7 +45,8 @@ namespace MahjongGame.Core
             WindDirection roundWind = WindDirection.East,
             WindDirection seatWind = WindDirection.East,
             ScoringOptions options = null,
-            bool isRobKongWin = false)
+            bool isRobKongWin = false,
+            bool isKongWin = false)
         {
 
             // 1. 获取所有胡牌拆解方案
@@ -67,9 +68,12 @@ namespace MahjongGame.Core
             // 2. 遍历所有方案，选番数最高的
             foreach (var decomp in decompositions)
             {
-                var ctx = new Fan.FanContext(hand, melds, winTile, isSelfDraw, roundWind, seatWind, decomp);
-                ctx.Wait = decomp.Wait;
-                ctx.IsRobKongWin = isRobKongWin;
+                var ctx = new Fan.FanContext(hand, melds, winTile, isSelfDraw, roundWind, seatWind, decomp)
+                {
+                    Wait = decomp.Wait,
+                    IsRobKongWin = isRobKongWin,
+                    IsKongWin = isKongWin
+                };
 
                 int currentFan = _calculator.CalculateTotalFan(ctx, out List<string> currentDetails);
 

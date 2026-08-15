@@ -283,7 +283,8 @@ namespace MahjongGame.Core.Network
                 eligibleSeats = decision.EligibleSeats?.ToArray() ?? Array.Empty<int>(),
                 submittedSeats = decision.SubmittedSeats?.ToArray() ?? Array.Empty<int>(),
                 controllerSeatIndex = decision.ControllerSeatIndex,
-                deadlineUnixMilliseconds = decision.DeadlineUnixMilliseconds
+                deadlineUnixMilliseconds = decision.DeadlineUnixMilliseconds,
+                isKongReplacementDraw = decision.IsKongReplacementDraw
             };
         }
 
@@ -443,6 +444,7 @@ namespace MahjongGame.Core.Network.Messages
         public int[] submittedSeats;
         public int controllerSeatIndex;
         public long deadlineUnixMilliseconds;
+        public bool isKongReplacementDraw;
     }
 
     [Serializable]

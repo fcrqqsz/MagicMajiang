@@ -72,7 +72,7 @@ namespace MahjongGame.Core.Agents
             // AI does not render wall state.
         }
 
-        public async void OnTileDrawn(TileData drawnTile)
+        public async void OnTileDrawn(TileData drawnTile, bool isKongReplacementDraw)
         {
             var ct = TurnCancellationToken;
             try
@@ -83,14 +83,31 @@ namespace MahjongGame.Core.Agents
                 await Task.Delay(500, ct);
                 TryUseActiveTalent();
 
-                var actions = ActionValidator.CheckSelfActions(_hand, _melds, drawnTile, _scoringOptions, _roundWind, _seatWind);
+                var actions = ActionValidator.CheckSelfActions(
+                    _hand,
+                    _melds,
+                    drawnTile,
+                    _scoringOptions,
+                    _roundWind,
+                    _seatWind,
+                    isKongWin: isKongReplacementDraw);
                 if (actions.HasAction)
                 {
                     if (actions.CanHu)
                     {
                         int totalFan;
                         List<string> fanDetails;
-                        bool canWin = MahjongLogic.CheckWinWithFan(_hand, _melds, drawnTile, true, out totalFan, out fanDetails, _roundWind, _seatWind, _scoringOptions);
+                        bool canWin = MahjongLogic.CheckWinWithFan(
+                            _hand,
+                            _melds,
+                            drawnTile,
+                            true,
+                            out totalFan,
+                            out fanDetails,
+                            _roundWind,
+                            _seatWind,
+                            _scoringOptions,
+                            isKongWin: isKongReplacementDraw);
 
                         if (canWin)
                         {

@@ -84,7 +84,7 @@ namespace MahjongGame.Core.Network
             Send("PeekWall", msg);
         }
 
-        public void OnTileDrawn(TileData drawnTile)
+        public void OnTileDrawn(TileData drawnTile, bool isKongReplacementDraw)
         {
             var msg = new TileDrawnMessage
             {

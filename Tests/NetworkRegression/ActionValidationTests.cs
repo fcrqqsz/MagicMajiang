@@ -9,8 +9,56 @@ internal static class ActionValidationTests
         DoesNotTreatHonorsAsContinuationOfNineSou(runner);
         DoesNotTreatAdjacentFrequencySlotsAsCrossSuitChi(runner);
         PreservesAllLegalChiDirections(runner);
+        KongReplacementDrawSuppliesEligibilityAndExcludesSelfDraw(runner);
         SheathedEdgeDoesNotGrantWinEligibilityButAddsAfterLegalWin(runner);
         PostLegalPenaltiesClampPerEffectAndInTotal(runner);
+    }
+
+    private static void KongReplacementDrawSuppliesEligibilityAndExcludesSelfDraw(
+        RegressionRunner runner)
+    {
+        List<Meld> melds = BuildThreeFixedPungs();
+        List<TileData> hand = new List<TileData>
+        {
+            Tile(Suit.Man, 5), Tile(Suit.Man, 5),
+            Tile(Suit.Wind, 1), Tile(Suit.Wind, 1)
+        };
+        TileData winningTile = Tile(Suit.Man, 5);
+
+        bool ordinary = MahjongLogic.CheckWinWithFan(
+            hand,
+            melds,
+            winningTile,
+            isSelfDraw: true,
+            out _,
+            out _,
+            isRobKongWin: false,
+            isKongWin: false);
+        bool afterKong = MahjongLogic.CheckWinWithFan(
+            hand,
+            melds,
+            winningTile,
+            isSelfDraw: true,
+            out int fan,
+            out List<string> details,
+            isRobKongWin: false,
+            isKongWin: true);
+        AllowedActions ordinaryActions = ActionValidator.CheckSelfActions(
+            hand, melds, winningTile, isKongWin: false);
+        AllowedActions replacementActions = ActionValidator.CheckSelfActions(
+            hand, melds, winningTile, isKongWin: true);
+
+        runner.Check(!ordinary
+                     && afterKong
+                     && !ordinaryActions.CanHu
+                     && replacementActions.CanHu
+                     && fan == 14
+                     && details.Any(detail => detail.StartsWith("杠上开花("))
+                     && details.All(detail => !detail.StartsWith("自摸(")),
+            $"kong replacement self-draw supplies the eight-fan threshold and excludes self-draw " +
+            $"(ordinary={ordinary}, afterKong={afterKong}, ordinaryCanHu={ordinaryActions.CanHu}, " +
+            $"replacementCanHu={replacementActions.CanHu}, fan={fan}, " +
+            $"details={string.Join("|", details ?? new List<string>())})");
     }
 
     private static void PreservesAllLegalChiDirections(RegressionRunner runner)

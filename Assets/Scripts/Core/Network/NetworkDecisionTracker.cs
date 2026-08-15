@@ -24,6 +24,7 @@ namespace MahjongGame.Core.Network
         public int[] SubmittedSeats { get; }
         public int ControllerSeatIndex { get; }
         public long DeadlineUnixMilliseconds { get; }
+        public bool IsKongReplacementDraw { get; }
 
         internal NetworkDecisionContext(
             long decisionId,
@@ -34,7 +35,8 @@ namespace MahjongGame.Core.Network
             IEnumerable<int> eligibleSeats,
             IEnumerable<int> submittedSeats,
             int controllerSeatIndex,
-            long deadlineUnixMilliseconds)
+            long deadlineUnixMilliseconds,
+            bool isKongReplacementDraw = false)
         {
             DecisionId = decisionId;
             Phase = phase;
@@ -45,18 +47,21 @@ namespace MahjongGame.Core.Network
             SubmittedSeats = (submittedSeats ?? Array.Empty<int>()).Distinct().OrderBy(seat => seat).ToArray();
             ControllerSeatIndex = controllerSeatIndex;
             DeadlineUnixMilliseconds = deadlineUnixMilliseconds;
+            IsKongReplacementDraw = isKongReplacementDraw;
         }
 
         internal NetworkDecisionContext WithSubmittedSeat(int seatIndex)
         {
             return new NetworkDecisionContext(DecisionId, Phase, ActingSeatIndex, DiscardingSeatIndex, TargetTile,
-                EligibleSeats, SubmittedSeats.Append(seatIndex), ControllerSeatIndex, DeadlineUnixMilliseconds);
+                EligibleSeats, SubmittedSeats.Append(seatIndex), ControllerSeatIndex, DeadlineUnixMilliseconds,
+                IsKongReplacementDraw);
         }
 
         internal NetworkDecisionContext Clone()
         {
             return new NetworkDecisionContext(DecisionId, Phase, ActingSeatIndex, DiscardingSeatIndex, TargetTile,
-                EligibleSeats, SubmittedSeats, ControllerSeatIndex, DeadlineUnixMilliseconds);
+                EligibleSeats, SubmittedSeats, ControllerSeatIndex, DeadlineUnixMilliseconds,
+                IsKongReplacementDraw);
         }
 
         private static TileData CloneTile(TileData tile)
@@ -79,12 +84,15 @@ namespace MahjongGame.Core.Network
 
         public NetworkDecisionContext Active => _active?.Clone();
 
-        public NetworkDecisionContext OpenMainTurn(int controllerSeatIndex, long deadlineUnixMilliseconds)
+        public NetworkDecisionContext OpenMainTurn(
+            int controllerSeatIndex,
+            long deadlineUnixMilliseconds,
+            bool isKongReplacementDraw = false)
         {
             EnsureNoActiveDecision();
             _active = new NetworkDecisionContext(++_nextDecisionId, NetworkDecisionPhase.MainTurn,
                 controllerSeatIndex, -1, null, new[] { controllerSeatIndex }, Array.Empty<int>(),
-                controllerSeatIndex, deadlineUnixMilliseconds);
+                controllerSeatIndex, deadlineUnixMilliseconds, isKongReplacementDraw);
             return Active;
         }
 

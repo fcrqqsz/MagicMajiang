@@ -25,7 +25,7 @@ namespace MahjongGame.Core.Agents
         /// <summary>
         /// 回合开始，自己摸牌
         /// </summary>
-        void OnTileDrawn(TileData drawnTile);
+        void OnTileDrawn(TileData drawnTile, bool isKongReplacementDraw);
 
         /// <summary>
         /// 广播：某人摸牌了（用于对手表现层增加暗牌）
