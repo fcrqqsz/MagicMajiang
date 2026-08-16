@@ -30,12 +30,19 @@ namespace MahjongGame.UI
         private VisualElement _root;
         private VisualElement _mainGrid;
         private Label _totalText;
-        private VisualElement _alienationFill;
-        private Label _presetLabel;
-        private Label _alienationBreakdownLabel;
-        private Label _alienationWarning;
-        private Button _btnPresetPrev;
-        private Button _btnPresetNext;
+        private Label _budgetTitle;
+        private Label _budgetDeckName;
+        private VisualElement _alienationDialHost;
+        private AlienationDialElement _alienationDial;
+        private Label _alienationDialValue;
+        private Button _btnPresetLow;
+        private Button _btnPresetStandard;
+        private Button _btnPresetHigh;
+        private Label _budgetDeckCost;
+        private Label _budgetTalentCost;
+        private Label _budgetReserveCost;
+        private Label _budgetTotal;
+        private Label _budgetStatus;
         private Button _btnSave;
         private Button _btnExit;
         private Button _btnClearAll;
@@ -56,6 +63,11 @@ namespace MahjongGame.UI
         private List<SavedDeck> _savedDecks;
         private int _selectedDeckIndex;
         private AlienationPreset _currentAlienationPreset = AlienationPreset.Standard;
+        private bool _isDraftDirty;
+
+        private Action _selectLowPreset;
+        private Action _selectStandardPreset;
+        private Action _selectHighPreset;
 
         private List<Action> _allItemRefreshers = new List<Action>();
 
@@ -72,12 +84,18 @@ namespace MahjongGame.UI
 
             _mainGrid = _root.Q<VisualElement>("MainGrid");
             _totalText = _root.Q<Label>("TotalText");
-            _alienationFill = _root.Q<VisualElement>("AlienationFill");
-            _presetLabel = _root.Q<Label>("PresetLabel");
-            _alienationBreakdownLabel = _root.Q<Label>("AlienationBreakdownLabel");
-            _alienationWarning = _root.Q<Label>("AlienationWarning");
-            _btnPresetPrev = _root.Q<Button>("BtnPresetPrev");
-            _btnPresetNext = _root.Q<Button>("BtnPresetNext");
+            _budgetTitle = _root.Q<Label>("BudgetTitle");
+            _budgetDeckName = _root.Q<Label>("BudgetDeckName");
+            _alienationDialHost = _root.Q<VisualElement>("AlienationDialHost");
+            _alienationDialValue = _root.Q<Label>("AlienationDialValue");
+            _btnPresetLow = _root.Q<Button>("BtnPresetLow");
+            _btnPresetStandard = _root.Q<Button>("BtnPresetStandard");
+            _btnPresetHigh = _root.Q<Button>("BtnPresetHigh");
+            _budgetDeckCost = _root.Q<Label>("BudgetDeckCost");
+            _budgetTalentCost = _root.Q<Label>("BudgetTalentCost");
+            _budgetReserveCost = _root.Q<Label>("BudgetReserveCost");
+            _budgetTotal = _root.Q<Label>("BudgetTotal");
+            _budgetStatus = _root.Q<Label>("BudgetStatus");
             _btnSave = _root.Q<Button>("BtnSave");
             _btnExit = _root.Q<Button>("BtnExit");
             _btnClearAll = _root.Q<Button>("BtnClearAll");
@@ -91,14 +109,21 @@ namespace MahjongGame.UI
             _reserveTalentSlots = _root.Q<VisualElement>("ReserveTalentSlots");
             _talentDetailLabel = _root.Q<Label>("TalentDetailLabel");
 
+            _alienationDial = new AlienationDialElement();
+            _alienationDialHost.Insert(0, _alienationDial);
+            _selectLowPreset = () => SelectAlienationPreset(AlienationPreset.Low);
+            _selectStandardPreset = () => SelectAlienationPreset(AlienationPreset.Standard);
+            _selectHighPreset = () => SelectAlienationPreset(AlienationPreset.High);
+
             // 绑定事件
             _btnSave.clicked += OnSaveClicked;
             _btnExit.clicked += OnExitClicked;
             _btnClearAll.clicked += OnClearAllClicked;
             _btnResetAll.clicked += OnResetAllClicked;
             _btnNewDeck.clicked += OnNewDeckClicked;
-            _btnPresetPrev.clicked += OnPresetPrevClicked;
-            _btnPresetNext.clicked += OnPresetNextClicked;
+            _btnPresetLow.clicked += _selectLowPreset;
+            _btnPresetStandard.clicked += _selectStandardPreset;
+            _btnPresetHigh.clicked += _selectHighPreset;
 
             // 初始化默认 config 供 GenerateRows 中的 updateLocalUI 使用
             _currentConfig = DeckConfig.CreateStandard();
@@ -118,8 +143,11 @@ namespace MahjongGame.UI
             _btnClearAll.clicked -= OnClearAllClicked;
             _btnResetAll.clicked -= OnResetAllClicked;
             _btnNewDeck.clicked -= OnNewDeckClicked;
-            _btnPresetPrev.clicked -= OnPresetPrevClicked;
-            _btnPresetNext.clicked -= OnPresetNextClicked;
+            _btnPresetLow.clicked -= _selectLowPreset;
+            _btnPresetStandard.clicked -= _selectStandardPreset;
+            _btnPresetHigh.clicked -= _selectHighPreset;
+            _alienationDial?.RemoveFromHierarchy();
+            _alienationDial = null;
         }
 
         private void OnClearAllClicked() => BatchUpdateDeck(0);
@@ -270,6 +298,7 @@ namespace MahjongGame.UI
             _currentAlienationPreset = AlienationBudgetPolicy.IsDefined(_savedDecks[index].AlienationPreset)
                 ? _savedDecks[index].AlienationPreset
                 : AlienationPreset.Standard;
+            _isDraftDirty = false;
 
             RefreshUI();
         }
@@ -576,27 +605,35 @@ namespace MahjongGame.UI
             int deckCost = _currentConfig.AlienationScore;
             int talentCost = _currentTalents.GetMainIds().Sum(TalentRegistry.Instance.GetCost);
             AlienationGaugeView gauge = AlienationGaugePolicy.Build(deckCost, talentCost, _currentAlienationPreset);
+            DeckEditorDraftView draftView = DeckEditorDraftPresentationPolicy.Build(
+                gauge, total, _isDraftDirty);
             _totalText.text = $"Total: {total} / 34";
-            _presetLabel.text = RoomLoadoutAdmissionPresentationPolicy.GetDisplayName(_currentAlienationPreset);
-            _alienationFill.style.width = Length.Percent(gauge.Fill01 * 100f);
-            _alienationFill.EnableInClassList("over-limit", gauge.IsOverLimit);
-            _alienationBreakdownLabel.text = $"牌库 {gauge.DeckCost} + 主天赋 {gauge.TalentCost} = {gauge.Total} / {gauge.Limit}";
-            _alienationWarning.text = gauge.IsOverLimit ? $"超限 {gauge.Overflow}（仍可保存）" : string.Empty;
-            _alienationWarning.style.display = gauge.IsOverLimit ? DisplayStyle.Flex : DisplayStyle.None;
+            _budgetTitle.text = draftView.Title;
+            _budgetDeckName.text = _selectedDeckIndex >= 0 && _selectedDeckIndex < _savedDecks.Count
+                ? _savedDecks[_selectedDeckIndex].DeckName
+                : string.Empty;
+            _alienationDialValue.text = $"{gauge.Total} / {gauge.Limit}";
+            _alienationDial.SetValue(gauge.Fill01, draftView.Tone);
+            _budgetDeckCost.text = $"牌山成本    {gauge.DeckCost}";
+            _budgetTalentCost.text = $"主天赋成本  {gauge.TalentCost}";
+            _budgetReserveCost.text = "备牌成本    不计入";
+            _budgetTotal.text = $"当前总计    {gauge.Total}";
+            _budgetStatus.text = draftView.StatusText;
+            _budgetStatus.EnableInClassList("near-limit", draftView.Tone == DeckEditorBudgetTone.NearLimit);
+            _budgetStatus.EnableInClassList("over-limit", draftView.Tone == DeckEditorBudgetTone.OverLimit);
+            _btnPresetLow.EnableInClassList("selected", _currentAlienationPreset == AlienationPreset.Low);
+            _btnPresetStandard.EnableInClassList("selected", _currentAlienationPreset == AlienationPreset.Standard);
+            _btnPresetHigh.EnableInClassList("selected", _currentAlienationPreset == AlienationPreset.High);
             _totalText.EnableInClassList("text-green", total == 34);
             _totalText.EnableInClassList("text-white", total != 34);
-            _btnSave.SetEnabled(total == 34);
+            _btnSave.SetEnabled(draftView.CanSave);
         }
 
-        private void OnPresetPrevClicked() => CycleAlienationPreset(-1);
-        private void OnPresetNextClicked() => CycleAlienationPreset(1);
-
-        private void CycleAlienationPreset(int direction)
+        private void SelectAlienationPreset(AlienationPreset preset)
         {
-            AlienationPreset[] presets = { AlienationPreset.Low, AlienationPreset.Standard, AlienationPreset.High };
-            int current = Array.IndexOf(presets, _currentAlienationPreset);
-            if (current < 0) current = 1;
-            _currentAlienationPreset = presets[((current + direction) % presets.Length + presets.Length) % presets.Length];
+            if (_currentAlienationPreset == preset) return;
+            _currentAlienationPreset = preset;
+            _isDraftDirty = true;
             RefreshStats();
         }
 

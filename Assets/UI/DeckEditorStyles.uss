@@ -53,67 +53,6 @@
 .text-green { color: #69f0ae; }
 .text-white { color: #ffffff; }
 
-.alienation-gauge-panel {
-    width: 430px;
-    flex-direction: row;
-    align-items: center;
-}
-
-.alienation-selector {
-    width: 132px;
-    flex-direction: row;
-    align-items: center;
-    justify-content: space-between;
-    margin-right: 12px;
-}
-
-.preset-arrow {
-    width: 28px;
-    height: 28px;
-    padding: 0;
-    border-width: 0;
-    border-radius: 6px;
-    background-color: #222831;
-    color: #00fff5;
-    font-size: 20px;
-}
-
-.preset-label {
-    color: #eeeeee;
-    font-size: 15px;
-    -unity-font-style: bold;
-}
-
-.alienation-track {
-    width: 120px;
-    height: 12px;
-    overflow: hidden;
-    border-radius: 6px;
-    background-color: #222831;
-    margin-right: 12px;
-}
-
-.alienation-fill {
-    height: 12px;
-    width: 0;
-    background-color: #00adb5;
-}
-
-.alienation-fill.over-limit { background-color: #ff6b6b; }
-
-.alienation-breakdown {
-    width: 140px;
-    color: #bfc5cc;
-    font-size: 13px;
-    white-space: normal;
-}
-
-.alienation-warning {
-    color: #ff6b6b;
-    font-size: 13px;
-    -unity-font-style: bold;
-}
-
 /* 中间网格区域 */
 .grid-scroll-view {
     flex-grow: 1;
@@ -285,12 +224,121 @@
 
 /* ======= 右侧牌库列表侧边栏 ======= */
 .deck-sidebar {
-    width: 280px;
+    width: 320px;
     background-color: #393E46;
     border-radius: 12px;
     margin-left: 20px;
     padding: 16px;
     flex-direction: column;
+}
+
+.budget-inspector {
+    flex-shrink: 0;
+    background-color: #222831;
+    border-radius: 12px;
+    padding: 14px;
+    margin-bottom: 14px;
+}
+
+.budget-title {
+    color: #EEEEEE;
+    font-size: 19px;
+    -unity-font-style: bold;
+    -unity-text-align: middle-center;
+}
+
+.budget-deck-name {
+    color: #9aa6b2;
+    font-size: 14px;
+    -unity-text-align: middle-center;
+    margin-top: 3px;
+}
+
+.alienation-dial-host {
+    width: 136px;
+    height: 136px;
+    align-self: center;
+    justify-content: center;
+    align-items: center;
+    position: relative;
+    margin-top: 8px;
+}
+
+.alienation-dial-value {
+    position: absolute;
+    left: 20px;
+    right: 20px;
+    top: 52px;
+    font-size: 22px;
+    color: #EEEEEE;
+    -unity-font-style: bold;
+    -unity-text-align: middle-center;
+}
+
+.budget-preset-row {
+    flex-direction: row;
+    margin-top: 10px;
+}
+
+.budget-preset-button {
+    flex-grow: 1;
+    height: 34px;
+    margin-left: 2px;
+    margin-right: 2px;
+    padding-left: 2px;
+    padding-right: 2px;
+    border-width: 0;
+    border-radius: 7px;
+    background-color: #393E46;
+    color: #bfc5cc;
+    font-size: 13px;
+}
+
+.budget-preset-button.selected {
+    background-color: #00ADB5;
+    color: #222831;
+    -unity-font-style: bold;
+}
+
+.budget-breakdown {
+    margin-top: 12px;
+    padding-top: 8px;
+    border-top-width: 1px;
+    border-top-color: rgba(0, 173, 181, 0.25);
+}
+
+.budget-breakdown-row,
+.budget-breakdown-total {
+    color: #bfc5cc;
+    font-size: 13px;
+    margin-top: 3px;
+    white-space: normal;
+}
+
+.budget-breakdown-total {
+    color: #EEEEEE;
+    -unity-font-style: bold;
+    margin-top: 7px;
+}
+
+.budget-status {
+    color: #69f0ae;
+    font-size: 13px;
+    white-space: normal;
+    margin-top: 10px;
+    padding: 8px;
+    border-radius: 7px;
+    background-color: rgba(105, 240, 174, 0.08);
+}
+
+.budget-status.near-limit {
+    color: #e9c267;
+    background-color: rgba(233, 194, 103, 0.08);
+}
+
+.budget-status.over-limit {
+    color: #ff6b6b;
+    background-color: rgba(255, 107, 107, 0.08);
 }
 
 .sidebar-title {

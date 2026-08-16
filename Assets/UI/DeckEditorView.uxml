@@ -4,18 +4,6 @@
             <ui:VisualElement class="header-container">
                 <ui:VisualElement class="header-stats">
                     <ui:Label name="TotalText" text="Total: 0 / 34" class="stat-label" />
-                    <ui:VisualElement class="alienation-gauge-panel">
-                        <ui:VisualElement name="AlienationPresetSelector" class="alienation-selector">
-                            <ui:Button name="BtnPresetPrev" text="‹" class="preset-arrow" />
-                            <ui:Label name="PresetLabel" text="标准 80" class="preset-label" />
-                            <ui:Button name="BtnPresetNext" text="›" class="preset-arrow" />
-                        </ui:VisualElement>
-                        <ui:VisualElement name="AlienationTrack" class="alienation-track">
-                            <ui:VisualElement name="AlienationFill" class="alienation-fill" />
-                        </ui:VisualElement>
-                        <ui:Label name="AlienationBreakdownLabel" class="alienation-breakdown" />
-                        <ui:Label name="AlienationWarning" class="alienation-warning" />
-                    </ui:VisualElement>
                 </ui:VisualElement>
                 <ui:VisualElement class="header-controls">
                     <ui:Button name="BtnClearAll" text="清空" class="control-btn" />
@@ -43,6 +31,25 @@
         </ui:VisualElement>
 
         <ui:VisualElement name="DeckSidebar" class="deck-sidebar">
+            <ui:VisualElement name="BudgetInspector" class="budget-inspector">
+                <ui:Label name="BudgetTitle" text="当前构筑预算" class="budget-title" />
+                <ui:Label name="BudgetDeckName" class="budget-deck-name" />
+                <ui:VisualElement name="AlienationDialHost" class="alienation-dial-host">
+                    <ui:Label name="AlienationDialValue" text="0 / 80" class="alienation-dial-value" />
+                </ui:VisualElement>
+                <ui:VisualElement class="budget-preset-row">
+                    <ui:Button name="BtnPresetLow" text="低 40" class="budget-preset-button" />
+                    <ui:Button name="BtnPresetStandard" text="标准 80" class="budget-preset-button" />
+                    <ui:Button name="BtnPresetHigh" text="高 120" class="budget-preset-button" />
+                </ui:VisualElement>
+                <ui:VisualElement class="budget-breakdown">
+                    <ui:Label name="BudgetDeckCost" class="budget-breakdown-row" />
+                    <ui:Label name="BudgetTalentCost" class="budget-breakdown-row" />
+                    <ui:Label name="BudgetReserveCost" text="备牌成本    不计入" class="budget-breakdown-row" />
+                    <ui:Label name="BudgetTotal" class="budget-breakdown-total" />
+                </ui:VisualElement>
+                <ui:Label name="BudgetStatus" class="budget-status" />
+            </ui:VisualElement>
             <ui:Label text="牌库列表" class="sidebar-title" />
             <ui:ScrollView name="DeckListScroll" class="deck-list-scroll">
                 <ui:VisualElement name="DeckListContainer" class="deck-list-container" />

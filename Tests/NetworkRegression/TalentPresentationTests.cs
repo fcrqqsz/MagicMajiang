@@ -885,22 +885,42 @@ internal static class TalentPresentationTests
             .ToList();
         runner.Check(queryNames.Count == queryNames.Distinct(StringComparer.Ordinal).Count(),
             "deck editor UXML query names stay unique");
-        runner.Check(queryNames.Contains("AlienationPresetSelector")
-            && queryNames.Contains("BtnPresetPrev")
-            && queryNames.Contains("PresetLabel")
-            && queryNames.Contains("BtnPresetNext")
-            && queryNames.Contains("AlienationTrack")
-            && queryNames.Contains("AlienationFill")
-            && queryNames.Contains("AlienationBreakdownLabel")
-            && queryNames.Contains("AlienationWarning")
-            && queryNames.Contains("MainTalentSlots")
-            && queryNames.Contains("ReserveTalentSlots")
-            && !queryNames.Contains("ScoreText"),
-            "deck editor exposes one gauge plus separate main and reserve slot containers");
+        XElement budgetInspector = editorUxml.Descendants()
+            .SingleOrDefault(element => element.Attribute("name")?.Value == "BudgetInspector");
+        XElement deckListScroll = editorUxml.Descendants()
+            .Single(element => element.Attribute("name")?.Value == "DeckListScroll");
+        string[] requiredBudgetNames =
+        {
+            "BudgetTitle", "BudgetDeckName", "AlienationDialHost", "AlienationDialValue",
+            "BtnPresetLow", "BtnPresetStandard", "BtnPresetHigh", "BudgetDeckCost",
+            "BudgetTalentCost", "BudgetReserveCost", "BudgetTotal", "BudgetStatus"
+        };
+        runner.Check(budgetInspector != null
+                     && requiredBudgetNames.All(queryNames.Contains)
+                     && queryNames.Contains("MainTalentSlots")
+                     && queryNames.Contains("ReserveTalentSlots")
+                     && !queryNames.Contains("BtnPresetPrev")
+                     && !queryNames.Contains("BtnPresetNext")
+                     && !queryNames.Contains("AlienationTrack")
+                     && !queryNames.Contains("ScoreText"),
+            "deck editor exposes the fixed B dial and direct preset controls");
+        runner.Check(budgetInspector != null
+                     && !deckListScroll.DescendantsAndSelf().Contains(budgetInspector),
+            "budget inspector stays outside the independently scrolling deck list");
+
+        string editorStyles = File.ReadAllText(GetRepoPath("Assets", "UI", "DeckEditorStyles.uss"));
+        string dialPath = GetRepoPath("Assets", "UI", "AlienationDialElement.cs");
+        string dialSource = File.Exists(dialPath) ? File.ReadAllText(dialPath) : string.Empty;
+        runner.Check(File.Exists(dialPath)
+                     && editorStyles.Contains(".deck-sidebar", StringComparison.Ordinal)
+                     && editorStyles.Contains("width: 320px", StringComparison.Ordinal)
+                     && dialSource.Contains("generateVisualContent", StringComparison.Ordinal)
+                     && dialSource.Contains("SetValue", StringComparison.Ordinal),
+            "fixed sidebar width and radial dial renderer exist");
 
         string editorSource = File.ReadAllText(GetRepoPath("Assets", "UI", "DeckEditorToolkit.cs"));
-        runner.Check(editorSource.Contains("_btnSave.SetEnabled(total == 34);", StringComparison.Ordinal)
-            && !editorSource.Contains("_btnSave.SetEnabled(total == 34 && !gauge.IsOverLimit)", StringComparison.Ordinal),
+        runner.Check(editorSource.Contains("_btnSave.SetEnabled(draftView.CanSave);", StringComparison.Ordinal)
+            && !editorSource.Contains("&& !gauge.IsOverLimit", StringComparison.Ordinal),
             "deck editor Save depends on 34 tiles and never on the over-limit presentation flag");
         runner.Check(editorSource.Contains("CanEquip(slotIndex, tier)", StringComparison.Ordinal)
             && editorSource.Contains("CanEquipReserve(slotIndex, tier)", StringComparison.Ordinal),
@@ -1119,7 +1139,7 @@ internal static class TalentPresentationTests
                      && !lobbySource.Contains("selectedDeck?.AlienationScore", StringComparison.Ordinal),
             "Lobby create-room preflight reads the selected deck's live alienation total");
         runner.Check(deckEditorSource.Contains("deck.CalculateCurrentAlienation()", StringComparison.Ordinal)
-                     && deckEditorSource.Contains("_btnSave.SetEnabled(total == 34)", StringComparison.Ordinal),
+                     && deckEditorSource.Contains("_btnSave.SetEnabled(draftView.CanSave)", StringComparison.Ordinal),
             "deck summaries use live alienation while over-limit 34-tile decks remain saveable");
     }
 
