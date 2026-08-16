@@ -25,6 +25,7 @@ internal static class TalentPresentationTests
         RunTalentActionPanelArtifactTests(runner);
         RunLayeredTalentHudArtifactTests(runner);
         RunTalentAudioAssetTests(runner);
+        RunDeckEditorDraftPresentationPolicyTests(runner);
         RunAlienationPresentationPolicyTests(runner);
         RunTalentEditorAndLobbySourceTests(runner);
         RunLoadoutPresetTests(runner);
@@ -977,6 +978,54 @@ internal static class TalentPresentationTests
             directory = directory.Parent;
         if (directory == null) throw new InvalidOperationException("Repository root not found.");
         return Path.Combine(new[] { directory.FullName }.Concat(segments).ToArray());
+    }
+
+    private static void RunDeckEditorDraftPresentationPolicyTests(RegressionRunner runner)
+    {
+        AlienationGaugeView normalGauge = AlienationGaugePolicy.Build(20, 10, AlienationPreset.Low);
+        DeckEditorDraftView normal = DeckEditorDraftPresentationPolicy.Build(
+            normalGauge, tileCount: 34, isDirty: false);
+        runner.Check(normal.Title == "当前构筑预算"
+                     && normal.Tone == DeckEditorBudgetTone.Normal
+                     && normal.CanSave
+                     && normal.StatusText == "当前方案可进入该档位房间",
+            "deck editor normal draft is saveable and uses the normal budget tone");
+
+        AlienationGaugeView nearGauge = AlienationGaugePolicy.Build(55, 10, AlienationPreset.Standard);
+        DeckEditorDraftView near = DeckEditorDraftPresentationPolicy.Build(
+            nearGauge, tileCount: 34, isDirty: true);
+        runner.Check(near.Title == "当前构筑预算 · 未保存"
+                     && near.Tone == DeckEditorBudgetTone.NearLimit
+                     && near.CanSave,
+            "deck editor marks a dirty draft and turns amber at eighty percent");
+
+        AlienationGaugeView overGauge = AlienationGaugePolicy.Build(28, 17, AlienationPreset.Low);
+        DeckEditorDraftView over = DeckEditorDraftPresentationPolicy.Build(
+            overGauge, tileCount: 34, isDirty: true);
+        runner.Check(over.Tone == DeckEditorBudgetTone.OverLimit
+                     && over.CanSave
+                     && over.StatusText == "超限 5，仍可保存，不能进入该档位房间",
+            "over-limit drafts remain saveable and expose the exact overflow");
+
+        DeckEditorDraftView invalidTiles = DeckEditorDraftPresentationPolicy.Build(
+            normalGauge, tileCount: 33, isDirty: true);
+        DeckEditorLeavePromptView invalidPrompt =
+            DeckEditorDraftPresentationPolicy.BuildLeavePrompt(isDirty: true, tileCount: 33);
+        runner.Check(!invalidTiles.CanSave
+                     && invalidTiles.StatusText == "当前牌数 33 / 34，无法保存或进入房间"
+                     && invalidPrompt.IsRequired
+                     && !invalidPrompt.CanSave
+                     && invalidPrompt.Message.Contains("不是 34 张", StringComparison.Ordinal),
+            "non-34-tile drafts cannot offer Save while leaving");
+
+        DeckEditorLeavePromptView cleanPrompt =
+            DeckEditorDraftPresentationPolicy.BuildLeavePrompt(isDirty: false, tileCount: 34);
+        DeckEditorLeavePromptView dirtyPrompt =
+            DeckEditorDraftPresentationPolicy.BuildLeavePrompt(isDirty: true, tileCount: 34);
+        runner.Check(!cleanPrompt.IsRequired
+                     && dirtyPrompt.IsRequired
+                     && dirtyPrompt.CanSave,
+            "only dirty valid drafts require a leave prompt with Save enabled");
     }
 
     private static void RunAlienationPresentationPolicyTests(RegressionRunner runner)
