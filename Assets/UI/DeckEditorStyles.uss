@@ -637,3 +637,62 @@
     color: #cccccc;
     white-space: normal;
 }
+
+.unsaved-overlay {
+    display: none;
+    position: absolute;
+    left: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.68);
+    justify-content: center;
+    align-items: center;
+}
+
+.unsaved-dialog {
+    width: 440px;
+    background-color: #222831;
+    border-width: 2px;
+    border-color: #00ADB5;
+    border-radius: 14px;
+    padding: 24px;
+}
+
+.unsaved-title {
+    color: #EEEEEE;
+    font-size: 22px;
+    -unity-font-style: bold;
+    -unity-text-align: middle-center;
+}
+
+.unsaved-message {
+    color: #bfc5cc;
+    font-size: 15px;
+    white-space: normal;
+    -unity-text-align: middle-center;
+    margin-top: 14px;
+    margin-bottom: 20px;
+}
+
+.unsaved-actions {
+    flex-direction: row;
+    justify-content: center;
+}
+
+.unsaved-save,
+.unsaved-discard,
+.unsaved-cancel {
+    width: 112px;
+    height: 42px;
+    margin-left: 5px;
+    margin-right: 5px;
+    border-width: 0;
+    border-radius: 9px;
+    color: #EEEEEE;
+    font-size: 16px;
+}
+
+.unsaved-save { background-color: #00ADB5; }
+.unsaved-discard { background-color: #9d4e53; }
+.unsaved-cancel { background-color: #555b65; }

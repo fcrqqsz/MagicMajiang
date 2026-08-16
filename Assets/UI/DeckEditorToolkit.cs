@@ -47,6 +47,11 @@ namespace MahjongGame.UI
         private Button _btnExit;
         private Button _btnClearAll;
         private Button _btnResetAll;
+        private VisualElement _unsavedChangesOverlay;
+        private Label _unsavedChangesMessage;
+        private Button _btnUnsavedSave;
+        private Button _btnUnsavedDiscard;
+        private Button _btnUnsavedCancel;
 
         // Sidebar 引用
         private VisualElement _deckListContainer;
@@ -68,6 +73,7 @@ namespace MahjongGame.UI
         private Action _selectLowPreset;
         private Action _selectStandardPreset;
         private Action _selectHighPreset;
+        private Action _pendingDraftNavigation;
 
         private List<Action> _allItemRefreshers = new List<Action>();
 
@@ -100,6 +106,11 @@ namespace MahjongGame.UI
             _btnExit = _root.Q<Button>("BtnExit");
             _btnClearAll = _root.Q<Button>("BtnClearAll");
             _btnResetAll = _root.Q<Button>("BtnResetAll");
+            _unsavedChangesOverlay = _root.Q<VisualElement>("UnsavedChangesOverlay");
+            _unsavedChangesMessage = _root.Q<Label>("UnsavedChangesMessage");
+            _btnUnsavedSave = _root.Q<Button>("BtnUnsavedSave");
+            _btnUnsavedDiscard = _root.Q<Button>("BtnUnsavedDiscard");
+            _btnUnsavedCancel = _root.Q<Button>("BtnUnsavedCancel");
 
             // Sidebar
             _deckListContainer = _root.Q<VisualElement>("DeckListContainer");
@@ -124,6 +135,9 @@ namespace MahjongGame.UI
             _btnPresetLow.clicked += _selectLowPreset;
             _btnPresetStandard.clicked += _selectStandardPreset;
             _btnPresetHigh.clicked += _selectHighPreset;
+            _btnUnsavedSave.clicked += OnUnsavedSaveClicked;
+            _btnUnsavedDiscard.clicked += OnUnsavedDiscardClicked;
+            _btnUnsavedCancel.clicked += OnUnsavedCancelClicked;
 
             // 初始化默认 config 供 GenerateRows 中的 updateLocalUI 使用
             _currentConfig = DeckConfig.CreateStandard();
@@ -146,6 +160,10 @@ namespace MahjongGame.UI
             _btnPresetLow.clicked -= _selectLowPreset;
             _btnPresetStandard.clicked -= _selectStandardPreset;
             _btnPresetHigh.clicked -= _selectHighPreset;
+            _btnUnsavedSave.clicked -= OnUnsavedSaveClicked;
+            _btnUnsavedDiscard.clicked -= OnUnsavedDiscardClicked;
+            _btnUnsavedCancel.clicked -= OnUnsavedCancelClicked;
+            CloseUnsavedPrompt();
             _alienationDial?.RemoveFromHierarchy();
             _alienationDial = null;
         }
@@ -253,9 +271,11 @@ namespace MahjongGame.UI
                     {
                         if (_selectedDeckIndex != index)
                         {
-                            _selectedDeckIndex = index;
-                            SelectDeck(index);
-                            UpdateSelectedHighlight();
+                            RequestDraftNavigation(() =>
+                            {
+                                SelectDeck(index);
+                                UpdateSelectedHighlight();
+                            });
                         }
                     }
                 });
@@ -315,7 +335,11 @@ namespace MahjongGame.UI
         private void OnNewDeckClicked()
         {
             if (_savedDecks.Count >= MAX_DECKS) return;
+            RequestDraftNavigation(CreateAndSelectNewDeck);
+        }
 
+        private void CreateAndSelectNewDeck()
+        {
             int num = _savedDecks.Count + 1;
             var newDeck = new SavedDeck
             {
@@ -339,16 +363,34 @@ namespace MahjongGame.UI
             if (_savedDecks.Count <= 1) return;
             if (index < 0 || index >= _savedDecks.Count) return;
 
+            if (index == _selectedDeckIndex)
+            {
+                RequestDraftNavigation(() => DeleteCurrentDeck(index));
+                return;
+            }
+
+            DeleteUnselectedDeck(index);
+        }
+
+        private void DeleteCurrentDeck(int index)
+        {
             _savedDecks.RemoveAt(index);
+            _selectedDeckIndex = Math.Min(index, _savedDecks.Count - 1);
+            SaveSelectedDeckIndex();
             ProfileManager.Instance?.SaveProfile();
-
-            if (_selectedDeckIndex >= _savedDecks.Count)
-                _selectedDeckIndex = _savedDecks.Count - 1;
-            else if (_selectedDeckIndex > index)
-                _selectedDeckIndex--;
-
             SelectDeck(_selectedDeckIndex);
             RebuildDeckList();
+        }
+
+        private void DeleteUnselectedDeck(int index)
+        {
+            _savedDecks.RemoveAt(index);
+            if (_selectedDeckIndex > index)
+                _selectedDeckIndex--;
+            SaveSelectedDeckIndex();
+            ProfileManager.Instance?.SaveProfile();
+            RebuildDeckList();
+            RefreshStats();
         }
 
         private void StartRename(VisualElement item, Label nameLabel, int index)
@@ -374,6 +416,8 @@ namespace MahjongGame.UI
                 if (!string.IsNullOrEmpty(newName))
                 {
                     _savedDecks[index].DeckName = newName;
+                    if (index == _selectedDeckIndex && _budgetDeckName != null)
+                        _budgetDeckName.text = newName;
                     ProfileManager.Instance?.SaveProfile();
                 }
 
@@ -400,9 +444,12 @@ namespace MahjongGame.UI
             });
         }
 
-        private void OnSaveClicked()
+        private void OnSaveClicked() => TrySaveCurrentDeck();
+
+        private bool TrySaveCurrentDeck()
         {
-            if (_selectedDeckIndex < 0 || _selectedDeckIndex >= _savedDecks.Count) return;
+            if (_selectedDeckIndex < 0 || _selectedDeckIndex >= _savedDecks.Count) return false;
+            if (_currentConfig.GenerateTiles(0).Count != 34) return false;
 
             // Write current config back to saved deck
             string json = JsonUtility.ToJson(_currentConfig);
@@ -416,18 +463,67 @@ namespace MahjongGame.UI
                 _savedDecks[_selectedDeckIndex].CalculateCurrentAlienation();
 
             // 记录选中的卡组索引
-            if (ProfileManager.Instance?.CurrentProfile != null)
-                ProfileManager.Instance.CurrentProfile.SelectedDeckIndex = _selectedDeckIndex;
+            SaveSelectedDeckIndex();
 
+            _isDraftDirty = false;
             ProfileManager.Instance?.SaveProfile();
             RebuildDeckList();
+            RefreshStats();
 
             OnDeckSaved?.Invoke(_currentConfig);
+            return true;
         }
 
         private void OnExitClicked()
         {
-            OnExitRequested?.Invoke();
+            RequestDraftNavigation(() => OnExitRequested?.Invoke());
+        }
+
+        private void RequestDraftNavigation(Action continuation)
+        {
+            int tileCount = _currentConfig.GenerateTiles(0).Count;
+            DeckEditorLeavePromptView prompt =
+                DeckEditorDraftPresentationPolicy.BuildLeavePrompt(_isDraftDirty, tileCount);
+            if (!prompt.IsRequired)
+            {
+                continuation?.Invoke();
+                return;
+            }
+
+            _pendingDraftNavigation = continuation;
+            _unsavedChangesMessage.text = prompt.Message;
+            _btnUnsavedSave.style.display = prompt.CanSave ? DisplayStyle.Flex : DisplayStyle.None;
+            _unsavedChangesOverlay.style.display = DisplayStyle.Flex;
+        }
+
+        private void OnUnsavedSaveClicked()
+        {
+            Action continuation = _pendingDraftNavigation;
+            if (!TrySaveCurrentDeck()) return;
+            CloseUnsavedPrompt();
+            continuation?.Invoke();
+        }
+
+        private void OnUnsavedDiscardClicked()
+        {
+            Action continuation = _pendingDraftNavigation;
+            CloseUnsavedPrompt();
+            continuation?.Invoke();
+        }
+
+        private void OnUnsavedCancelClicked() => CloseUnsavedPrompt();
+
+        private void CloseUnsavedPrompt()
+        {
+            _pendingDraftNavigation = null;
+            if (_unsavedChangesOverlay != null)
+                _unsavedChangesOverlay.style.display = DisplayStyle.None;
+        }
+
+        private void SaveSelectedDeckIndex()
+        {
+            if (ProfileManager.Instance?.CurrentProfile != null)
+                ProfileManager.Instance.CurrentProfile.SelectedDeckIndex = _selectedDeckIndex;
         }
 
         public void LoadConfig(DeckConfig config)
@@ -436,6 +532,7 @@ namespace MahjongGame.UI
                 _currentConfig = config;
             else
                 _currentConfig = DeckConfig.CreateStandard();
+            _isDraftDirty = false;
             RefreshUI();
         }
 
@@ -499,14 +596,16 @@ namespace MahjongGame.UI
             controls.AddToClassList("suit-controls");
 
             Button btnClear = new Button(() => {
-                BatchUpdateSuit(Suit.Wind, 0, false);
-                BatchUpdateSuit(Suit.Dragon, 0, true);
+                bool changed = BatchUpdateSuit(Suit.Wind, 0, false);
+                changed |= BatchUpdateSuit(Suit.Dragon, 0, false);
+                CompleteBatchUpdate(changed);
             }) { text = "清空" };
             btnClear.AddToClassList("control-btn");
 
             Button btnReset = new Button(() => {
-                BatchUpdateSuit(Suit.Wind, 1, false);
-                BatchUpdateSuit(Suit.Dragon, 1, true);
+                bool changed = BatchUpdateSuit(Suit.Wind, 1, false);
+                changed |= BatchUpdateSuit(Suit.Dragon, 1, false);
+                CompleteBatchUpdate(changed);
             }) { text = "重置" };
             btnReset.AddToClassList("control-btn");
 
@@ -553,7 +652,7 @@ namespace MahjongGame.UI
                 _currentConfig.SetCardCount(suit, value, _currentConfig.GetCardCount(suit, value) + 1);
                 _currentConfig.CalculateAlienationScore();
                 updateLocalUI();
-                RefreshStats();
+                MarkDraftDirty();
             };
 
             btnMinus.clicked += () =>
@@ -564,7 +663,7 @@ namespace MahjongGame.UI
                     _currentConfig.SetCardCount(suit, value, current - 1);
                     _currentConfig.CalculateAlienationScore();
                     updateLocalUI();
-                    RefreshStats();
+                    MarkDraftDirty();
                 }
             };
 
@@ -573,29 +672,44 @@ namespace MahjongGame.UI
             return instance;
         }
 
-        private void BatchUpdateSuit(Suit suit, int count, bool refreshAll = true)
+        private bool BatchUpdateSuit(Suit suit, int count, bool refreshAll = true)
         {
+            bool changed = false;
             int maxVal = (suit == Suit.Wind) ? 4 : (suit == Suit.Dragon ? 3 : 9);
-            for (int v = 1; v <= maxVal; v++) _currentConfig.SetCardCount(suit, v, count);
+            for (int v = 1; v <= maxVal; v++)
+            {
+                if (_currentConfig.GetCardCount(suit, v) == count) continue;
+                _currentConfig.SetCardCount(suit, v, count);
+                changed = true;
+            }
 
             if (refreshAll)
-            {
-                _currentConfig.CalculateAlienationScore();
-                foreach (var refresh in _allItemRefreshers) refresh();
-                RefreshStats();
-            }
+                CompleteBatchUpdate(changed);
+            return changed;
         }
 
         private void BatchUpdateDeck(int count)
         {
+            bool changed = false;
             foreach (Suit suit in Enum.GetValues(typeof(Suit)))
             {
                 int maxVal = (suit == Suit.Wind) ? 4 : (suit == Suit.Dragon ? 3 : 9);
-                for (int v = 1; v <= maxVal; v++) _currentConfig.SetCardCount(suit, v, count);
+                for (int v = 1; v <= maxVal; v++)
+                {
+                    if (_currentConfig.GetCardCount(suit, v) == count) continue;
+                    _currentConfig.SetCardCount(suit, v, count);
+                    changed = true;
+                }
             }
+            CompleteBatchUpdate(changed);
+        }
+
+        private void CompleteBatchUpdate(bool changed)
+        {
+            if (!changed) return;
             _currentConfig.CalculateAlienationScore();
             foreach (var refresh in _allItemRefreshers) refresh();
-            RefreshStats();
+            MarkDraftDirty();
         }
 
         private void RefreshStats()
@@ -633,6 +747,11 @@ namespace MahjongGame.UI
         {
             if (_currentAlienationPreset == preset) return;
             _currentAlienationPreset = preset;
+            MarkDraftDirty();
+        }
+
+        private void MarkDraftDirty()
+        {
             _isDraftDirty = true;
             RefreshStats();
         }
@@ -731,9 +850,11 @@ namespace MahjongGame.UI
                 clear.RegisterCallback<ClickEvent>(evt =>
                 {
                     evt.StopPropagation();
-                    GetTalentSlots(isReserve)[slotIndex] = null;
+                    string[] slots = GetTalentSlots(isReserve);
+                    if (string.IsNullOrEmpty(slots[slotIndex])) return;
+                    slots[slotIndex] = null;
                     RefreshTalentSlots();
-                    RefreshStats();
+                    MarkDraftDirty();
                 });
             }
             slot.RegisterCallback<ClickEvent>(_ => ShowTalentPicker(slotIndex, isReserve));
@@ -827,7 +948,7 @@ namespace MahjongGame.UI
                 {
                     targetSlots[slotIndex] = null;
                     RefreshTalentSlots();
-                    RefreshStats();
+                    MarkDraftDirty();
                     _root.Remove(overlay);
                 });
                 clearItem.text = "清空此槽位";
@@ -890,9 +1011,14 @@ namespace MahjongGame.UI
                 item.RegisterCallback<ClickEvent>(evt =>
                 {
                     if (!canSelect) return;
+                    if (targetSlots[slotIndex] == id)
+                    {
+                        _root.Remove(overlay);
+                        return;
+                    }
                     targetSlots[slotIndex] = id;
                     RefreshTalentSlots();
-                    RefreshStats();
+                    MarkDraftDirty();
                     _root.Remove(overlay);
                 });
 

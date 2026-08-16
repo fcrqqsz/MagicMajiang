@@ -56,5 +56,17 @@
             </ui:ScrollView>
             <ui:Button name="BtnNewDeck" text="＋ 新建牌库" class="btn-new-deck" />
         </ui:VisualElement>
+
+        <ui:VisualElement name="UnsavedChangesOverlay" class="unsaved-overlay">
+            <ui:VisualElement class="unsaved-dialog">
+                <ui:Label text="未保存的构筑" class="unsaved-title" />
+                <ui:Label name="UnsavedChangesMessage" class="unsaved-message" />
+                <ui:VisualElement class="unsaved-actions">
+                    <ui:Button name="BtnUnsavedSave" text="保存" class="unsaved-save" />
+                    <ui:Button name="BtnUnsavedDiscard" text="放弃" class="unsaved-discard" />
+                    <ui:Button name="BtnUnsavedCancel" text="取消" class="unsaved-cancel" />
+                </ui:VisualElement>
+            </ui:VisualElement>
+        </ui:VisualElement>
     </ui:VisualElement>
 </ui:UXML>

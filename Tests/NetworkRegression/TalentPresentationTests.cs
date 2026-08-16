@@ -919,6 +919,37 @@ internal static class TalentPresentationTests
             "fixed sidebar width and radial dial renderer exist");
 
         string editorSource = File.ReadAllText(GetRepoPath("Assets", "UI", "DeckEditorToolkit.cs"));
+        string[] unsavedNames =
+        {
+            "UnsavedChangesOverlay", "UnsavedChangesMessage", "BtnUnsavedSave",
+            "BtnUnsavedDiscard", "BtnUnsavedCancel"
+        };
+        runner.Check(unsavedNames.All(queryNames.Contains),
+            "deck editor provides one shared unsaved-draft confirmation overlay");
+        runner.Check(editorSource.Contains("RequestDraftNavigation", StringComparison.Ordinal)
+                     && editorSource.Contains("MarkDraftDirty", StringComparison.Ordinal)
+                     && editorSource.Contains("BuildLeavePrompt", StringComparison.Ordinal)
+                     && editorSource.Contains("_pendingDraftNavigation", StringComparison.Ordinal),
+            "deck editor routes dirty navigation through one confirmation boundary");
+        runner.Check(!MethodBody(editorSource, "RefreshStats").Contains("RebuildDeckList", StringComparison.Ordinal),
+            "unsaved draft refresh never mutates saved deck list presentation");
+        runner.Check(MethodBody(editorSource, "CreateTileItem").Contains("MarkDraftDirty()", StringComparison.Ordinal),
+            "tile mutations mark the current deck draft dirty");
+        runner.Check(MethodBody(editorSource, "AddTalentSlot").Contains("MarkDraftDirty()", StringComparison.Ordinal)
+                     && MethodBody(editorSource, "ShowTalentPicker").Contains("MarkDraftDirty()", StringComparison.Ordinal),
+            "talent clear and selection mutations mark the current deck draft dirty");
+        runner.Check(MethodBody(editorSource, "SelectAlienationPreset").Contains("MarkDraftDirty()", StringComparison.Ordinal)
+                     && MethodBody(editorSource, "BatchUpdateDeck").Contains("CompleteBatchUpdate", StringComparison.Ordinal)
+                     && MethodBody(editorSource, "CompleteBatchUpdate").Contains("MarkDraftDirty()", StringComparison.Ordinal),
+            "preset and batch deck mutations mark the current deck draft dirty");
+        runner.Check(MethodBody(editorSource, "BatchUpdateSuit").Contains("bool changed", StringComparison.Ordinal)
+                     && MethodBody(editorSource, "BatchUpdateDeck").Contains("bool changed", StringComparison.Ordinal)
+                     && MethodBody(editorSource, "CompleteBatchUpdate").Contains("if (!changed) return;", StringComparison.Ordinal),
+            "no-op batch tile controls do not create a false unsaved draft");
+        runner.Check(MethodBody(editorSource, "OnExitClicked").Contains("RequestDraftNavigation", StringComparison.Ordinal)
+                     && MethodBody(editorSource, "OnNewDeckClicked").Contains("RequestDraftNavigation", StringComparison.Ordinal)
+                     && MethodBody(editorSource, "OnDeleteDeckClicked").Contains("RequestDraftNavigation", StringComparison.Ordinal),
+            "destructive navigation entry points use the shared unsaved-draft boundary");
         runner.Check(editorSource.Contains("_btnSave.SetEnabled(draftView.CanSave);", StringComparison.Ordinal)
             && !editorSource.Contains("&& !gauge.IsOverLimit", StringComparison.Ordinal),
             "deck editor Save depends on 34 tiles and never on the over-limit presentation flag");
@@ -1423,6 +1454,52 @@ internal static class TalentPresentationTests
     private static T GetLastClientPayload<T>(string type) =>
         MessageSerializer.DeserializePayload<T>(WebSocketClient.Instance.SentMessages
             .Select(MessageSerializer.DeserializeEnvelope).Last(message => message.type == type).data);
+
+    private static string MethodBody(string source, string methodName)
+    {
+        int signature = FindMethodDefinition(source, methodName);
+        if (signature < 0) return string.Empty;
+        int openBrace = source.IndexOf('{', signature);
+        if (openBrace < 0) return string.Empty;
+
+        int depth = 0;
+        for (int index = openBrace; index < source.Length; index++)
+        {
+            if (source[index] == '{') depth++;
+            if (source[index] != '}') continue;
+            depth--;
+            if (depth == 0) return source.Substring(openBrace, index - openBrace + 1);
+        }
+
+        return string.Empty;
+    }
+
+    private static int FindMethodDefinition(string source, string methodName)
+    {
+        string marker = methodName + "(";
+        int searchFrom = 0;
+        while (searchFrom < source.Length)
+        {
+            int candidate = source.IndexOf(marker, searchFrom, StringComparison.Ordinal);
+            if (candidate < 0) return -1;
+
+            int lineStart = source.LastIndexOf('\n', candidate);
+            lineStart = lineStart < 0 ? 0 : lineStart + 1;
+            string declarationPrefix = source.Substring(lineStart, candidate - lineStart);
+            bool containsAccessModifier = declarationPrefix.Contains("private ", StringComparison.Ordinal)
+                || declarationPrefix.Contains("public ", StringComparison.Ordinal)
+                || declarationPrefix.Contains("internal ", StringComparison.Ordinal)
+                || declarationPrefix.Contains("protected ", StringComparison.Ordinal);
+            if (containsAccessModifier && !declarationPrefix.Contains('('))
+            {
+                return candidate;
+            }
+
+            searchFrom = candidate + marker.Length;
+        }
+
+        return -1;
+    }
 
     private static int ReadUiDocumentSortingOrder(string scene, string gameObjectName)
     {
