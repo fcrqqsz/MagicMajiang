@@ -5,13 +5,11 @@
 ## 1. 当前开发任务 (Active Backlog)
 
 ### High Priority (高优先级 - 游戏性反馈与 UX)
-*   **天赋玩法垂直切片（当前主线，按顺序实施）**:
-    *   [x] 前置：完成 [`Room` 唯一权威与移除隐式本地模式](docs/superpowers/plans/2026-08-04-room-authority-remove-local-mode.md)，一人游玩统一使用在线房间 AI 补位。
-    *   [x] 第一阶段：完成[天赋运行时、异化预算与现有六天赋迁移](docs/superpowers/plans/2026-08-04-talent-foundation-and-alienation.md)。
-    *   [ ] 第二阶段：完成[主动天赋、三项锚点天赋与中场备牌](docs/superpowers/plans/2026-08-04-talent-actions-and-sideboard.md)。
-    *   [ ] 第三阶段：完成[天赋 UI、AI、反馈与玩法测试](docs/superpowers/plans/2026-08-04-talent-ui-ai-feedback.md)。
 *   **异化牌视觉反馈**:
     *   [ ] 根据 `TileData` 的异化状态（天赋修改），通过 `TileVisual` 改变牌背颜色或增加发光特效。
+*   **天赋玩法扩充**:
+    *   [ ] 基于现有九天赋、主动动作、防御、充能和逐项番数归因框架继续增加天赋与流派组合。
+    *   [ ] 使用匿名 JSONL 玩法遥测观察选取率、主动天赋使用率、控制阻挡率和最终番分布，再调整异化值与数值。
 
 ### Low Priority (低优先级 - 压力测试与表现细节)
 *   **天赋槽图标显示**:
@@ -40,4 +38,4 @@
 *   **正式账号与鉴权**: 用账号服务替换 development username 身份桥接，提供不可冒用的稳定 playerId、登录态和封禁能力。
 *   **WSS 与部署边界**: 通过反向代理或网关启用 TLS/WSS，补充证书轮换、可信代理头和生产端口配置。
 *   **服务端持久化**: 评估 Dedicated Server 重启后的房间/会话恢复；当前进程重启会终止全部房间。
-*   **可观测性与容量治理**: 增加结构化日志、房间/连接指标、异常告警、限流和多实例调度。
+*   **可观测性与容量治理**: 在现有匿名天赋 JSONL 之上增加房间/连接指标、异常告警、限流和多实例调度。

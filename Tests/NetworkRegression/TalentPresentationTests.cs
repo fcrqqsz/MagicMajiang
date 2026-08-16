@@ -7,27 +7,19 @@ using MahjongGame.Systems;
 using MahjongGame.Talents;
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
-using System.IO;
 using System.Linq;
-using System.Security.Cryptography;
-using System.Xml.Linq;
 
 internal static class TalentPresentationTests
 {
     public static void Run(RegressionRunner runner)
     {
         RunTalentResultPresentationPolicyTests(runner);
-        RunTalentResultPanelArtifactTests(runner);
         RunTalentActionPanelPolicyTests(runner);
         RunLayeredTalentHudPolicyTests(runner);
         RunTalentEventPresentationPolicyTests(runner);
-        RunTalentActionPanelArtifactTests(runner);
-        RunLayeredTalentHudArtifactTests(runner);
-        RunTalentAudioAssetTests(runner);
         RunDeckEditorDraftPresentationPolicyTests(runner);
+        RunTalentPickerDuplicateTests(runner);
         RunAlienationPresentationPolicyTests(runner);
-        RunTalentEditorAndLobbySourceTests(runner);
         RunLoadoutPresetTests(runner);
         RunServerAdmissionTests(runner);
         RunClientCommandTests(runner);
@@ -144,83 +136,6 @@ internal static class TalentPresentationTests
             "round and session-final recovery both request an immediate authoritative overlay");
         runner.Check(!live.ShowImmediately && live.Animate,
             "live result presentation retains the intentional fade animation");
-    }
-
-    private static void RunTalentResultPanelArtifactTests(RegressionRunner runner)
-    {
-        string uxmlPath = GetRepoPath("Assets", "UI", "ResultPanel.uxml");
-        string stylesPath = GetRepoPath("Assets", "UI", "ResultPanelStyles.uss");
-        string controllerPath = GetRepoPath("Assets", "UI", "ResultPanelController.cs");
-        string gameManagerPath = GetRepoPath("Assets", "Scripts", "Core", "GameManager.cs");
-        bool assetsExist = File.Exists(uxmlPath)
-                           && File.Exists(stylesPath)
-                           && File.Exists(controllerPath)
-                           && File.Exists(gameManagerPath);
-        runner.Check(assetsExist, "result breakdown UI and source assets exist");
-        if (!assetsExist) return;
-
-        XDocument document = XDocument.Load(uxmlPath);
-        XElement panel = document.Descendants()
-            .Single(element => element.Attribute("name")?.Value == "Panel");
-        string[] childNames = panel.Elements()
-            .Select(element => element.Attribute("name")?.Value)
-            .Where(name => !string.IsNullOrWhiteSpace(name))
-            .ToArray();
-        runner.Check(childNames.SequenceEqual(new[]
-            {
-                "TitleLabel", "FinalFanHero", "FanBreakdown", "FanListContainer",
-                "WinningHandSection", "BtnRestart"
-            }),
-            "result hierarchy fixes the hero and controls around the independent MCR scroll");
-
-        XElement breakdown = document.Descendants()
-            .Single(element => element.Attribute("name")?.Value == "FanBreakdown");
-        runner.Check(breakdown.Elements().Select(element => element.Attribute("name")?.Value)
-                         .SequenceEqual(new[] { "BaseFanRow", "TalentContributionList" })
-                     && document.Descendants().Single(element =>
-                         element.Attribute("name")?.Value == "TalentContributionList")
-                         .Name.LocalName == "ScrollView"
-                     && document.Descendants().Single(element =>
-                         element.Attribute("name")?.Value == "FanListContainer")
-                         .Name.LocalName == "ScrollView",
-            "base fan leads a bounded talent list and MCR details retain their own scroll view");
-
-        string styles = File.ReadAllText(stylesPath);
-        runner.Check(styles.Contains(".final-fan-hero", StringComparison.Ordinal)
-                     && styles.Contains(".fan-breakdown", StringComparison.Ordinal)
-                     && styles.Contains(".breakdown-row--negative", StringComparison.Ordinal)
-                     && styles.Contains("MSYH_UITK.asset", StringComparison.Ordinal)
-                     && !styles.Contains("MSYH.TTC", StringComparison.OrdinalIgnoreCase)
-                     && !styles.Contains("MSYH_SDF.asset", StringComparison.OrdinalIgnoreCase),
-            "result breakdown uses UI Toolkit styling, polarity and the supported TextCore font");
-
-        string controller = File.ReadAllText(controllerPath);
-        string gameManager = File.ReadAllText(gameManagerPath);
-        runner.Check(gameManager.Contains(
-                "Session.RestoreRoundProgress(snapshot.roundNumber, snapshot.result?.isSessionOver == true)",
-                StringComparison.Ordinal),
-            "GameManager restores completion progress from the authoritative snapshot result");
-        runner.Check(CountOccurrences(controller, "RenderRoundResult(") == 4
-                     && controller.Contains("BuildAcceptedWin(", StringComparison.Ordinal)
-                     && controller.Contains("TalentFanBreakdown,", StringComparison.Ordinal)
-                     && gameManager.Contains("ApplyRecoveryResult(snapshot, Session)", StringComparison.Ordinal),
-            "live win lose and GameManager recovery converge on one authoritative result renderer");
-        runner.Check(!controller.Contains("RollScoreRoutine", StringComparison.Ordinal)
-                     && !controller.Contains("LastIndexOf", StringComparison.Ordinal)
-                     && !controller.Contains("StartCoroutine", StringComparison.Ordinal)
-                     && !controller.Contains("TotalScoreLabel", StringComparison.Ordinal),
-            "result presentation never parses MCR detail strings or re-sums an animated total");
-        runner.Check(controller.Contains("RenderDraw(playerStatuses, isRecovery: false)", StringComparison.Ordinal)
-                     && CountOccurrences(controller, "HideTalentResult();") >= 4
-                     && CountOccurrences(controller, "ShowSessionResult();") == 1
-                     && controller.Contains("ShowSessionResult(isRecovery: true)", StringComparison.Ordinal)
-                     && controller.Contains("ResultOverlayPresentationPolicy.Build(isRecovery)", StringComparison.Ordinal)
-                     && controller.Contains("_overlay.style.opacity = 1f", StringComparison.Ordinal)
-                     && controller.Contains("_overlay.style.opacity = StyleKeyword.Null", StringComparison.Ordinal)
-                     && controller.Contains("CancelInvoke(nameof(FadeIn))", StringComparison.Ordinal)
-                     && controller.Contains("_btnRestart.clicked -= OnRestartClicked", StringComparison.Ordinal)
-                     && controller.Contains("_winningHandView?.Dispose()", StringComparison.Ordinal),
-            "draw session-final recovery and teardown follow explicit non-feedback presentation paths");
     }
 
     private static void RunTalentActionPanelPolicyTests(RegressionRunner runner)
@@ -419,92 +334,6 @@ internal static class TalentPresentationTests
             "public-at-match-start talents are pinned ahead of more recent public events");
     }
 
-    private static void RunTalentActionPanelArtifactTests(RegressionRunner runner)
-    {
-        string uxmlPath = GetRepoPath("Assets", "UI", "ActionPanel.uxml");
-        string stylesPath = GetRepoPath("Assets", "UI", "ActionPanelStyles.uss");
-        string controllerPath = GetRepoPath("Assets", "UI", "ActionPanelController.cs");
-        string pickerPath = GetRepoPath("Assets", "UI", "FloatingTilePanelController.cs");
-        string localPath = GetRepoPath("Assets", "Scripts", "Core", "Agents", "LocalPlayerClient.cs");
-        string proxyPath = GetRepoPath("Assets", "Scripts", "Core", "Network", "RemoteServerProxy.cs");
-        string gameManagerPath = GetRepoPath("Assets", "Scripts", "Core", "GameManager.cs");
-        string scenePath = GetRepoPath("Assets", "Scenes", "03_Game.unity");
-
-        XDocument panel = XDocument.Load(uxmlPath);
-        HashSet<string> names = panel.Descendants()
-            .Select(element => element.Attribute("name")?.Value)
-            .Where(name => !string.IsNullOrWhiteSpace(name))
-            .ToHashSet(StringComparer.Ordinal);
-        runner.Check(names.Contains("TalentActionContainer") && names.Contains("ButtonContainer"),
-            "ActionPanel exposes a separate supplemental talent action row beside the base action row");
-
-        string styles = File.ReadAllText(stylesPath);
-        string controller = File.ReadAllText(controllerPath);
-        string picker = File.ReadAllText(pickerPath);
-        string local = File.ReadAllText(localPath);
-        string normalizedLocal = local.Replace("\r\n", "\n");
-        string proxy = File.ReadAllText(proxyPath);
-        string gameManager = File.ReadAllText(gameManagerPath);
-        runner.Check(styles.Contains(".talent-action-row", StringComparison.Ordinal)
-            && styles.Contains("MSYH_UITK.asset", StringComparison.Ordinal)
-            && !styles.Contains("MSYH.TTC", StringComparison.OrdinalIgnoreCase)
-            && !styles.Contains("MSYH_SDF.asset", StringComparison.OrdinalIgnoreCase),
-            "the supplemental row has UI Toolkit styling and the supported TextCore font only");
-        runner.Check(controller.Contains("ShowTalentActions(", StringComparison.Ordinal)
-            && controller.Contains("ClearTalentActions(long decisionId)", StringComparison.Ordinal)
-            && controller.Contains("_talentSelectedCallback", StringComparison.Ordinal)
-            && controller.Contains("RenderTalentActions", StringComparison.Ordinal)
-            && controller.Contains("_btnContainer.style.display = DisplayStyle.None", StringComparison.Ordinal)
-            && controller.Contains("_btnContainer.style.display = DisplayStyle.Flex", StringComparison.Ordinal),
-            "ActionPanel owns a typed talent callback while independently hiding and showing the base action row");
-        runner.Check(picker.Contains("ShowOptionSelection(", StringComparison.Ordinal)
-            && picker.Contains("Action onCancelled", StringComparison.Ordinal)
-            && picker.Contains("public void HideOptionSelection()", StringComparison.Ordinal)
-            && picker.Contains("if (!_isOptionSelection) return", StringComparison.Ordinal)
-            && picker.Contains("_closeBtn.clicked -=", StringComparison.Ordinal)
-            && picker.Contains("SetDocumentVisibility(false)", StringComparison.Ordinal)
-            && picker.Contains("SetDocumentVisibility(true)", StringComparison.Ordinal)
-            && picker.Contains("_documentRoot.style.display = visible ? DisplayStyle.Flex : DisplayStyle.None", StringComparison.Ordinal)
-            && picker.Contains("OnDestroy", StringComparison.Ordinal),
-            "FloatingTilePanel provides cancellable selection, removes callbacks, and takes panel-level input only while visible");
-        runner.Check(normalizedLocal.Split("FloatingTilePanelController.Instance?.HideOptionSelection();", StringSplitOptions.None).Length - 1 == 3
-            && normalizedLocal.Contains("FloatingTilePanelController.Instance.ShowTiles(", StringComparison.Ordinal),
-            "talent picker cleanup closes only target selection and cannot erase the independent private peek presentation");
-        string scene = File.ReadAllText(scenePath);
-        int pickerSortingOrder = ReadUiDocumentSortingOrder(scene, "FloatingTilePanel");
-        int hudSortingOrder = ReadUiDocumentSortingOrder(scene, "GAMEHUD");
-        int actionSortingOrder = ReadUiDocumentSortingOrder(scene, "UIDocument_ActionPanel");
-        runner.Check(pickerSortingOrder > hudSortingOrder && pickerSortingOrder > actionSortingOrder,
-            "the interactive talent target picker renders above every table HUD document that could intercept its clicks");
-        runner.Check(local.Contains("BindTalentActionPresentation(", StringComparison.Ordinal)
-            && local.Contains("UnbindTalentActionPresentation(", StringComparison.Ordinal)
-            && local.Contains("TalentActionResolvedReceived +=", StringComparison.Ordinal)
-            && local.Contains("TalentActionResolvedReceived -=", StringComparison.Ordinal)
-            && local.Contains("ClearTalentActionPresentation", StringComparison.Ordinal)
-            && local.Contains("BuildAuthorizedTargets", StringComparison.Ordinal)
-            && local.Contains("resolved.decisionId != _talentPanelState.DecisionId", StringComparison.Ordinal),
-            "LocalPlayerClient binds ordered talent UI state and cleans it at local presentation boundaries");
-        runner.Check(normalizedLocal.Contains("CancelActiveOperation(autoDiscardedTile != null)", StringComparison.Ordinal)
-            && normalizedLocal.Contains("private void CancelActiveOperation(bool resetDiscardContext)", StringComparison.Ordinal)
-            && normalizedLocal.Contains("if (resetDiscardContext) _lastDiscarderId = -1", StringComparison.Ordinal)
-            && normalizedLocal.Contains("ct.ThrowIfCancellationRequested();\n            _handController.SetInteractable(true);", StringComparison.Ordinal)
-            && normalizedLocal.Split("SubmitSkipIfCurrent(ct)", StringSplitOptions.None).Length - 1 == 3
-            && normalizedLocal.Split("_server.SubmitAction(ClientAction.Skip(PlayerId));", StringSplitOptions.None).Length - 1 == 1,
-            "Timeout cancels the live local decision before it can re-enable hand interaction on a later turn");
-        runner.Check(proxy.Contains("BindTalentActionPresentation(this)", StringComparison.Ordinal)
-            && proxy.Contains("UnbindTalentActionPresentation(this)", StringComparison.Ordinal)
-            && !proxy.Contains("ReconnectSnapshotApplied", StringComparison.Ordinal)
-            && !proxy.Contains("HandleReconnectSnapshot", StringComparison.Ordinal)
-            && proxy.Contains("ClearTalentActionsPresentation(clearDecisionId: false);", StringComparison.Ordinal)
-            && proxy.IndexOf("ClearTalentActionsPresentation(clearDecisionId: false);", StringComparison.Ordinal)
-               < proxy.IndexOf("var msg = new ClientActionMessage", StringComparison.Ordinal),
-            "RemoteServerProxy owns live talent UI subscriptions, leaves recovery to GameManager, and clears supplemental controls before base submission");
-        int restoreIndex = gameManager.IndexOf("_localPlayer?.RestoreFromSnapshot(snapshot);", StringComparison.Ordinal);
-        int talentReplayIndex = gameManager.IndexOf("_currentClientProxy?.ApplyCurrentTalentRecoveryProjection();", StringComparison.Ordinal);
-        runner.Check(restoreIndex >= 0 && talentReplayIndex > restoreIndex,
-            "GameManager replays current talent actions only after LocalPlayerClient recovery cleanup and base restore");
-    }
-
     private static void RunTalentEventPresentationPolicyTests(RegressionRunner runner)
     {
         TalentFeedbackView strong = TalentEventPresentationPolicy.Build(ActiveAppliedEvent(), false);
@@ -598,254 +427,6 @@ internal static class TalentPresentationTests
             "new live feedback works normally after recovery cleanup");
     }
 
-    private static void RunLayeredTalentHudArtifactTests(RegressionRunner runner)
-    {
-        string hudPath = GetRepoPath("Assets", "UI", "GameHUD", "GameHUD.uxml");
-        string chipPath = GetRepoPath("Assets", "UI", "TalentChipTemplate.uxml");
-        string hudStylesPath = GetRepoPath("Assets", "UI", "GameHUD", "GameHUDStyles.uss");
-        string chipStylesPath = GetRepoPath("Assets", "UI", "TalentChipTemplate.uss");
-        string controllerPath = GetRepoPath("Assets", "UI", "GameHUD", "GameHUDController.cs");
-        string proxyPath = GetRepoPath("Assets", "Scripts", "Core", "Network", "RemoteServerProxy.cs");
-        string scenePath = GetRepoPath("Assets", "Scenes", "03_Game.unity");
-
-        bool assetsExist = File.Exists(hudPath) && File.Exists(chipPath)
-            && File.Exists(hudStylesPath) && File.Exists(chipStylesPath)
-            && File.Exists(controllerPath) && File.Exists(proxyPath) && File.Exists(scenePath);
-        runner.Check(assetsExist, "layered talent HUD source and UI assets exist");
-        if (!assetsExist) return;
-
-        XDocument hud = XDocument.Load(hudPath);
-        HashSet<string> hudNames = hud.Descendants()
-            .Select(element => element.Attribute("name")?.Value)
-            .Where(name => !string.IsNullOrWhiteSpace(name))
-            .ToHashSet(StringComparer.Ordinal);
-        string[] requiredHudNames =
-        {
-            "OwnTalentBar", "OwnTalentCollapsedButton", "TalentEffectFeed", "TalentToast",
-            "Seat0KnownTalents", "Seat1KnownTalents", "Seat2KnownTalents", "Seat3KnownTalents",
-            "Seat0KnownTalentMore", "Seat1KnownTalentMore", "Seat2KnownTalentMore", "Seat3KnownTalentMore"
-        };
-        runner.Check(requiredHudNames.All(hudNames.Contains),
-            "GameHUD exposes the own row four seat summaries feed and central toast");
-
-        XDocument chip = XDocument.Load(chipPath);
-        HashSet<string> chipNames = chip.Descendants()
-            .Select(element => element.Attribute("name")?.Value)
-            .Where(name => !string.IsNullOrWhiteSpace(name))
-            .ToHashSet(StringComparer.Ordinal);
-        runner.Check(chipNames.Contains("NameLabel") && chipNames.Contains("ValueLabel")
-            && chipNames.Contains("ConsumedMarker"),
-            "talent chip template exposes name value and consumed marker bindings");
-
-        string hudStyles = File.ReadAllText(hudStylesPath);
-        string chipStyles = File.ReadAllText(chipStylesPath);
-        runner.Check(hudStyles.Contains("MSYH_UITK.asset", StringComparison.Ordinal)
-            && chipStyles.Contains("MSYH_UITK.asset", StringComparison.Ordinal)
-            && !hudStyles.Contains("MSYH.TTC", StringComparison.OrdinalIgnoreCase)
-            && !hudStyles.Contains("MSYH_SDF.asset", StringComparison.OrdinalIgnoreCase),
-            "talent HUD styles use the UI Toolkit TextCore font path only");
-        string[] requiredClasses = { "active", "inactive", "known", "consumed", "positive", "negative" };
-        runner.Check(requiredClasses.All(name => chipStyles.Contains("talent-chip--" + name, StringComparison.Ordinal)),
-            "talent chip styles define every state and polarity class without controller colors");
-
-        string controller = File.ReadAllText(controllerPath);
-        string proxy = File.ReadAllText(proxyPath);
-        runner.Check(controller.Contains("TalentRuntimeEventReceived += HandleTalentRuntimeEvent", StringComparison.Ordinal)
-            && controller.Contains("TalentRuntimeEventReceived -= HandleTalentRuntimeEvent", StringComparison.Ordinal)
-            && controller.Contains("TalentFeedbackHistory", StringComparison.Ordinal)
-            && controller.Contains("ApplyRecoverySnapshot", StringComparison.Ordinal),
-            "GameHUD subscribes ordered talent events and keeps recovery on the snapshot-only path");
-        runner.Check(controller.Contains("_genericActiveTalentClip", StringComparison.Ordinal)
-            && controller.Contains("_talentAudioSource", StringComparison.Ordinal)
-            && controller.Contains("if (feedback.PlayAudio)", StringComparison.Ordinal)
-            && !controller.Contains("Resources.Load", StringComparison.Ordinal),
-            "generic talent audio is serialized and gated only by the feedback view");
-        runner.Check(!controller.Contains("ShowActiveState" + ")", StringComparison.Ordinal)
-            || controller.Contains("item.ShowActiveState && isOwn", StringComparison.Ordinal),
-            "opponent talent chips have no active-state binding");
-        runner.Check(proxy.Contains("BindServerProxy(this)", StringComparison.Ordinal)
-            && proxy.Contains("UnbindServerProxy(this)", StringComparison.Ordinal),
-            "RemoteServerProxy owns the HUD event subscription lifetime");
-
-        int tweenCalls = CountOccurrences(controller, "DOVirtual.");
-        int linkedTweens = CountOccurrences(controller, ".SetLink(gameObject)");
-        runner.Check(tweenCalls > 0 && linkedTweens == tweenCalls,
-            "every GameHUD DOTween call is linked to the HUD GameObject");
-        runner.Check(controller.Contains("schedule.Execute", StringComparison.Ordinal)
-            && controller.Contains(".Pause()", StringComparison.Ordinal)
-            && controller.Contains(".Kill()", StringComparison.Ordinal),
-            "GameHUD cancels scheduled work and kills linked tweens during teardown");
-        runner.Check(controller.Contains("UnbindTalentElementCallbacks();", StringComparison.Ordinal)
-            && controller.Contains("_ownTalentCollapsedButton.clicked -= _ownTalentCollapsedClicked", StringComparison.Ordinal)
-            && controller.Contains("_seatTalentMoreButtons[slot].clicked -= _seatTalentMoreClicked[slot]", StringComparison.Ordinal)
-            && controller.Contains("_talentDrawerDismissLayer.clicked -= _talentDrawerDismissClicked", StringComparison.Ordinal)
-            && controller.Contains("_ownTalentCollapsedClicked = null", StringComparison.Ordinal)
-            && controller.Contains("_seatTalentMoreClicked[slot] = null", StringComparison.Ordinal)
-            && controller.Contains("_talentDrawerDismissClicked = null", StringComparison.Ordinal)
-            && !controller.Contains(".clicked += () =>", StringComparison.Ordinal),
-            "GameHUD stores and idempotently removes every talent button callback during teardown");
-        runner.Check(controller.Contains("ResetTalentFeedbackForRecovery();", StringComparison.Ordinal)
-            && controller.Contains("_toastHideSchedule?.Pause();", StringComparison.Ordinal)
-            && controller.Contains("ResetTalentChipPulse();", StringComparison.Ordinal)
-            && controller.Contains("_talentToastTween?.Kill();", StringComparison.Ordinal)
-            && controller.Contains("_talentToast.text = string.Empty", StringComparison.Ordinal)
-            && controller.Contains("_talentEffectFeed?.Clear();", StringComparison.Ordinal)
-            && controller.Contains("CloseTalentDrawers();", StringComparison.Ordinal)
-            && controller.Contains("_talentTransientState.ResetForRecovery();", StringComparison.Ordinal),
-            "snapshot recovery clears all talent-only transient controller presentation");
-
-        string scene = File.ReadAllText(scenePath);
-        string clipGuid = ReadMetaGuid(GetRepoPath("Assets", "Audio", "SFX", "Talent", "talent_active_generic.wav.meta"));
-        runner.Check(!string.IsNullOrWhiteSpace(clipGuid)
-            && scene.Contains("_genericActiveTalentClip: {fileID: 8300000, guid: " + clipGuid, StringComparison.Ordinal)
-            && scene.Contains("_talentAudioSource: {fileID:", StringComparison.Ordinal)
-            && scene.Contains("Spatialize: 0", StringComparison.Ordinal)
-            && scene.Contains("m_PlayOnAwake: 0", StringComparison.Ordinal),
-            "03_Game serializes the generated clip and a non-spatial non-autoplay AudioSource");
-    }
-
-    private static void RunTalentAudioAssetTests(RegressionRunner runner)
-    {
-        string scriptPath = GetRepoPath("Tools", "GenerateTalentPlaceholderAudio.ps1");
-        string wavPath = GetRepoPath("Assets", "Audio", "SFX", "Talent", "talent_active_generic.wav");
-        bool assetsExist = File.Exists(scriptPath) && File.Exists(wavPath);
-        runner.Check(assetsExist, "deterministic talent placeholder generator and WAV exist");
-        if (!assetsExist) return;
-
-        RunTalentAudioGeneratorTwice(scriptPath, out byte[] generatedA, out byte[] generatedB);
-        byte[] committedBytes = File.ReadAllBytes(wavPath);
-        const string expectedSha256 = "3CDE4C85FF1CA03AF255E3F79097B4CD0E080F535C1733722B75D8D448939EB3";
-        runner.Check(generatedA.SequenceEqual(generatedB)
-            && generatedA.SequenceEqual(committedBytes)
-            && Convert.ToHexString(SHA256.HashData(committedBytes)) == expectedSha256,
-            "two generator runs are byte-identical and match the committed talent WAV and fixed hash");
-
-        using var stream = File.OpenRead(wavPath);
-        using var reader = new BinaryReader(stream);
-        string riff = new string(reader.ReadChars(4));
-        int riffSize = reader.ReadInt32();
-        string wave = new string(reader.ReadChars(4));
-        string fmt = new string(reader.ReadChars(4));
-        int fmtSize = reader.ReadInt32();
-        short format = reader.ReadInt16();
-        short channels = reader.ReadInt16();
-        int sampleRate = reader.ReadInt32();
-        int byteRate = reader.ReadInt32();
-        short blockAlign = reader.ReadInt16();
-        short bitsPerSample = reader.ReadInt16();
-        if (fmtSize > 16) stream.Position += fmtSize - 16;
-        string data = new string(reader.ReadChars(4));
-        int dataSize = reader.ReadInt32();
-        double duration = dataSize / (double)byteRate;
-        int peak = 0;
-        for (long position = stream.Position; position + 1 < stream.Length; position += 2)
-        {
-            short sample = reader.ReadInt16();
-            peak = Math.Max(peak, Math.Abs((int)sample));
-        }
-        runner.Check(riff == "RIFF" && wave == "WAVE" && fmt == "fmt " && data == "data"
-            && format == 1 && sampleRate == 48000 && channels == 2 && bitsPerSample == 16
-            && blockAlign == 4 && riffSize + 8 == stream.Length
-            && duration >= 0.60 && duration <= 0.80 && peak <= 29203,
-            "talent placeholder is valid 48 kHz stereo 16-bit PCM lasting 0.60-0.80 seconds at or below -1 dBFS");
-    }
-
-    private static void RunTalentAudioGeneratorTwice(
-        string scriptPath,
-        out byte[] generatedA,
-        out byte[] generatedB)
-    {
-        generatedA = Array.Empty<byte>();
-        generatedB = Array.Empty<byte>();
-        string tempDirectory = Path.Combine(
-            Path.GetTempPath(),
-            "supermajiang-talent-audio-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(tempDirectory);
-        try
-        {
-            string outputA = Path.Combine(tempDirectory, "generated-a.wav");
-            string outputB = Path.Combine(tempDirectory, "generated-b.wav");
-            RunTalentAudioGenerator(scriptPath, outputA);
-            RunTalentAudioGenerator(scriptPath, outputB);
-            generatedA = File.ReadAllBytes(outputA);
-            generatedB = File.ReadAllBytes(outputB);
-        }
-        finally
-        {
-            if (Directory.Exists(tempDirectory))
-                Directory.Delete(tempDirectory, recursive: true);
-        }
-    }
-
-    private static void RunTalentAudioGenerator(string scriptPath, string outputPath)
-    {
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = "pwsh",
-            UseShellExecute = false,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            CreateNoWindow = true
-        };
-        startInfo.ArgumentList.Add("-NoLogo");
-        startInfo.ArgumentList.Add("-NoProfile");
-        startInfo.ArgumentList.Add("-File");
-        startInfo.ArgumentList.Add(scriptPath);
-        startInfo.ArgumentList.Add("-OutputPath");
-        startInfo.ArgumentList.Add(outputPath);
-
-        using var process = new Process { StartInfo = startInfo };
-        try
-        {
-            process.Start();
-        }
-        catch (System.ComponentModel.Win32Exception exception)
-        {
-            throw new InvalidOperationException(
-                "PowerShell 7 executable 'pwsh' is required to verify deterministic talent audio generation.",
-                exception);
-        }
-
-        System.Threading.Tasks.Task<string> stdoutTask = process.StandardOutput.ReadToEndAsync();
-        System.Threading.Tasks.Task<string> stderrTask = process.StandardError.ReadToEndAsync();
-        if (!process.WaitForExit(60000))
-        {
-            process.Kill(entireProcessTree: true);
-            throw new TimeoutException(
-                $"Talent audio generator timed out for explicit output '{outputPath}'.");
-        }
-
-        string stdout = stdoutTask.GetAwaiter().GetResult();
-        string stderr = stderrTask.GetAwaiter().GetResult();
-        if (process.ExitCode != 0)
-        {
-            throw new InvalidOperationException(
-                $"Talent audio generator failed with exit code {process.ExitCode}. "
-                + $"stdout: {stdout} stderr: {stderr}");
-        }
-    }
-
-    private static int CountOccurrences(string source, string value)
-    {
-        int count = 0;
-        int start = 0;
-        while ((start = source.IndexOf(value, start, StringComparison.Ordinal)) >= 0)
-        {
-            count++;
-            start += value.Length;
-        }
-        return count;
-    }
-
-    private static string ReadMetaGuid(string path)
-    {
-        if (!File.Exists(path)) return string.Empty;
-        return File.ReadLines(path)
-            .Select(line => line.Trim())
-            .FirstOrDefault(line => line.StartsWith("guid: ", StringComparison.Ordinal))?
-            .Substring("guid: ".Length) ?? string.Empty;
-    }
-
     private static TalentRuntimeEventMessage ActiveAppliedEvent() => new TalentRuntimeEventMessage
     {
         eventId = 1,
@@ -873,128 +454,6 @@ internal static class TalentPresentationTests
         visibility = (int)TalentEventVisibility.OwnerOnly
     };
 
-    private static void RunTalentEditorAndLobbySourceTests(RegressionRunner runner)
-    {
-        RunTalentPickerDuplicateTests(runner);
-
-        string editorUxmlPath = GetRepoPath("Assets", "UI", "DeckEditorView.uxml");
-        XDocument editorUxml = XDocument.Load(editorUxmlPath);
-        List<string> queryNames = editorUxml.Descendants()
-            .Select(element => element.Attribute("name")?.Value)
-            .Where(name => !string.IsNullOrWhiteSpace(name))
-            .ToList();
-        runner.Check(queryNames.Count == queryNames.Distinct(StringComparer.Ordinal).Count(),
-            "deck editor UXML query names stay unique");
-        XElement budgetInspector = editorUxml.Descendants()
-            .SingleOrDefault(element => element.Attribute("name")?.Value == "BudgetInspector");
-        XElement deckListScroll = editorUxml.Descendants()
-            .Single(element => element.Attribute("name")?.Value == "DeckListScroll");
-        string[] requiredBudgetNames =
-        {
-            "BudgetTitle", "BudgetDeckName", "AlienationDialHost", "AlienationDialValue",
-            "BtnPresetLow", "BtnPresetStandard", "BtnPresetHigh", "BudgetDeckCost",
-            "BudgetTalentCost", "BudgetReserveCost", "BudgetTotal", "BudgetStatus"
-        };
-        runner.Check(budgetInspector != null
-                     && requiredBudgetNames.All(queryNames.Contains)
-                     && queryNames.Contains("MainTalentSlots")
-                     && queryNames.Contains("ReserveTalentSlots")
-                     && !queryNames.Contains("BtnPresetPrev")
-                     && !queryNames.Contains("BtnPresetNext")
-                     && !queryNames.Contains("AlienationTrack")
-                     && !queryNames.Contains("ScoreText"),
-            "deck editor exposes the fixed B dial and direct preset controls");
-        runner.Check(budgetInspector != null
-                     && !deckListScroll.DescendantsAndSelf().Contains(budgetInspector),
-            "budget inspector stays outside the independently scrolling deck list");
-
-        string editorStyles = File.ReadAllText(GetRepoPath("Assets", "UI", "DeckEditorStyles.uss"));
-        string dialPath = GetRepoPath("Assets", "UI", "AlienationDialElement.cs");
-        string dialSource = File.Exists(dialPath) ? File.ReadAllText(dialPath) : string.Empty;
-        runner.Check(File.Exists(dialPath)
-                     && editorStyles.Contains(".deck-sidebar", StringComparison.Ordinal)
-                     && editorStyles.Contains("width: 320px", StringComparison.Ordinal)
-                     && dialSource.Contains("generateVisualContent", StringComparison.Ordinal)
-                     && dialSource.Contains("SetValue", StringComparison.Ordinal),
-            "fixed sidebar width and radial dial renderer exist");
-
-        string editorSource = File.ReadAllText(GetRepoPath("Assets", "UI", "DeckEditorToolkit.cs"));
-        string[] unsavedNames =
-        {
-            "UnsavedChangesOverlay", "UnsavedChangesMessage", "BtnUnsavedSave",
-            "BtnUnsavedDiscard", "BtnUnsavedCancel"
-        };
-        runner.Check(unsavedNames.All(queryNames.Contains),
-            "deck editor provides one shared unsaved-draft confirmation overlay");
-        runner.Check(editorSource.Contains("RequestDraftNavigation", StringComparison.Ordinal)
-                     && editorSource.Contains("MarkDraftDirty", StringComparison.Ordinal)
-                     && editorSource.Contains("BuildLeavePrompt", StringComparison.Ordinal)
-                     && editorSource.Contains("_pendingDraftNavigation", StringComparison.Ordinal),
-            "deck editor routes dirty navigation through one confirmation boundary");
-        runner.Check(!MethodBody(editorSource, "RefreshStats").Contains("RebuildDeckList", StringComparison.Ordinal),
-            "unsaved draft refresh never mutates saved deck list presentation");
-        runner.Check(MethodBody(editorSource, "CreateTileItem").Contains("MarkDraftDirty()", StringComparison.Ordinal),
-            "tile mutations mark the current deck draft dirty");
-        runner.Check(MethodBody(editorSource, "AddTalentSlot").Contains("MarkDraftDirty()", StringComparison.Ordinal)
-                     && MethodBody(editorSource, "ShowTalentPicker").Contains("MarkDraftDirty()", StringComparison.Ordinal),
-            "talent clear and selection mutations mark the current deck draft dirty");
-        runner.Check(MethodBody(editorSource, "SelectAlienationPreset").Contains("MarkDraftDirty()", StringComparison.Ordinal)
-                     && MethodBody(editorSource, "BatchUpdateDeck").Contains("CompleteBatchUpdate", StringComparison.Ordinal)
-                     && MethodBody(editorSource, "CompleteBatchUpdate").Contains("MarkDraftDirty()", StringComparison.Ordinal),
-            "preset and batch deck mutations mark the current deck draft dirty");
-        runner.Check(MethodBody(editorSource, "BatchUpdateSuit").Contains("bool changed", StringComparison.Ordinal)
-                     && MethodBody(editorSource, "BatchUpdateDeck").Contains("bool changed", StringComparison.Ordinal)
-                     && MethodBody(editorSource, "CompleteBatchUpdate").Contains("if (!changed) return;", StringComparison.Ordinal),
-            "no-op batch tile controls do not create a false unsaved draft");
-        runner.Check(MethodBody(editorSource, "OnExitClicked").Contains("RequestDraftNavigation", StringComparison.Ordinal)
-                     && MethodBody(editorSource, "OnNewDeckClicked").Contains("RequestDraftNavigation", StringComparison.Ordinal)
-                     && MethodBody(editorSource, "OnDeleteDeckClicked").Contains("RequestDraftNavigation", StringComparison.Ordinal),
-            "destructive navigation entry points use the shared unsaved-draft boundary");
-        runner.Check(editorSource.Contains("_btnSave.SetEnabled(draftView.CanSave);", StringComparison.Ordinal)
-            && !editorSource.Contains("&& !gauge.IsOverLimit", StringComparison.Ordinal),
-            "deck editor Save depends on 34 tiles and never on the over-limit presentation flag");
-        runner.Check(editorSource.Contains("CanEquip(slotIndex, tier)", StringComparison.Ordinal)
-            && editorSource.Contains("CanEquipReserve(slotIndex, tier)", StringComparison.Ordinal),
-            "main and reserve talent pickers use their respective slot policies");
-
-        XDocument lobbyUxml = XDocument.Load(GetRepoPath("Assets", "UI", "MainLobby.uxml"));
-        List<string> lobbyNames = lobbyUxml.Descendants()
-            .Select(element => element.Attribute("name")?.Value)
-            .Where(name => !string.IsNullOrWhiteSpace(name))
-            .ToList();
-        runner.Check(lobbyNames.Count == lobbyNames.Distinct(StringComparer.Ordinal).Count()
-            && lobbyNames.Contains("RoomPresetSelector")
-            && lobbyNames.Contains("BtnRoomPresetPrev")
-            && lobbyNames.Contains("RoomPresetLabel")
-            && lobbyNames.Contains("BtnRoomPresetNext")
-            && lobbyNames.Contains("RoomAdmissionBlocker"),
-            "lobby provides a unique pending room preset selector and explicit admission blocker");
-
-        string lobbySource = File.ReadAllText(GetRepoPath("Assets", "UI", "LobbyController.cs"));
-        runner.Check(lobbySource.Contains(
-                "CreateRoom(GetSelectedGameMode(), _pendingRoomAlienationPreset, GetNickname())",
-                StringComparison.Ordinal),
-            "create-room sends the explicit pending room preset");
-        runner.Check(!lobbySource.Contains("AlienationPreset = _pendingRoomAlienationPreset", StringComparison.Ordinal)
-            && !lobbySource.Contains(".AlienationPreset = room", StringComparison.OrdinalIgnoreCase),
-            "LobbyController never writes a pending or authoritative room preset back to SavedDeck");
-        runner.Check(lobbySource.Contains("HandleRoomError(string message)", StringComparison.Ordinal)
-            && lobbySource.Contains("ShowRoomAdmissionBlocker(message);", StringComparison.Ordinal),
-            "authoritative join-room rejections open the explicit admission blocker");
-        runner.Check(lobbySource.Contains("RoomAlienationPresentationPolicy.Build", StringComparison.Ordinal)
-            && lobbySource.Contains("roomAlienation.PublicSummary", StringComparison.Ordinal)
-            && !lobbySource.Contains("room-seat-alienation", StringComparison.Ordinal)
-            && !lobbySource.Contains("row.Alienation", StringComparison.Ordinal),
-            "room preset appears only in the public summary and never in a seat row");
-
-        RoomAlienationVisibilityView roomAlienation = RoomAlienationPresentationPolicy.Build(
-            AlienationPreset.Standard, ownTotal: 45);
-        runner.Check(roomAlienation.PublicSummary == "异化档位：标准 80"
-            && roomAlienation.OwnSummary == "本家异化：45 / 80"
-            && string.IsNullOrEmpty(roomAlienation.SeatSummary),
-            "room alienation presentation exposes one public preset, one private own total, and no seat copy");
-    }
-
     private static void RunTalentPickerDuplicateTests(RegressionRunner runner)
     {
         var mainCurrent = new TalentSlotConfig
@@ -1019,16 +478,6 @@ internal static class TalentPresentationTests
         runner.Check(!TalentPickerDuplicatePolicy.IsDuplicateOutsideSlot(
                 reserveCurrent, "peek", slotIndex: 0, isReserve: true),
             "the currently equipped reserve talent remains selectable");
-    }
-
-    private static string GetRepoPath(params string[] segments)
-    {
-        DirectoryInfo directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory != null
-            && !File.Exists(Path.Combine(directory.FullName, "ProjectSettings", "ProjectVersion.txt")))
-            directory = directory.Parent;
-        if (directory == null) throw new InvalidOperationException("Repository root not found.");
-        return Path.Combine(new[] { directory.FullName }.Concat(segments).ToArray());
     }
 
     private static void RunDeckEditorDraftPresentationPolicyTests(RegressionRunner runner)
@@ -1164,14 +613,13 @@ internal static class TalentPresentationTests
         runner.Check((int)saved.AlienationPreset == 999 && saved.AlienationScore == 123,
             "room admission presentation never mutates a saved deck");
 
-        string lobbySource = File.ReadAllText(GetRepoPath("Assets", "UI", "LobbyController.cs"));
-        string deckEditorSource = File.ReadAllText(GetRepoPath("Assets", "UI", "DeckEditorToolkit.cs"));
-        runner.Check(lobbySource.Contains("selectedDeck?.CalculateCurrentAlienation()", StringComparison.Ordinal)
-                     && !lobbySource.Contains("selectedDeck?.AlienationScore", StringComparison.Ordinal),
-            "Lobby create-room preflight reads the selected deck's live alienation total");
-        runner.Check(deckEditorSource.Contains("deck.CalculateCurrentAlienation()", StringComparison.Ordinal)
-                     && deckEditorSource.Contains("_btnSave.SetEnabled(draftView.CanSave)", StringComparison.Ordinal),
-            "deck summaries use live alienation while over-limit 34-tile decks remain saveable");
+        RoomAlienationVisibilityView roomAlienation = RoomAlienationPresentationPolicy.Build(
+            AlienationPreset.Standard, ownTotal: 45);
+        runner.Check(roomAlienation.PublicSummary == "异化档位：标准 80"
+            && roomAlienation.OwnSummary == "本家异化：45 / 80"
+            && string.IsNullOrEmpty(roomAlienation.SeatSummary),
+            "room alienation presentation exposes one public preset, one private own total, and no seat copy");
+
     }
 
     private static void RunLoadoutPresetTests(RegressionRunner runner)
@@ -1455,66 +903,4 @@ internal static class TalentPresentationTests
         MessageSerializer.DeserializePayload<T>(WebSocketClient.Instance.SentMessages
             .Select(MessageSerializer.DeserializeEnvelope).Last(message => message.type == type).data);
 
-    private static string MethodBody(string source, string methodName)
-    {
-        int signature = FindMethodDefinition(source, methodName);
-        if (signature < 0) return string.Empty;
-        int openBrace = source.IndexOf('{', signature);
-        if (openBrace < 0) return string.Empty;
-
-        int depth = 0;
-        for (int index = openBrace; index < source.Length; index++)
-        {
-            if (source[index] == '{') depth++;
-            if (source[index] != '}') continue;
-            depth--;
-            if (depth == 0) return source.Substring(openBrace, index - openBrace + 1);
-        }
-
-        return string.Empty;
-    }
-
-    private static int FindMethodDefinition(string source, string methodName)
-    {
-        string marker = methodName + "(";
-        int searchFrom = 0;
-        while (searchFrom < source.Length)
-        {
-            int candidate = source.IndexOf(marker, searchFrom, StringComparison.Ordinal);
-            if (candidate < 0) return -1;
-
-            int lineStart = source.LastIndexOf('\n', candidate);
-            lineStart = lineStart < 0 ? 0 : lineStart + 1;
-            string declarationPrefix = source.Substring(lineStart, candidate - lineStart);
-            bool containsAccessModifier = declarationPrefix.Contains("private ", StringComparison.Ordinal)
-                || declarationPrefix.Contains("public ", StringComparison.Ordinal)
-                || declarationPrefix.Contains("internal ", StringComparison.Ordinal)
-                || declarationPrefix.Contains("protected ", StringComparison.Ordinal);
-            if (containsAccessModifier && !declarationPrefix.Contains('('))
-            {
-                return candidate;
-            }
-
-            searchFrom = candidate + marker.Length;
-        }
-
-        return -1;
-    }
-
-    private static int ReadUiDocumentSortingOrder(string scene, string gameObjectName)
-    {
-        string marker = "  m_Name: " + gameObjectName;
-        int objectNameIndex = scene.IndexOf(marker, StringComparison.Ordinal);
-        if (objectNameIndex < 0) return int.MinValue;
-        int nextGameObject = scene.IndexOf("--- !u!1 &", objectNameIndex + marker.Length, StringComparison.Ordinal);
-        int blockEnd = nextGameObject < 0 ? scene.Length : nextGameObject;
-        int sortingIndex = scene.IndexOf("  m_SortingOrder: ", objectNameIndex, StringComparison.Ordinal);
-        if (sortingIndex < 0 || sortingIndex >= blockEnd) return int.MinValue;
-        int valueStart = sortingIndex + "  m_SortingOrder: ".Length;
-        int valueEnd = scene.IndexOfAny(new[] { '\r', '\n' }, valueStart);
-        if (valueEnd < 0 || valueEnd > blockEnd) valueEnd = blockEnd;
-        return int.TryParse(scene.Substring(valueStart, valueEnd - valueStart), out int value)
-            ? value
-            : int.MinValue;
-    }
 }

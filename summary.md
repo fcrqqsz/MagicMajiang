@@ -1,22 +1,29 @@
 麻将 Roguelike 项目进度快照 (Project Snapshot)
-日期: 2026-08-10 版本: Alpha - Talent Plan 1 Complete 引擎: Unity (2022.3.61t9)
+日期: 2026-08-16 版本: Alpha - Talent Vertical Slice Complete 引擎: Unity (2022.3.61t9 / Tuanjie 1.6.8)
 
 > **文档约定**: 已完成的任务统一记录在 `milestone.md`，`plan.md` 仅保留待办与未来规划。
 
 1. 项目核心目标
-开发一款基于 Unity 3D、支持单机与 WebSocket 联机的 Roguelike 国标麻将游戏。
+开发一款基于 Unity 3D、统一使用 WebSocket 房间的一人/多人 Roguelike 国标麻将游戏。
 *   **核心规则**: 以国标麻将 (MCR) 为基础，支持81番种计算。
 *   **特色玩法**: Roguelike 天赋系统、自定义 34 张牌库及异化值机制。
 
-2. 最近进展 (Recent Progress, snapshot 2026-08-10 / Talent Plan 1 complete)
-*   **Talent Plan 1：Room 天赋基础、异化值与六天赋迁移 (2026-08-10)**:
-    *   一人游玩统一进入普通在线 `Room` 并由 AI 补足席位；客户端没有隐式本地权威路径，`GameManager` 只负责网络投影与场景协调。
-    *   协议升级为 v3，携带构筑 schema 为 v2。服务端重建并验证构筑；Low / Standard / High 异化值档位分别为 40 / 80 / 120，总成本为牌库异化值加当前激活主天赋成本，三个备选槽在启用前不计成本，精确总值仅本家可见。
-    *   四席构筑锁定后，`Room` 恰好创建一个跨小局复用的 `TalentMatchRuntime`；它承载带类型的比赛/小局状态、生命周期、管道、事件、私有 Peek、算分选项、揭示与小局结束效果，`TalentManager` 与 `SessionTalentPolicy` 已删除。
-    *   六个既有天赋均已迁入规则重写并完成跨两小局验证；Peek 读取发牌后的牌山，弃牌/副露/加杠/和牌边界使用权威实体牌公开，完成事件只发出一次，Room 异常时有终局兜底。
+2. 最近进展 (Recent Progress, snapshot 2026-08-16)
+*   **天赋玩法垂直切片与联机架构完成 (2026-08-16)**:
+    *   一人游玩和多人游玩统一进入在线 `Room`，由 AI 补足空席；`GameManager` 只协调权威网络投影、恢复与场景，不持有服务端、会话或天赋 runtime。
+    *   协议为 v4，携带构筑 schema 为 v3。服务端验证 34 张牌库、6 主槽 + 3 备选槽及 Low 40 / Standard 80 / High 120 档位；预算只计牌库与当前激活主天赋，精确值仅本家可见。
+    *   `TalentMatchRuntime` 跨小局复用，统一管理生命周期、主动动作、防御/负面效果、公开充能、Peek、算番归因、恢复快照和匿名 JSONL 遥测。
+    *   九个天赋已落地：点金手、窥探、如龙、厚积、快人一步、初始资金、定心、截流、藏锋。藏锋至少 1 层即可消耗全部锋，本局下次合法胡牌每层 +12 番。
+    *   半庄/全庄第 4 小局后进入一次 45 秒中场备牌；真人、AI、断线和超时均走服务端权威锁定，后半场复用同一 runtime 且不重放比赛开始效果。
+    *   客户端完成常驻天赋 chip、弱/中/强三级反馈、主动天赋目标选择、独立全屏备牌 UIDocument、恢复投影，以及“最终番置顶、基础番与天赋影响逐项”的结算界面。
+    *   杠上开花等场况使用服务端权威胡牌上下文；牌型合法性、最终番、逐项天赋贡献和计分使用同一接受结果。
+*   **卡组编辑器预算检查器完成 (2026-08-16)**:
+    *   右侧栏固定显示圆形预算表盘、Low/Standard/High 三档直选、牌山成本、当前主天赋成本、备牌不计入和总计。
+    *   牌张、天赋或档位变化只更新编辑草稿与“未保存”状态；牌库列表保存前保持旧值。超限构筑允许保存但阻止创建/加入不匹配房间，非 34 张不能保存。
+    *   切换、新建、删除当前牌库和退出统一使用保存/放弃/取消保护，人工 Unity 布局与点击验收已通过。
 *   **联机网络化框架 Phase A-E 最终验收 (2026-07-25)**:
     *   Dedicated Server 使用独立 `00_ServerBootstrap` 场景启动，正式服务端不依赖 `03_Game`、`GameManager.Instance`、`DeckManager.Instance` 或 UI。
-    *   完成开发期 username 身份桥接、连接代次、房间/席位管理、四席构筑锁定、服务端天赋执行和多人 Ready 流程；协议与构筑版本已由后续 Talent Plan 1 分别升级为 v3 / v2。
+    *   完成开发期 username 身份桥接、连接代次、房间/席位管理、四席构筑锁定、服务端天赋执行和多人 Ready 流程；当前协议与构筑版本已升级为 v4 / v3。
     *   `ServerGameState` 权威记录手牌、副露和牌河；`RoomGameSnapshot` 按席保护隐私，`ClientGameState` 幂等应用有序消息和完整快照。
     *   完成断线席位保留、决策边界 AI 托管、endpoint 重绑、心跳检测、自动重试、场景路由和客户端桌面原子恢复。
     *   已通过 1/2/3/4 真人组合、EastOnly 多小局、强退重连、心跳超时、加载/主回合/响应/局间/结算恢复和 Dedicated Server 验收。
@@ -33,7 +40,7 @@
 *   **多局对战系统 (2026-03-05)**: 实现 `GameSession` 多局状态管理，支持单局/东风局/半庄/全庄。含圈风轮转、门风分配、国标计分（底分+番数制）。修复了 `FanContext` 风位 bug（圈风刻/门风刻永远匹配西风）。`ResultPanel` 支持多局结算流程。
 *   **架构重构**: 完成了 "Fat Client, Thin Server" 架构，拆分了 `GameServer` 与 Client Agents，为本地/AI 统一逻辑打下基础。
 *   **AI 基础**: 实现了 `SimpleAIClient`，支持基础的出牌、吃碰杠胡决策。
-*   **结算系统**: `ResultPanel` 已完成 UI Toolkit 对接，支持番种列表展示及得分滚动动画。
+*   **结算系统**: `ResultPanel` 已完成 UI Toolkit 对接，权威最终番置顶，并逐条展示基础番与天赋影响；恢复结算时直接呈现，不重播反馈动画。
 *   **副露系统**: `HandController` 已实现吃碰杠的基础 3D 模型生成逻辑（正在精修旋转与堆叠细节）。
 
 3. 避坑指南 (Troubleshooting Log)
@@ -58,7 +65,13 @@
 *   **胡牌计算不准确**: 
     *   *解法*: 引入手牌多路径拆解算法，遍历所有方案取番数最大值。
 *   **UI Toolkit 字体不显示**:
-    *   *解法*: 确保 USS 引用 `-unity-font-definition` (SDF 资产) 而非原始字体文件。
+    *   *解法*: USS 的 `-unity-font-definition` 统一引用由 `MSYH.TTC` 生成的 TextCore `MSYH_UITK.asset`；不要直接引用 TTC 或 TMP 的 `MSYH_SDF.asset`。
+*   **独立 UIDocument 透明遮挡输入**:
+    *   *症状*: 备牌、目标选择等动态面板视觉上已隐藏，但出牌或吃碰杠胡按钮仍无法点击。
+    *   *解法*: 隐藏时对整个 `UIDocument.rootVisualElement` 设置 `DisplayStyle.None`，显示/取消/超时/恢复/销毁统一清理 schedule、回调和选择状态；全屏阶段面板优先使用独立 Scene Object。
+*   **Unity `.meta` / 生成工程误维护**:
+    *   *原因*: 手写 GUID 或临时修改 `Assembly-CSharp.csproj` 会制造导入失败和无效编译证据。
+    *   *解法*: 智能体只做纯 C# 回归；新增资产的 `.meta`、Unity Refresh、生成工程和视觉/音频 smoke 由人工 Unity 关口完成。
 *   **DoTween 序列同步**:
     *   *解法*: 在 `HandController` 中处理并发动作时，需使用 `Sequence` 确保动画不冲突。
 *   **超时出牌手牌不同步 (+1 bug)**:

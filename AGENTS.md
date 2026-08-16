@@ -4,7 +4,7 @@
 **SuperMajiang** 是一款基于 Unity 的 Roguelike 国标麻将游戏，支持 WebSocket 联机；一人游玩同样使用在线 `Room`，由 AI 补足其余席位。
 - **核心规则**: 国标麻将 (MCR/Guobiao)，支持 81 番种计算
 - **特色系统**: Roguelike 天赋系统、34 张自定义牌库、异化值机制
-- **当前阶段**: Alpha - 核心循环与规则已实现
+- **当前阶段**: Alpha - UI、联机权威、天赋垂直切片与卡组预算编辑器已完成
 
 ## Technical Stack
 - **Engine**: Unity 2022.3.61t9 (Tuanjie 1.6.8)
@@ -25,7 +25,7 @@
 - 服务端链路：`ServerBootstrap -> WebSocketService -> ConnectionRegistry -> RoomManager -> Room -> GameServer`
 - `ConnectionRegistry` 分离物理 WebSocket、连接代次、开发期身份和逻辑席位；旧 endpoint 的迟到回调必须被代次校验丢弃
 - `RoomManager` 管理房间生命周期，`Room` 持有四席构筑、`GameSession`、跨小局复用的 `TalentMatchRuntime`、`GameServer`、席位消息流及断线托管状态
-- 协议版本为 v3，携带构筑 schema 为 v2；连接必须先完成 `Hello`，开发期以规范化 username 生成稳定 `playerId`
+- 协议版本为 v4，携带构筑 schema 为 v3；连接必须先完成 `Hello`，开发期以规范化 username 生成稳定 `playerId`
 - 每个真人席位使用独立、连续递增的 `SeatMessageStream`；公共消息也按席序列化，私有手牌、牌库、天赋和窥探结果不得串席
 - `RoomGameSnapshot` 只向本家暴露完整暗手牌；客户端使用纯 C# `ClientGameState` 原子应用快照和有序消息
 - 所有网络动作携带 `decisionId`；服务端拒绝过期、重复、错误阶段、错误席位和 AI 控制期间的人类动作
@@ -51,7 +51,11 @@
 - 覆盖牌山构建、摸牌、出牌、动作校验和算番钩子；`OnDraw`/`OnDiscard` 返回修改后的 `TileData`，形成管道链式调用
 - 携带构筑为 6 个主槽（大×1 + 中×2 + 小×3）及 3 个备选槽；主槽可向下兼容装配
 - 异化值档位为 Low 40 / Standard 80 / High 120。服务端重建并验证构筑：总成本 = 牌库异化值 + 当前激活主天赋成本，未激活的三个备选不计成本；精确总值仅本家可见
-- 现有六个天赋均已迁入规则重写，并在跨两小局回归中验证
+- 当前九个天赋均由规则类实现：点金手、窥探、如龙、厚积、快人一步、初始资金、定心、截流、藏锋
+- 主动天赋使用服务端权威 `decisionId` 和目标投影；负面效果先经过目标席防御管道
+- 半庄/全庄第 4 小局后进入一次中场备牌，45 秒内从携带的 6+3 天赋中重新锁定生效集合；AI、断线和超时由服务端提交合法方案
+- 胡牌番数拆为基础番、天赋门槛/奖励/惩罚和最终番，最终值及逐项归因随权威结果与恢复快照下发
+- Dedicated Server 将匿名玩法事件写入紧凑 JSONL；遥测失败不得中断房间或小局生命周期
 
 **单例模式**: 逻辑层使用纯 C# 懒加载单例，不依赖 MonoBehaviour/场景状态
 
@@ -111,17 +115,20 @@ Assets/Scripts/
 │   └── Impl/                # 具体天赋实现
 │       ├── MidasTouchTalent.cs
 │       ├── PeekTalent.cs        # 窥探——发牌后显示牌山顶部4张
-│       ├── DragonAscentTalent.cs # 龙腾——宽松清龙判定
-│       ├── DrawRewardTalent.cs   # 摸牌奖励
-│       ├── HeadStartTalent.cs    # 先发制人——固定加番
-│       └── StartingCapitalTalent.cs # 启动资金
+│       ├── DragonAscentTalent.cs # 如龙——宽松清龙判定
+│       ├── DrawRewardTalent.cs   # 厚积——流局得分
+│       ├── HeadStartTalent.cs    # 快人一步——降低起胡门槛并加番
+│       ├── StartingCapitalTalent.cs # 初始资金
+│       ├── ComposureTalent.cs    # 定心——每小局首次负面效果无效
+│       ├── InterceptionTalent.cs # 截流——削减公开充能
+│       └── SheathedEdgeTalent.cs # 藏锋——消耗全部锋，每层+12番
 └── Editor/
     └── TileConfigEditor.cs  # 编辑器扩展
 
 Assets/UI/                   # UI Toolkit 面板
 ├── MainLobby.uxml/uss       # 大厅主界面 (含 DeckSelector 卡组切换器)
 ├── LobbyController.cs       # 大厅逻辑 (标签页切换、卡组选择、匹配入口)
-├── DeckEditorToolkit.cs     # 牌库编辑器 (含天赋槽 UI 与天赋选择弹窗)
+├── DeckEditorToolkit.cs     # 牌库编辑器（固定预算表盘、6+3天赋、未保存保护）
 ├── TalentSlotTemplate.uxml/uss # 天赋槽位模板与样式
 ├── TalentItemTemplate.uxml  # 天赋列表项模板
 ├── FloatingTilePanel.uxml/uss  # 通用悬浮牌面板 (窥探天赋等)
@@ -129,8 +136,11 @@ Assets/UI/                   # UI Toolkit 面板
 ├── TileImageHelper.cs       # 牌面图片路径共享工具类
 ├── WaitHintPanel.uxml/uss   # 听牌提示面板
 ├── WaitHintController.cs    # 听牌提示控制器
-├── ActionPanel/             # 操作按钮面板
-├── ResultPanel/             # 结算面板 (番种详情)
+├── ActionPanel.uxml/uss     # 基础动作与主动天赋操作面板
+├── GameHUD/                 # 常驻天赋 chip、事件流和主动效果反馈
+├── SideboardPanel.uxml/uss  # 独立中场备牌 UIDocument
+├── SideboardPanelController.cs # 备牌草稿、倒计时与锁定表现
+├── ResultPanel.uxml/uss     # 最终番置顶、基础番与天赋逐项结算
 ├── DeckEditor/              # 牌库编辑器视图与样式
 └── Templates/               # 复用模板 (TileItemTemplate 等)
 ```
@@ -169,11 +179,13 @@ Assets/UI/                   # UI Toolkit 面板
 - 算番开发: 在 `FanRules_Common.cs` 新增规则需实现 `GetMatchCount`，考虑优先级与排斥
 - Dedicated Server 使用 `Tools > Build > Dedicated Server (Windows)` 构建，不得修改客户端 Build Settings 首场景
 - 联机自动回归：`dotnet run --project Tests\NetworkRegression\NetworkRegression.csproj --no-restore`
+- 真实 `GameServer` 算番/遥测回归：`dotnet run --project Tests\GameServerTelemetryRegression\GameServerTelemetryRegression.csproj --no-restore`
 - 完整联机验证步骤见 `docs/network_verification.md`
 
 ### Automated Validation and Unity Integration Boundary
 - 智能体的日常自动验证以纯 C# 为主：优先运行与改动相关的 focused regression，再运行必要的完整 `NetworkRegression` 或其他纯 C# 回归工程。
 - 对 `.uxml` / `.uss` 的日常自动检查仅限 XML 结构、资源路径、源码约束和纯策略测试；实际布局、中文字体、动画、音效及场景实例化由人工在 Unity 中验收。
+- 已完成人工验收的 UI 不长期保留 UXML/USS/Scene 源码形状、`.meta` GUID 或占位音频字节级测试；长期测试只保护玩法、网络权威、隐私、恢复和纯展示策略。
 - **禁止智能体手写、猜测、复制或修复 Unity `.meta` GUID**。新增 Unity 资产时允许暂时没有 `.meta`，必须等待 Unity/Tuanjie Refresh 权威生成。
 - 如果实现需要在场景、Prefab、UXML 或其他序列化资产中引用新资产 GUID，智能体必须暂停该引用步骤，请求人工先执行 Unity Refresh；不得预造 GUID 后继续。
 - **禁止智能体编辑、临时补项或以其他方式修补 Unity 生成的 `Assembly-CSharp.csproj` 等工程文件**，也不得把未 Refresh 导致的生成工程缺项视为源码编译失败。
@@ -196,12 +208,13 @@ Assets/UI/                   # UI Toolkit 面板
 参阅 `plan.md` 获取完整任务列表。当前重点:
 - 异化牌视觉反馈
 - 发牌与摸牌 DoTween 动画
-- 结算手牌缩略图复盘
 - 对象池性能优化
 - ~~超时取消机制~~ (已完成: CancellationToken + ServerGameState)
 - ~~Home 页卡组选择器~~ (已完成: DeckSelector 左右箭头循环切换)
 - ~~多局对战 UI 完善~~ (已完成: 风位显示、分数面板、GameMode 选择器)
-- ~~天赋系统重构~~ (已完成: Room 持有跨小局 runtime、服务端异化预算、6+3 构筑与六天赋迁移)
+- ~~天赋系统重构~~（已完成：Room 持有跨小局 runtime、服务端异化预算、6+3 构筑与九天赋）
+- ~~天赋主动动作、中场备牌与战术 UI~~（已完成：独立备牌面板、HUD 三级反馈、番数归因、AI 与遥测）
+- ~~卡组预算检查器~~（已完成：固定表盘、三档直选、实时拆分、未保存离开保护）
 - ~~牌河指针~~ (已完成: Emission 呼吸灯高亮最新出牌)
 - ~~通用悬浮牌面板~~ (已完成: FloatingTilePanel 展示/选择双模式，窥探天赋接入)
 - ~~天赋选择弹窗美化~~ (已完成: CSS class 重构，品阶颜色区分，结构化布局)

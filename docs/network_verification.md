@@ -1,6 +1,6 @@
 # 联机框架验证指南
 
-本文档是 SuperMajiang 联机框架的长期验证入口，覆盖 Dedicated Server、房间、多真人、多小局和断线重连。协议当前为 v3，携带构筑 schema 为 v2，默认端口为 `9876`。
+本文档是 SuperMajiang 联机框架的长期验证入口，覆盖 Dedicated Server、房间、多真人、多小局、天赋/备牌和断线重连。协议当前为 v4，携带构筑 schema 为 v3，默认端口为 `9876`。
 
 ## 1. 自动检查
 
@@ -29,7 +29,7 @@ NetworkRegression 只覆盖可脱离 Unity 运行的协议、策略、快照和�
 pwsh -NoLogo -NoProfile -Command "dotnet run --project Tests/NetworkRegression/NetworkRegression.csproj --no-restore"
 ```
 
-预期 `Network regression tests passed.`。该命令仅验证可脱离 Unity 的边界和场景序列化守卫；以下矩阵必须在 Unity Editor、Dedicated Server 和客户端中人工执行并逐项记录结果：
+预期 `Network regression tests passed.`。该命令仅验证可脱离 Unity 的协议、权威状态、隐私、策略与生命周期边界；场景序列化、UI Toolkit 输入和实际布局不属于自动回归范围。以下矩阵必须在 Unity Editor、Dedicated Server 和客户端中人工执行并逐项记录结果：
 
 1. 使用默认 `--aiFill=true` 启动 Dedicated Server。
 2. 启动一个普通客户端，登录后创建 `Single` 房间并点击 Ready，确认 1–3 号席位为 AI。
@@ -40,16 +40,18 @@ pwsh -NoLogo -NoProfile -Command "dotnet run --project Tests/NetworkRegression/N
 6. 停止 Dedicated Server 后尝试创建房间，确认客户端停留在大厅。
 7. 分别在 Editor 和 development build 中直接运行 `03_Game`，确认记录 `MissingNetworkRoomForGameScene` 并返回 Persistent。
 
-## Plan 1：天赋基础与异化值验证
+## 天赋、异化值与备牌验证
 
-先复用上方自动检查命令。自动回归应覆盖 Low 40 / Standard 80 / High 120 预算边界、服务端重建构筑、未激活备选槽不计成本、他席精确总异化值不泄露、发牌后 Peek、跨两小局 runtime 生命周期与六个既有天赋。
+先复用上方自动检查命令。自动回归应覆盖 Low 40 / Standard 80 / High 120 预算边界、服务端重建 6+3 构筑、未激活备选槽不计成本、他席精确总异化值不泄露、跨小局 runtime 生命周期，以及九个天赋（点金手、窥探、如龙、厚积、快人一步、初始资金、定心、截流、藏锋）的服务端规则。主动动作、防御、公开充能、最终番归因和中场备牌均以服务端权威消息与快照为准。
 
 手工验证时：
 
 1. 以三档异化值分别创建或加入房间，确认超预算或非法构筑在变更房间状态前被拒绝；非本家仅能看到档位，不能看到精确总值、完整构筑或私有 Peek。
-2. 在发牌后确认 Peek 显示的是洗牌和发牌后的牌山顶部；完成两小局，确认同一个 Room runtime 跨局存在而小局状态按规则重置。
+2. 在发牌后确认窥探显示的是洗牌和发牌后的牌山顶部；触发截流、定心和藏锋，确认主动动作只在有效决策中提交，控制被阻挡时仍消耗截流次数，公开充能和防御状态与服务器一致。
 3. 确认异化牌只在权威物理牌跨越弃牌、公开副露、加杠或和牌边界时产生公共揭示；手牌与私有 Peek 不得提前公开。
-4. 人为触发异常终局路径，确认完成消息只发出一次，Room 仍以异常安全的终局回退收束。
+4. 完成上半场后确认独立备牌面板全屏接管输入，四席锁定后进入下半场；重连时仅恢复本家构筑、公开情报、权威决策和锁定状态，不重播天赋 toast、音效或事件流。
+5. 胡牌后确认最终番置顶，基础番与各项天赋影响逐条展示；恢复结算时直接呈现权威结果，不重复播放强反馈。
+6. 完成至少两小局，确认同一个 Room runtime 跨局存在而小局状态按规则重置；人为触发异常终局路径，确认完成消息只发出一次，Room 仍以异常安全的终局回退收束。
 
 ## 2. 构建 Dedicated Server
 

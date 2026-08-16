@@ -38,7 +38,7 @@
     *   `WebSocketService.cs`: `ws://0.0.0.0:{port}/game` 长连接传输层，限制单条客户端消息为 64 KiB。
     *   `ConnectionRegistry.cs`: 管理 connection ID、连接代次、endpoint、playerId、roomId 和 seatIndex；旧连接代次不得操作新绑定。
     *   `RoomManager.cs`: 处理 Hello 后的创建、加入、Ready、离开、断线、重连和过期房间清理。
-    *   `Room.cs`: 单房间聚合根，持有席位、锁定构筑、`GameSession`、`GameServer`、`StableSeatController` 和每席消息流。
+    *   `Room.cs`: 单房间聚合根，持有席位、锁定构筑、`GameSession`、跨小局 `TalentMatchRuntime`、中场备牌 tracker、`GameServer`、`StableSeatController` 和每席消息流。
     *   `SeatMessageStream.cs`: 为每个逻辑真人席位提供连续 `seq`、最近 256 条序列化消息缓存及 endpoint 重绑。
     *   `GameServer.cs`: 权威异步对局循环，管理决策截止时间、`decisionId` 和并发仲裁。
     *   `ServerGameState.cs`: 权威记录四席手牌、副露和牌河；超时兜底与恢复快照均从该状态读取。
@@ -71,7 +71,7 @@ WebSocketClient
   -> Hand / River / HUD / Result presentation
 ```
 
-协议版本为 v3，携带构筑 schema 为 v2。username 目前仅作为开发期身份桥接，经 `IAccountAuthenticator` 规范化为稳定 `playerId`；它不是正式鉴权。`Room` 锁定四席构筑后重建并验证 Low 40 / Standard 80 / High 120 异化值预算，公开消息只携带档位而非其他玩家精确总值。断线时物理 endpoint 与逻辑席位分离，席位可进入 `OfflineReserved` / `AiControlled`，并只在安全决策边界切换控制者。重连使用 `{roomId, streamId}` 和已认证身份定位席位，当前始终请求完整权威快照；Dedicated Server 重启不恢复房间。
+协议版本为 v4，携带构筑 schema 为 v3。username 目前仅作为开发期身份桥接，经 `IAccountAuthenticator` 规范化为稳定 `playerId`；它不是正式鉴权。`Room` 锁定四席构筑后重建并验证 Low 40 / Standard 80 / High 120 异化值预算，公开消息只携带档位而非其他玩家精确总值。主动天赋、基础动作和备牌提交都使用权威 `decisionId`；半庄/全庄第 4 小局后恰好开放一次备牌阶段。断线时物理 endpoint 与逻辑席位分离，席位可进入 `OfflineReserved` / `AiControlled`，并只在安全决策边界切换控制者。重连使用 `{roomId, streamId}` 和已认证身份定位席位，当前始终请求完整权威快照；Dedicated Server 重启不恢复房间。
 *   **表现层控制器 (MonoBehaviour)**:
     *   `HandController.cs`: 管理 3D 手牌生成、布局、DoTween 动画及交互。含 `ForceRemoveTile()` 超时出牌专用方法。
     *   `RiverController.cs`: 管理牌河的 3D 排布。
@@ -99,22 +99,28 @@ WebSocketClient
 
 *   **基础设施**:
     *   `TalentRuleAttribute.cs`: 标记属性，定义天赋的 Id、DisplayName、Description、Tier、AlienationCost、Phases。
-    *   `TalentRule.cs`: 运行时抽象基类，提供 5 个阶段钩子虚方法（OnWallBuilding / OnDraw / OnDiscard / OnActionValidation / OnScoring）。
+    *   `TalentRule.cs`: 运行时抽象基类，覆盖比赛/小局生命周期、牌山/摸牌/出牌/动作/算番、主动动作、防御、公开快照和接受胡牌提交钩子。
     *   `TalentContext.cs`: 上下文数据类，传递当前玩家 ID、牌山引用、GameState 快照等信息。
     *   `TalentMetadata.cs`: 生命周期、公开策略与备选限制等不可变元数据。
     *   `TalentSlotConfig.cs`: 可序列化 6+3 携带构筑：主槽 index 0=大、1-2=中、3-5=小，另有三个备选槽；支持向下兼容装配。
     *   `TalentRegistry.cs`: 纯 C# 懒加载单例，反射自动发现 `[TalentRuleAttribute]` 标记的类，提供 `CreateInstance`、`GetDisplayName`、`GetDescription`、`GetCost`、`GetTier` 等查询方法。
     *   `TalentRuntimeState.cs`: 每席每个天赋的带类型比赛/小局计数器、标志和公开状态。
     *   `TalentRuntimeEvent.cs`: 带单调事件 ID 的结构化公开/私有天赋事件。
-    *   `TalentMatchRuntime.cs`: Room 持有的唯一生命周期协调器，执行管道、私有 Peek、算分选项、公开揭示和小局结束效果；`TalentManager` 与 `SessionTalentPolicy` 已删除。
+    *   `TalentMatchRuntime.cs`: Room 持有的唯一生命周期协调器，执行管道、私有 Peek、主动动作、防御/负面效果、公开充能、备牌生效集合、算番归因和小局结束效果；`TalentManager` 与 `SessionTalentPolicy` 已删除。
+    *   `TalentActionModels.cs`: 服务端下发的主动天赋选项、请求和结果模型。
+    *   `TalentNegativeEffect.cs`: 窄负面效果描述与公开充能能力边界，runtime 保证阻挡时不执行、放行时只执行一次。
+    *   `TalentTelemetry.cs`: 匿名玩法记录与 Null/Memory/JSONL sink；Dedicated Server 默认写 `Logs/talent-playtest.jsonl`。
     *   `TalentDefinition.cs`: ScriptableObject 元数据（图标/显示名/描述），仅供 UI 展示，运行时逻辑不依赖。
 *   **具体实现 (`Impl/`)**:
     *   `MidasTouchTalent.cs`: 点金手——摸牌时将风牌/箭牌转化为发财。
     *   `PeekTalent.cs`: 窥探——发牌后通过 FloatingTilePanel 显示牌山顶部 4 张牌。
-    *   `DragonAscentTalent.cs`: 龙腾——宽松清龙判定。
-    *   `DrawRewardTalent.cs`: 摸牌奖励。
-    *   `HeadStartTalent.cs`: 先发制人——固定加番。
-    *   `StartingCapitalTalent.cs`: 启动资金。
+    *   `DragonAscentTalent.cs`: 如龙——宽松清龙判定。
+    *   `DrawRewardTalent.cs`: 厚积——流局得分。
+    *   `HeadStartTalent.cs`: 快人一步——降低起胡门槛并加番。
+    *   `StartingCapitalTalent.cs`: 初始资金。
+    *   `ComposureTalent.cs`: 定心——每小局首次受到的负面天赋效果无效。
+    *   `InterceptionTalent.cs`: 截流——整场 3 次，削减一项对手已公开且仍生效的充能天赋。
+    *   `SheathedEdgeTalent.cs`: 藏锋——至少 1 层可发动，消耗全部锋，本局下次合法胡牌每层 +12 番。
 
 #### 天赋定义规范
 
@@ -153,17 +159,24 @@ WebSocketClient
 4. **阶段钩子签名**：
    | 阶段 | 方法签名 | 说明 |
    |------|---------|------|
-   | WallBuilding | `void OnWallBuilding(TalentContext ctx)` | 通过 `ctx.WallTiles` 直接修改牌山 |
+   | Match / Round | `InitializeMatchState` / `OnRoundStarted` / `OnRoundEnded` | 初始化比赛状态、重置小局状态与结算跨局效果 |
+   | WallBuilding | `void OnWallBuilding(TalentWallContext ctx)` | 通过窄上下文修改牌山 |
    | OnDraw | `TileData OnDraw(TalentContext ctx, TileData tile)` | 返回修改后的牌，管道链式 |
    | OnDiscard | `TileData OnDiscard(TalentContext ctx, TileData tile)` | 返回修改后的牌，管道链式 |
    | ActionValidation | `bool OnActionValidation(TalentContext ctx, ClientActionType, TileData)` | 返回 false 可禁止动作 |
    | Scoring | `void OnScoring(TalentContext ctx, FanContext fanCtx)` | 修改 FanContext 影响算番 |
+   | Active Action | `GetAvailableActions` / `TryActivate` | 枚举服务器授权选项并执行携带 `decisionId` 的主动动作 |
+   | Control Defense | `TryBlockNegativeEffect` | 只读取窄负面效果描述，不能直接执行被阻挡效果 |
+   | Accepted Win | `GetPostLegalFanBonus/Penalty` / `OnAcceptedWin` | 合法胡牌后汇总贡献，最终接受时提交一次性状态 |
 
 5. **设计约束**：
    - 天赋逻辑必须纯 C#，不依赖 MonoBehaviour 或 Unity 生命周期
    - `Scope.Self` 天赋在钩子中应检查 `ctx.IsOwnersTurn` 或 `ctx.CurrentPlayerId == ctx.TalentOwnerId`
    - `Scope.Global` 天赋影响所有玩家，应配高异化值作为代价
    - 修改 `TileData` 后应设置 `IsModified = true` 和 `SpecialEffectID = Id`
+   - `Room` / `GameServer` 不得按具体 `talentId` 分支；具体效果和可选目标由规则多态与 runtime 统一调度
+   - 候选算番、可见性反事实和归因必须使用 detached state 与 null event sink，不能改变权威状态或重复公开事件
+   - 主动动作、负面效果与接受胡牌的消耗都必须在服务器权威边界恰好提交一次
 
 ### D. `Assets/Scripts/Editor` (编辑器扩展)
 *   `TileConfigEditor.cs`: `TileResourceConfig` 自动化图片匹配工具。
@@ -177,9 +190,11 @@ WebSocketClient
 
 #### 核心面板与组件：
 *   **LoginPanel & MainLobby**: `01_Login` 和 `02_MainLobby` 场景中的 UI 主体面板。Home 页包含 `DeckSelector`（左右箭头循环切换卡组）、异化值显示及匹配入口。
-*   **操作面板 (`ActionPanel`)**: 按钮布局与可选吃牌组合逻辑。
-*   **结算面板 (`ResultPanel`)**: 汇总算番详情，驱动流局或胡牌界面。
-*   **牌库编辑器 (`DeckEditor`)**: 34 种牌选择界面与异化值计算提示。含天赋槽 UI（6 个主槽及 3 个备选槽、弹窗选择器、详情区域）。天赋选择弹窗使用 CSS class 结构化布局（品阶颜色区分、名称/描述/异化值分行显示）。
+*   **操作面板 (`ActionPanel`)**: 基础吃碰杠胡与主动天赋按钮共存；只消费服务器下发的合法选项，pending/reject/过期/恢复均按 `decisionId` 隔离。
+*   **常驻天赋 HUD (`GameHUD`)**: 展示本家生效天赋、已公开对手天赋、最近事件流及三级反馈；恢复快照只重建状态，不重播 toast/音效。
+*   **独立备牌面板 (`SideboardPanel`)**: 独立 Scene Object / `UIDocument`，权威阶段到来时全屏显示，隐藏时整个文档 `display:none`，不拦截 ActionPanel 或 3D 手牌输入。
+*   **结算面板 (`ResultPanel`)**: 最终番置顶，基础番与天赋门槛/奖励/惩罚逐项展示，使用服务端权威 `TalentFanBreakdown`。
+*   **牌库编辑器 (`DeckEditor`)**: 34 种牌、6 主槽 + 3 备选槽和固定预算检查器。右侧表盘实时显示牌山/主天赋/备牌不计入/总计与 Low 40、Standard 80、High 120 档位；未保存草稿在切换、新建、删除当前牌库和退出时统一保护。
 *   **天赋模板**: `TalentSlotTemplate.uxml/uss`（槽位显示）、`TalentItemTemplate.uxml`（列表项）。
 *   **通用悬浮牌面板 (`FloatingTilePanel`)**: `FloatingTilePanel.uxml/uss` + `FloatingTilePanelController.cs`，支持展示模式（自动关闭+手动关闭）和选择模式（点击回调），用于窥探天赋等需要展示牌面信息的场景。屏幕上方居中，淡入动画，不阻挡底层交互。
 *   **牌面图片工具**: `TileImageHelper.cs` 静态类，将 `Suit+Value` 映射为 `Resources` 路径，供 `WaitHintController`、`FloatingTilePanelController` 等共用。

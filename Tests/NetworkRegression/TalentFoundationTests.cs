@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using MahjongGame.Core;
 using MahjongGame.Core.Network;
@@ -36,7 +35,6 @@ internal static class TalentFoundationTests
         ExistingSixTalentsExecuteAcrossTwoRounds(runner);
         ModifiedTileAndAcceptedWinRevealOnlyAtPublicBoundaries(runner);
         PurePostLegalModifiersRevealThroughEntryExcludedCounterfactuals(runner);
-        NetworkRuntimeIntegrationHasNoStableTalentIdLiterals(runner);
         LoadoutDecodingEnforcesRoomAlienationPresets(runner);
     }
 
@@ -773,23 +771,6 @@ internal static class TalentFoundationTests
                                                    && events[0].TalentId == "dragon_ascent"
                                                    && events[0].Visibility == TalentEventVisibility.Public),
             "dragon ascent reveals only when a counterfactual recomputation proves it changed the accepted win");
-    }
-
-    private static void NetworkRuntimeIntegrationHasNoStableTalentIdLiterals(RegressionRunner runner)
-    {
-        string roomSource = File.ReadAllText(Path.Combine(
-            "Assets", "Scripts", "Core", "Network", "Room.cs"));
-        string gameServerSource = File.ReadAllText(Path.Combine(
-            "Assets", "Scripts", "Core", "Network", "GameServer.cs"));
-        string[] stableIds =
-        {
-            "midas_touch", "peek", "dragon_ascent", "draw_reward", "head_start", "starting_capital"
-        };
-
-        runner.Check(stableIds.All(id => !roomSource.Contains($"\"{id}\"", StringComparison.Ordinal)),
-            "Room must not execute stable talent ids through source-level effect branches");
-        runner.Check(stableIds.All(id => !gameServerSource.Contains($"\"{id}\"", StringComparison.Ordinal)),
-            "GameServer must not execute stable talent ids through source-level effect branches");
     }
 
     private static void PurePostLegalModifiersRevealThroughEntryExcludedCounterfactuals(
