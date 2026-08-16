@@ -191,9 +191,9 @@ internal static class ActionValidationTests
             $"(legal={sixFanIsLegal}, boostedLegal={sixPlusEligibilityBonusIsLegal}, boostedFan={boostedToEight}, " +
             $"details={string.Join("|", sixFanDetails ?? new List<string>())})");
         runner.Check(eightFanIsLegal && baseEight == 8
-                     && resolved.PostLegalBonusFan == 16
-                     && resolved.FinalFan == 24,
-            $"an eligible eight-fan hand resolves to twenty-four after sheathed edge " +
+                     && resolved.PostLegalBonusFan == 36
+                     && resolved.FinalFan == 44,
+            $"an eligible eight-fan hand resolves to forty-four after consuming three sheathed-edge layers " +
             $"(legal={eightFanIsLegal}, base={baseEight}, bonus={resolved.PostLegalBonusFan}, final={resolved.FinalFan}, " +
             $"details={string.Join("|", eightFanDetails ?? new List<string>())})");
     }

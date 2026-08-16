@@ -28,9 +28,10 @@ internal static class TalentActionTests
         NegativeEffectRejectsIneligiblePublicChargeBeforeDefenses(runner);
         SheathedEdgeChargesCapsAndExposesPublicTargets(runner);
         SheathedEdgeDoesNotChargeOnOwnerWinOrAbortedRound(runner);
+        SheathedEdgeConsumesAnyPositiveChargeForScaledBonus(runner);
         SheathedEdgeArmsOnlyOnTheFirstMainDecision(runner);
         SheathedEdgeReadOnlyResolutionConsumesOnlyAfterAcceptedWin(runner);
-        SheathedEdgeUnusedArmExpiresWithoutRefund(runner);
+        SheathedEdgeConsumedChargeDoesNotCarryAcrossRounds(runner);
         RoomManagerRoutesTalentActionsWithExactlyOneSeatResolution(runner);
     }
 
@@ -915,6 +916,64 @@ internal static class TalentActionTests
             "sheathed edge does not gain charge when its owner wins or the round aborts");
     }
 
+    private static void SheathedEdgeConsumesAnyPositiveChargeForScaledBonus(
+        RegressionRunner runner)
+    {
+        TalentMatchRuntime emptyRuntime = CreateSheathedEdgeRuntime(out GameSession emptySession);
+        emptyRuntime.OpenMainDecision(ownerSeatIndex: 0, decisionId: 80);
+        var emptyQuery = new TalentActionQueryContext(
+            emptySession, 0, TalentActivationWindow.MainTurn, decisionId: 80);
+        TalentActionResult emptyResult = emptyRuntime.TryActivate(
+            0,
+            new TalentActionRequest { TalentId = "sheathed_edge", DecisionId = 80 },
+            new TalentActivationContext(
+                emptySession, 0, TalentActivationWindow.MainTurn, decisionId: 80));
+
+        runner.Check(emptyRuntime.GetAvailableActions(0, emptyQuery).Count == 0
+                     && !emptyResult.Accepted
+                     && emptyResult.ErrorCode == TalentActionErrorCodes.InsufficientResource,
+            "zero sheathed-edge layers expose no action and reject direct activation");
+
+        (int Layers, int ExpectedBonus)[] cases =
+        {
+            (1, 12),
+            (2, 24),
+            (3, 36)
+        };
+        foreach ((int layers, int expectedBonus) in cases)
+        {
+            TalentMatchRuntime runtime = CreateChargedSheathedEdgeRuntime(
+                layers, out GameSession session);
+            long decisionId = 80 + layers;
+            runtime.OpenMainDecision(ownerSeatIndex: 0, decisionId: decisionId);
+            var query = new TalentActionQueryContext(
+                session, 0, TalentActivationWindow.MainTurn, decisionId);
+            int availableActions = runtime.GetAvailableActions(0, query).Count;
+            TalentActionResult result = runtime.TryActivate(
+                0,
+                new TalentActionRequest
+                {
+                    TalentId = "sheathed_edge",
+                    DecisionId = decisionId
+                },
+                new TalentActivationContext(
+                    session, 0, TalentActivationWindow.MainTurn, decisionId));
+            TalentFanResolution first = runtime.ResolvePostLegalFan(
+                new TalentWinContext(session, 0), eligibilityFan: 8);
+            TalentFanResolution second = runtime.ResolvePostLegalFan(
+                new TalentWinContext(session, 0), eligibilityFan: 8);
+
+            runner.Check(availableActions == 1 && result.Accepted && result.EffectApplied,
+                $"{layers} sheathed-edge layers expose and accept the active action");
+            runner.Check(runtime.GetPublicCounter(0, "sheathed_edge", "edge") == 0,
+                $"activating with {layers} sheathed-edge layers immediately consumes them all");
+            runner.Check(first.PostLegalBonusFan == expectedBonus
+                         && first.FinalFan == 8 + expectedBonus
+                         && second.FinalFan == first.FinalFan,
+                $"{layers} consumed sheathed-edge layers grant a stable {expectedBonus}-fan bonus");
+        }
+    }
+
     private static void SheathedEdgeArmsOnlyOnTheFirstMainDecision(RegressionRunner runner)
     {
         TalentMatchRuntime runtime = CreateChargedSheathedEdgeRuntime(out GameSession session);
@@ -970,16 +1029,16 @@ internal static class TalentActionTests
             .Count(runtimeEvent => runtimeEvent.EventType == "armed_consumed");
 
         runner.Check(first.EligibilityFan == 8
-                     && first.PostLegalBonusFan == 16
+                     && first.PostLegalBonusFan == 36
                      && first.NegativeFan == 0
-                     && first.FinalFan == 24
-                     && second.FinalFan == 24,
+                     && first.FinalFan == 44
+                     && second.FinalFan == 44,
             "post-legal fan resolution is read-only and repeatable for candidate and final scoring");
         runner.Check(candidatesStayedQuiet && consumedEvents == 1,
             "sheathed edge emits its consumed event only after an accepted win is confirmed");
     }
 
-    private static void SheathedEdgeUnusedArmExpiresWithoutRefund(RegressionRunner runner)
+    private static void SheathedEdgeConsumedChargeDoesNotCarryAcrossRounds(RegressionRunner runner)
     {
         TalentMatchRuntime runtime = CreateArmedSheathedEdgeRuntime(out GameSession session);
         runtime.EndRound(new TalentRoundOutcome { WinnerSeatIndex = 1 }, session);
@@ -989,9 +1048,9 @@ internal static class TalentActionTests
             new TalentWinContext(session, 0), eligibilityFan: 8);
 
         runner.Check(nextRound.PostLegalBonusFan == 0 && nextRound.FinalFan == 8,
-            "an unused sheathed edge arm expires at the next round boundary");
+            "consumed sheathed-edge charge does not carry its armed bonus across rounds");
         runner.Check(runtime.GetPublicCounter(0, "sheathed_edge", "edge") == 1,
-            "an expired arm earns only the normal non-winning layer and does not refund three spent layers");
+            "the next round contains only the newly earned sheathed-edge layer");
     }
 
     private static TalentMatchRuntime CreateSheathedEdgeRuntime(out GameSession session)
@@ -1072,9 +1131,16 @@ internal static class TalentActionTests
 
     private static TalentMatchRuntime CreateChargedSheathedEdgeRuntime(out GameSession session)
     {
+        return CreateChargedSheathedEdgeRuntime(3, out session);
+    }
+
+    private static TalentMatchRuntime CreateChargedSheathedEdgeRuntime(
+        int layers,
+        out GameSession session)
+    {
         TalentMatchRuntime runtime = CreateSheathedEdgeRuntime(out session);
-        for (int index = 0; index < 3; index++)
-            EndNonWinningRound(runtime, session, winnerSeatIndex: index + 1);
+        for (int index = 0; index < layers; index++)
+            EndNonWinningRound(runtime, session, winnerSeatIndex: 1);
         return runtime;
     }
 

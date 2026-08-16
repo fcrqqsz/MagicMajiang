@@ -4,7 +4,7 @@ using MahjongGame.Core;
 
 namespace MahjongGame.Talents.Impl
 {
-    [TalentRule("sheathed_edge", "藏锋", "未获胜积攒锋，消耗3层令本局下次合法胡牌+16番。",
+    [TalentRule("sheathed_edge", "藏锋", "未获胜积攒锋，至少1层可用；消耗当前全部锋，使本局下次合法胡牌每层+12番。",
         TalentTier.Large, 28, TalentPhase.Scoring,
         StateScope = TalentStateScope.Match,
         ActivationWindow = TalentActivationWindow.MainTurn,
@@ -14,6 +14,7 @@ namespace MahjongGame.Talents.Impl
     {
         private const string ChargeKey = "edge";
         private const string ArmedKey = "armed";
+        private const string ArmedChargeKey = "armed_charge";
 
         public override void OnRoundEnded(TalentRoundContext context, TalentRoundOutcome outcome)
         {
@@ -30,7 +31,7 @@ namespace MahjongGame.Talents.Impl
             List<TalentActionOption> output)
         {
             if (!context.IsFirstMainDecisionOfRound
-                || context.State.GetCounter(ChargeKey, TalentStateScope.Match) < 3
+                || context.State.GetCounter(ChargeKey, TalentStateScope.Match) < 1
                 || context.State.GetFlag(ArmedKey, TalentStateScope.Round))
             {
                 return;
@@ -48,9 +49,14 @@ namespace MahjongGame.Talents.Impl
             {
                 return TalentActionResult.NotSupported();
             }
-            if (context.State.GetCounter(ChargeKey, TalentStateScope.Match) < 3)
+            int consumedLayers = context.State.GetCounter(ChargeKey, TalentStateScope.Match);
+            if (consumedLayers <= 0)
                 return TalentActionResult.Reject(TalentActionErrorCodes.InsufficientResource);
 
+            context.State.SetCounter(
+                ArmedChargeKey,
+                consumedLayers,
+                TalentStateScope.Round);
             context.SetPublicCounter(ChargeKey, 0, TalentStateScope.Match);
             context.State.SetFlag(ArmedKey, true, TalentStateScope.Round);
             context.EmitPublic("armed", 1);
@@ -58,12 +64,15 @@ namespace MahjongGame.Talents.Impl
         }
 
         public override int GetPostLegalFanBonus(TalentWinContext context) =>
-            context.State.GetFlag(ArmedKey, TalentStateScope.Round) ? 16 : 0;
+            context.State.GetFlag(ArmedKey, TalentStateScope.Round)
+                ? context.State.GetCounter(ArmedChargeKey, TalentStateScope.Round) * 12
+                : 0;
 
         public override void OnAcceptedWin(TalentWinContext context)
         {
             if (!context.State.GetFlag(ArmedKey, TalentStateScope.Round)) return;
             context.State.SetFlag(ArmedKey, false, TalentStateScope.Round);
+            context.State.SetCounter(ArmedChargeKey, 0, TalentStateScope.Round);
             context.EmitPublic("armed_consumed", 1);
         }
 

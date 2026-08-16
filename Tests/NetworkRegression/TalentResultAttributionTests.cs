@@ -385,7 +385,7 @@ internal static class TalentResultAttributionTests
             new TalentAcceptedWinAttributionContext(
                 session,
                 0,
-                alreadyAcceptedFinalFan: 24,
+                alreadyAcceptedFinalFan: 44,
                 options => MahjongLogic.EvaluateBestFan(
                     hand, melds, winTile, isSelfDraw: false,
                     WindDirection.East, WindDirection.East,
@@ -395,12 +395,12 @@ internal static class TalentResultAttributionTests
             resolution.Contributions
                 .Select(row => (row.TalentId, row.FanDelta, row.Category, row.Sequence))
                 .ToArray();
-        runner.Check(resolution.FinalFan == 24 && resolution.BaseFan == 6,
+        runner.Check(resolution.FinalFan == 44 && resolution.BaseFan == 6,
             $"final and no-talent base fan remain distinct (base={resolution.BaseFan}, final={resolution.FinalFan})");
         runner.Check(rows.SequenceEqual(new[]
             {
                 ("head_start", 2, TalentFanContributionCategory.Eligibility, 0),
-                ("sheathed_edge", 16, TalentFanContributionCategory.PostLegal, 2)
+                ("sheathed_edge", 36, TalentFanContributionCategory.PostLegal, 2)
             }),
             "stable marginal attribution emits non-zero entry rows without talent-id effect branches");
         runner.Check(resolution.BaseFan + resolution.Contributions.Sum(row => row.FanDelta)
