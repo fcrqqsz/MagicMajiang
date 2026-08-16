@@ -127,6 +127,14 @@ namespace MahjongGame.UI
         public void CloseTalentDrawers() { }
     }
 
+    public sealed class SideboardPanelController
+    {
+        public static SideboardPanelController Instance { get; set; }
+        public void BindServerProxy(MahjongGame.Core.Network.RemoteServerProxy proxy) { }
+        public void UnbindServerProxy(MahjongGame.Core.Network.RemoteServerProxy proxy) { }
+        public void ApplyRecoverySnapshot(MahjongGame.Core.Network.Messages.SnapshotSideboardState state) { }
+    }
+
     public sealed class ResultPanelController
     {
         public static ResultPanelController Instance { get; set; }

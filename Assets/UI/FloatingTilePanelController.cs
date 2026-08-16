@@ -14,6 +14,7 @@ namespace MahjongGame.UI
 
         [SerializeField] private UIDocument _document;
 
+        private VisualElement _documentRoot;
         private VisualElement _root;
         private VisualElement _body;
         private Label _titleLabel;
@@ -22,6 +23,7 @@ namespace MahjongGame.UI
 
         private Coroutine _autoCloseCoroutine;
         private Action _closeClicked;
+        private bool _isOptionSelection;
 
         private void Awake()
         {
@@ -35,11 +37,13 @@ namespace MahjongGame.UI
 
             if (_document != null && _document.rootVisualElement != null)
             {
-                _root = _document.rootVisualElement.Q<VisualElement>("FloatingTilePanelRoot");
-                _body = _document.rootVisualElement.Q<VisualElement>("FloatingPanelBody");
-                _titleLabel = _document.rootVisualElement.Q<Label>("FloatingPanelTitle");
-                _scrollView = _document.rootVisualElement.Q<ScrollView>("FloatingTileScroll");
-                _closeBtn = _document.rootVisualElement.Q<Button>("FloatingPanelCloseBtn");
+                _documentRoot = _document.rootVisualElement;
+                _documentRoot.pickingMode = PickingMode.Ignore;
+                _root = _documentRoot.Q<VisualElement>("FloatingTilePanelRoot");
+                _body = _documentRoot.Q<VisualElement>("FloatingPanelBody");
+                _titleLabel = _documentRoot.Q<Label>("FloatingPanelTitle");
+                _scrollView = _documentRoot.Q<ScrollView>("FloatingTileScroll");
+                _closeBtn = _documentRoot.Q<Button>("FloatingPanelCloseBtn");
 
                 ConfigureClose(Hide);
                 HideImmediate();
@@ -63,6 +67,7 @@ namespace MahjongGame.UI
             if (_root == null) return;
 
             StopAutoClose();
+            _isOptionSelection = false;
             PopulateTiles(title, tiles, false, null);
             ConfigureClose(Hide);
             _closeBtn.text = "知道了";
@@ -83,6 +88,7 @@ namespace MahjongGame.UI
             if (_root == null) return;
 
             StopAutoClose();
+            _isOptionSelection = false;
             PopulateTiles(title, tiles, true, onSelected);
             _closeBtn.style.display = DisplayStyle.None;
             ShowPanel();
@@ -97,6 +103,7 @@ namespace MahjongGame.UI
             if (_root == null) return;
 
             StopAutoClose();
+            _isOptionSelection = true;
             _titleLabel.text = title;
             _scrollView.Clear();
             foreach (TalentActionTargetPresentation target in options ?? Array.Empty<TalentActionTargetPresentation>())
@@ -135,24 +142,40 @@ namespace MahjongGame.UI
             if (_root == null) return;
 
             StopAutoClose();
+            _isOptionSelection = false;
             _body.RemoveFromClassList("panel--visible");
             _root.AddToClassList("panel--hidden");
+            SetDocumentVisibility(false);
+        }
+
+        public void HideOptionSelection()
+        {
+            if (!_isOptionSelection) return;
+            Hide();
         }
 
         private void HideImmediate()
         {
             _body.RemoveFromClassList("panel--visible");
             _root.AddToClassList("panel--hidden");
+            SetDocumentVisibility(false);
         }
 
         private void ShowPanel()
         {
+            SetDocumentVisibility(true);
             _root.RemoveFromClassList("panel--hidden");
             // 延迟一帧添加 visible class，让 opacity transition 生效
             _root.schedule.Execute(() =>
             {
                 _body.AddToClassList("panel--visible");
             });
+        }
+
+        private void SetDocumentVisibility(bool visible)
+        {
+            if (_documentRoot == null) return;
+            _documentRoot.style.display = visible ? DisplayStyle.Flex : DisplayStyle.None;
         }
 
         private void PopulateTiles(string title, List<TileData> tiles, bool selectable, Action<int> onSelected)

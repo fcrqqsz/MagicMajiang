@@ -706,15 +706,22 @@ internal static class TalentActionTests
         runtime.BeginMatch(session);
         BeginReadyRound(runtime, session);
 
+        int availableLayersAtRoundStart = runtime.GetSnapshotEntries()
+            .Single(entry => entry.OwnerSeatIndex == 0 && entry.TalentId == "composure")
+            .PrivateValue;
         TalentNegativeEffect effect = BuildLayerReduction(1, 0);
         IReadOnlyList<TalentRuntimeEvent> beforeBlock = runtime.DrainEventsForSeat(1);
         TalentNegativeEffectResult blocked = runtime.ApplyNegativeEffect(effect);
+        int availableLayersAfterBlock = runtime.GetSnapshotEntries()
+            .Single(entry => entry.OwnerSeatIndex == 0 && entry.TalentId == "composure")
+            .PrivateValue;
         int reductionsAfterFirstEffect = NetworkTestPublicChargeTalent.ReductionCount;
         TalentNegativeEffectResult second = runtime.ApplyNegativeEffect(effect);
         IReadOnlyList<TalentRuntimeEvent> afterBlock = runtime.DrainEventsForSeat(1);
 
-        runner.Check(beforeBlock.All(runtimeEvent => runtimeEvent.TalentId != "composure"),
-            "composure remains unrevealed before it blocks a negative effect");
+        runner.Check(availableLayersAtRoundStart == 1
+                     && beforeBlock.All(runtimeEvent => runtimeEvent.TalentId != "composure"),
+            "composure privately projects one available layer at round start while remaining hidden from opponents");
         runner.Check(blocked.WasBlocked && !blocked.WasApplied
                      && blocked.BlockingTalentId == "composure"
                      && reductionsAfterFirstEffect == 0,
@@ -725,16 +732,20 @@ internal static class TalentActionTests
         runner.Check(afterBlock.Any(runtimeEvent => runtimeEvent.TalentId == "composure"
                                                    && runtimeEvent.EventType == "blocked_negative_effect"
                                                    && runtimeEvent.Visibility == TalentEventVisibility.Public
-                                                   && runtimeEvent.Value == 1),
-            "composure becomes public and records its consumed round state when it blocks");
+                                                   && runtimeEvent.Value == 0)
+                     && availableLayersAfterBlock == 0,
+            "composure becomes public with zero remaining layers after it blocks");
 
         runtime.EndRound(new TalentRoundOutcome { IsAborted = true }, session);
         BeginReadyRound(runtime, session);
+        int refreshedLayers = runtime.GetSnapshotEntries()
+            .Single(entry => entry.OwnerSeatIndex == 0 && entry.TalentId == "composure")
+            .PrivateValue;
         NetworkTestPublicChargeTalent.SetCharge(1);
         TalentNegativeEffectResult refreshed = runtime.ApplyNegativeEffect(effect);
 
-        runner.Check(refreshed.WasBlocked && !refreshed.WasApplied,
-            "composure refreshes at the next round boundary");
+        runner.Check(refreshedLayers == 1 && refreshed.WasBlocked && !refreshed.WasApplied,
+            "composure refreshes its private layer at the next round boundary");
     }
 
     private static void NegativeEffectRejectsUnknownTypesWithoutApplying(RegressionRunner runner)

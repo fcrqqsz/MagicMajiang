@@ -427,6 +427,7 @@ internal static class TalentPresentationTests
         string localPath = GetRepoPath("Assets", "Scripts", "Core", "Agents", "LocalPlayerClient.cs");
         string proxyPath = GetRepoPath("Assets", "Scripts", "Core", "Network", "RemoteServerProxy.cs");
         string gameManagerPath = GetRepoPath("Assets", "Scripts", "Core", "GameManager.cs");
+        string scenePath = GetRepoPath("Assets", "Scenes", "03_Game.unity");
 
         XDocument panel = XDocument.Load(uxmlPath);
         HashSet<string> names = panel.Descendants()
@@ -440,6 +441,7 @@ internal static class TalentPresentationTests
         string controller = File.ReadAllText(controllerPath);
         string picker = File.ReadAllText(pickerPath);
         string local = File.ReadAllText(localPath);
+        string normalizedLocal = local.Replace("\r\n", "\n");
         string proxy = File.ReadAllText(proxyPath);
         string gameManager = File.ReadAllText(gameManagerPath);
         runner.Check(styles.Contains(".talent-action-row", StringComparison.Ordinal)
@@ -456,9 +458,23 @@ internal static class TalentPresentationTests
             "ActionPanel owns a typed talent callback while independently hiding and showing the base action row");
         runner.Check(picker.Contains("ShowOptionSelection(", StringComparison.Ordinal)
             && picker.Contains("Action onCancelled", StringComparison.Ordinal)
+            && picker.Contains("public void HideOptionSelection()", StringComparison.Ordinal)
+            && picker.Contains("if (!_isOptionSelection) return", StringComparison.Ordinal)
             && picker.Contains("_closeBtn.clicked -=", StringComparison.Ordinal)
+            && picker.Contains("SetDocumentVisibility(false)", StringComparison.Ordinal)
+            && picker.Contains("SetDocumentVisibility(true)", StringComparison.Ordinal)
+            && picker.Contains("_documentRoot.style.display = visible ? DisplayStyle.Flex : DisplayStyle.None", StringComparison.Ordinal)
             && picker.Contains("OnDestroy", StringComparison.Ordinal),
-            "FloatingTilePanel provides a cancellable non-tile selection mode and removes callbacks on teardown");
+            "FloatingTilePanel provides cancellable selection, removes callbacks, and takes panel-level input only while visible");
+        runner.Check(normalizedLocal.Split("FloatingTilePanelController.Instance?.HideOptionSelection();", StringSplitOptions.None).Length - 1 == 3
+            && normalizedLocal.Contains("FloatingTilePanelController.Instance.ShowTiles(", StringComparison.Ordinal),
+            "talent picker cleanup closes only target selection and cannot erase the independent private peek presentation");
+        string scene = File.ReadAllText(scenePath);
+        int pickerSortingOrder = ReadUiDocumentSortingOrder(scene, "FloatingTilePanel");
+        int hudSortingOrder = ReadUiDocumentSortingOrder(scene, "GAMEHUD");
+        int actionSortingOrder = ReadUiDocumentSortingOrder(scene, "UIDocument_ActionPanel");
+        runner.Check(pickerSortingOrder > hudSortingOrder && pickerSortingOrder > actionSortingOrder,
+            "the interactive talent target picker renders above every table HUD document that could intercept its clicks");
         runner.Check(local.Contains("BindTalentActionPresentation(", StringComparison.Ordinal)
             && local.Contains("UnbindTalentActionPresentation(", StringComparison.Ordinal)
             && local.Contains("TalentActionResolvedReceived +=", StringComparison.Ordinal)
@@ -467,6 +483,13 @@ internal static class TalentPresentationTests
             && local.Contains("BuildAuthorizedTargets", StringComparison.Ordinal)
             && local.Contains("resolved.decisionId != _talentPanelState.DecisionId", StringComparison.Ordinal),
             "LocalPlayerClient binds ordered talent UI state and cleans it at local presentation boundaries");
+        runner.Check(normalizedLocal.Contains("CancelActiveOperation(autoDiscardedTile != null)", StringComparison.Ordinal)
+            && normalizedLocal.Contains("private void CancelActiveOperation(bool resetDiscardContext)", StringComparison.Ordinal)
+            && normalizedLocal.Contains("if (resetDiscardContext) _lastDiscarderId = -1", StringComparison.Ordinal)
+            && normalizedLocal.Contains("ct.ThrowIfCancellationRequested();\n            _handController.SetInteractable(true);", StringComparison.Ordinal)
+            && normalizedLocal.Split("SubmitSkipIfCurrent(ct)", StringSplitOptions.None).Length - 1 == 3
+            && normalizedLocal.Split("_server.SubmitAction(ClientAction.Skip(PlayerId));", StringSplitOptions.None).Length - 1 == 1,
+            "Timeout cancels the live local decision before it can re-enable hand interaction on a later turn");
         runner.Check(proxy.Contains("BindTalentActionPresentation(this)", StringComparison.Ordinal)
             && proxy.Contains("UnbindTalentActionPresentation(this)", StringComparison.Ordinal)
             && !proxy.Contains("ReconnectSnapshotApplied", StringComparison.Ordinal)
@@ -1331,4 +1354,21 @@ internal static class TalentPresentationTests
     private static T GetLastClientPayload<T>(string type) =>
         MessageSerializer.DeserializePayload<T>(WebSocketClient.Instance.SentMessages
             .Select(MessageSerializer.DeserializeEnvelope).Last(message => message.type == type).data);
+
+    private static int ReadUiDocumentSortingOrder(string scene, string gameObjectName)
+    {
+        string marker = "  m_Name: " + gameObjectName;
+        int objectNameIndex = scene.IndexOf(marker, StringComparison.Ordinal);
+        if (objectNameIndex < 0) return int.MinValue;
+        int nextGameObject = scene.IndexOf("--- !u!1 &", objectNameIndex + marker.Length, StringComparison.Ordinal);
+        int blockEnd = nextGameObject < 0 ? scene.Length : nextGameObject;
+        int sortingIndex = scene.IndexOf("  m_SortingOrder: ", objectNameIndex, StringComparison.Ordinal);
+        if (sortingIndex < 0 || sortingIndex >= blockEnd) return int.MinValue;
+        int valueStart = sortingIndex + "  m_SortingOrder: ".Length;
+        int valueEnd = scene.IndexOfAny(new[] { '\r', '\n' }, valueStart);
+        if (valueEnd < 0 || valueEnd > blockEnd) valueEnd = blockEnd;
+        return int.TryParse(scene.Substring(valueStart, valueEnd - valueStart), out int value)
+            ? value
+            : int.MinValue;
+    }
 }

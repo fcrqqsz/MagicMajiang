@@ -71,14 +71,16 @@ namespace MahjongGame.Core.Agents
         }
 
         /// <summary>Cancels every UI wait owned by the old projection before a recovered table is rebuilt.</summary>
-        public void CancelPendingInput()
+        public void CancelPendingInput() => CancelActiveOperation(resetDiscardContext: true);
+
+        private void CancelActiveOperation(bool resetDiscardContext)
         {
             var cancellation = _presentationCancellation;
             _presentationCancellation = new CancellationTokenSource();
             cancellation.Cancel();
             cancellation.Dispose();
             _isWaitingForUI = false;
-            _lastDiscarderId = -1;
+            if (resetDiscardContext) _lastDiscarderId = -1;
             ActionPanelController.Instance?.Hide();
             ClearTalentActionPresentation();
             UI.WaitHintController.Instance?.HideHint();
@@ -153,7 +155,7 @@ namespace MahjongGame.Core.Agents
                 resolved.talentId,
                 accepted: false,
                 resolved.errorCode);
-            FloatingTilePanelController.Instance?.Hide();
+            FloatingTilePanelController.Instance?.HideOptionSelection();
             if (!_talentPanelState.IsOpen)
             {
                 ClearTalentActionPresentation();
@@ -170,7 +172,7 @@ namespace MahjongGame.Core.Agents
         {
             _talentPanelState = TalentActionPanelPolicy.ResetForRecovery(_talentPanelState);
             ActionPanelController.Instance?.ClearTalentActions(0);
-            FloatingTilePanelController.Instance?.Hide();
+            FloatingTilePanelController.Instance?.HideOptionSelection();
         }
 
         private void ClearTalentActionPresentation()
@@ -178,12 +180,18 @@ namespace MahjongGame.Core.Agents
             long decisionId = _talentPanelState.DecisionId;
             _talentPanelState = TalentActionPanelPolicy.Clear();
             ActionPanelController.Instance?.ClearTalentActions(decisionId);
-            FloatingTilePanelController.Instance?.Hide();
+            FloatingTilePanelController.Instance?.HideOptionSelection();
         }
 
         private CancellationTokenSource CreateOperationCancellation()
         {
             return CancellationTokenSource.CreateLinkedTokenSource(TurnCancellationToken, _presentationCancellation.Token);
+        }
+
+        private void SubmitSkipIfCurrent(CancellationToken ct)
+        {
+            ct.ThrowIfCancellationRequested();
+            _server.SubmitAction(ClientAction.Skip(PlayerId));
         }
 
         /// <summary>Rebuilds the client-only table presentation from one authoritative per-seat snapshot.</summary>
@@ -464,7 +472,7 @@ namespace MahjongGame.Core.Agents
                     out _, out _, _roundWind, _seatWind, _scoringOptions, true);
                 if (!canHu)
                 {
-                    _server.SubmitAction(ClientAction.Skip(PlayerId));
+                    SubmitSkipIfCurrent(ct);
                     return;
                 }
 
@@ -506,7 +514,7 @@ namespace MahjongGame.Core.Agents
                 }
 
                 if (!actionTaken)
-                    _server.SubmitAction(ClientAction.Skip(PlayerId));
+                    SubmitSkipIfCurrent(ct);
             }
             catch (OperationCanceledException)
             {
@@ -615,7 +623,7 @@ namespace MahjongGame.Core.Agents
                     if (actionTaken) return;
                 }
 
-                _server.SubmitAction(ClientAction.Skip(PlayerId));
+                SubmitSkipIfCurrent(ct);
             }
             catch (OperationCanceledException)
             {
@@ -682,6 +690,7 @@ namespace MahjongGame.Core.Agents
 
         private async Task WaitForDiscardAfterAction(float? recoveryTimerSeconds, CancellationToken ct)
         {
+            ct.ThrowIfCancellationRequested();
             _handController.SetInteractable(true);
             if (recoveryTimerSeconds.HasValue)
             {
@@ -764,10 +773,7 @@ namespace MahjongGame.Core.Agents
 
         public void OnTimeout(TileData autoDiscardedTile)
         {
-            _isWaitingForUI = false;
-            ActionPanelController.Instance.Hide();
-            ClearTalentActionPresentation();
-            _handController.SetInteractable(false);
+            CancelActiveOperation(autoDiscardedTile != null);
 
             // 同步手牌：移除被自动出的牌（视觉+数据）
             if (autoDiscardedTile != null)

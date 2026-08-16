@@ -35,6 +35,7 @@ namespace MahjongGame.Core.Network
             _roomService = roomService ?? throw new System.ArgumentNullException(nameof(roomService));
             _roomService.AcceptedSequenceEnvelope += HandleAcceptedSequenceEnvelope;
             GameHUDController.Instance?.BindServerProxy(this);
+            SideboardPanelController.Instance?.BindServerProxy(this);
             (_localClient as ITalentActionPresentationClient)?.BindTalentActionPresentation(this);
         }
 
@@ -50,6 +51,7 @@ namespace MahjongGame.Core.Network
             _roomService.AcceptedSequenceEnvelope -= HandleAcceptedSequenceEnvelope;
             (_localClient as ITalentActionPresentationClient)?.UnbindTalentActionPresentation(this);
             GameHUDController.Instance?.UnbindServerProxy(this);
+            SideboardPanelController.Instance?.UnbindServerProxy(this);
         }
 
         public void SubmitAction(ClientAction action)

@@ -155,6 +155,14 @@ Assets/UI/                   # UI Toolkit 面板
 - **决策边界**: AI 托管和真人交还只在新决策边界切换，不得中途抢占已经打开的决策
 - **连接代次**: WebSocket 回调、房间命令和 endpoint 重绑必须校验当前连接代次，旧 socket 的迟到消息不得改变新连接状态
 
+### Dynamic UI Toolkit Panel Input Ownership
+- 每个独立 `UIDocument` 都是独立的面板输入层；`sortingOrder` 较高的文档即使内容透明或子面板已隐藏，也可能继续阻断较低文档中的按钮。规划排序时必须同时考虑显示顺序和输入所有权，不能只看视觉层级。
+- 动态弹窗、目标选择器和阶段面板在隐藏时，必须让整个 `UIDocument.rootVisualElement` 使用 `DisplayStyle.None`，显示时再恢复为 `DisplayStyle.Flex`。只隐藏内部子节点、只降低透明度或只设置根节点 `PickingMode.Ignore`，都不足以保证跨 `UIDocument` 的输入穿透。
+- 可见时需要拦截全屏输入的 overlay 应保持可拾取；仅用于布局、允许点击穿透的父容器才使用 `PickingMode.Ignore`。不要把 `PickingMode.Ignore` 递归施加到实际按钮或全屏拦截层。
+- 控制网络订阅和权威状态的 `MonoBehaviour` 应在面板隐藏期间继续存活，以便接收呼出消息；优先切换文档根节点的 `display`，不要为了隐藏 UI 直接停用同时承担消息订阅的 GameObject。若确需禁用 `UIDocument` 组件，必须处理视觉树重建、元素重新查询和回调重新绑定。
+- `Show`、`Hide`、取消、超时、恢复、回合切换和 `OnDestroy` 必须汇入同一套可见性与清理边界：停止 schedule/coroutine/tween，解绑临时回调，清除旧选择状态，并恢复下层面板输入。
+- 新增或提高动态 `UIDocument` 的排序后，Unity 人工验收至少覆盖三种状态：隐藏时下层 ActionPanel/3D 手牌可操作；显示时本面板按钮、目标和取消可操作；关闭后输入立即归还下层。纯 C# 测试可检查状态策略和源码约束，但不能替代跨面板实际点击验证。
+
 ### Debugging
 - `GameManager` 中 `useDebugHand` 可在 Inspector 配置测试牌型
 - `GameManager` 中 `gameMode` 可在 Inspector 选择请求的对局模式 (Single/EastOnly/HalfGame/FullGame)
@@ -162,6 +170,19 @@ Assets/UI/                   # UI Toolkit 面板
 - Dedicated Server 使用 `Tools > Build > Dedicated Server (Windows)` 构建，不得修改客户端 Build Settings 首场景
 - 联机自动回归：`dotnet run --project Tests\NetworkRegression\NetworkRegression.csproj --no-restore`
 - 完整联机验证步骤见 `docs/network_verification.md`
+
+### Automated Validation and Unity Integration Boundary
+- 智能体的日常自动验证以纯 C# 为主：优先运行与改动相关的 focused regression，再运行必要的完整 `NetworkRegression` 或其他纯 C# 回归工程。
+- 对 `.uxml` / `.uss` 的日常自动检查仅限 XML 结构、资源路径、源码约束和纯策略测试；实际布局、中文字体、动画、音效及场景实例化由人工在 Unity 中验收。
+- **禁止智能体手写、猜测、复制或修复 Unity `.meta` GUID**。新增 Unity 资产时允许暂时没有 `.meta`，必须等待 Unity/Tuanjie Refresh 权威生成。
+- 如果实现需要在场景、Prefab、UXML 或其他序列化资产中引用新资产 GUID，智能体必须暂停该引用步骤，请求人工先执行 Unity Refresh；不得预造 GUID 后继续。
+- **禁止智能体编辑、临时补项或以其他方式修补 Unity 生成的 `Assembly-CSharp.csproj` 等工程文件**，也不得把未 Refresh 导致的生成工程缺项视为源码编译失败。
+- Unity/Tuanjie Refresh、Unity Console 导入与编译确认、`Assembly-CSharp` 权威生成及最终视觉/音频 smoke test，默认均由人工在阶段集成或合并前统一执行。
+- 人工完成 Refresh 后，智能体可以只读检查并提交 Unity 实际生成的 `.meta` 或其他必要资产变更，但不得重写其 GUID 或用自生成内容替换。
+- 除非用户明确授权，智能体不得启动 Unity/Tuanjie batch mode、执行 Unity Refresh 或构建 Unity 生成的 `Assembly-CSharp.csproj`。
+- 人工 Unity 关口尚未完成时，智能体必须明确报告“纯 C# 验证通过，Unity 集成/视觉验收待人工执行”，不得宣称完整 Unity 验证通过。
+- 新增全屏模态流程、独立阶段面板或跨场景表现组件时，智能体必须先评估其布局、输入拦截、排序、生命周期、恢复和网络绑定归属；不得仅为了少建 Scene Object、少做一次 Unity 配置或复用现有入口，就默认挂载到已有 HUD/Controller。
+- 如果新界面具有独立显示阶段、全屏输入所有权或独立恢复状态，应优先设计为独立 `UIDocument` / Scene Object。复用现有宿主与新建独立宿主之间存在架构取舍时，必须在实现前向用户说明方案和影响并取得确认，不得自行选择便利方案后再以局部样式补丁修复耦合问题。
 
 ### Design Principles
 - 客户端没有隐式本地权威路径；`GameManager` 仅协调网络投影和场景，不持有服务端、会话或天赋 runtime

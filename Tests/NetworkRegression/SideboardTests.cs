@@ -441,8 +441,13 @@ internal static class SideboardTests
         string stylesPath = Path.Combine(root, "Assets", "UI", "SideboardPanelStyles.uss");
         string controllerPath = Path.Combine(root, "Assets", "UI", "SideboardPanelController.cs");
         string hudPath = Path.Combine(root, "Assets", "UI", "GameHUD", "GameHUD.uxml");
+        string hudControllerPath = Path.Combine(root, "Assets", "UI", "GameHUD", "GameHUDController.cs");
+        string proxyPath = Path.Combine(root, "Assets", "Scripts", "Core", "Network", "RemoteServerProxy.cs");
+        string gameManagerPath = Path.Combine(root, "Assets", "Scripts", "Core", "GameManager.cs");
+        string scenePath = Path.Combine(root, "Assets", "Scenes", "03_Game.unity");
         bool assetsExist = File.Exists(panelPath) && File.Exists(stylesPath)
-            && File.Exists(controllerPath) && File.Exists(hudPath);
+            && File.Exists(controllerPath) && File.Exists(hudPath) && File.Exists(hudControllerPath)
+            && File.Exists(proxyPath) && File.Exists(gameManagerPath) && File.Exists(scenePath);
         runner.Check(assetsExist, "full-screen sideboard UI assets exist");
         if (!assetsExist) return;
 
@@ -474,12 +479,15 @@ internal static class SideboardTests
             "sideboard stylesheet provides full-screen, card state, lock, and over-cap visuals");
 
         XDocument hud = XDocument.Load(hudPath);
-        runner.Check(hud.Descendants().Any(element =>
-                element.Name.LocalName == "Instance"
-                && element.Attribute("template")?.Value == "SideboardPanel"),
-            "GameHUD instantiates the full-screen sideboard panel in the production HUD tree");
+        runner.Check(!hud.Descendants().Any(element =>
+                (element.Name.LocalName == "Template" && element.Attribute("name")?.Value == "SideboardPanel")
+                || (element.Name.LocalName == "Instance" && element.Attribute("template")?.Value == "SideboardPanel")),
+            "GameHUD does not own or instantiate the independent sideboard document");
 
         string controller = File.ReadAllText(controllerPath);
+        string hudController = File.ReadAllText(hudControllerPath);
+        string proxy = File.ReadAllText(proxyPath);
+        string gameManager = File.ReadAllText(gameManagerPath);
         runner.Check(controller.Contains("SideboardStartedReceived += HandleStarted", StringComparison.Ordinal)
                      && controller.Contains("SideboardStartedReceived -= HandleStarted", StringComparison.Ordinal)
                      && controller.Contains("SideboardLockedReceived += HandleLocked", StringComparison.Ordinal)
@@ -506,6 +514,28 @@ internal static class SideboardTests
                      && !controller.Contains("ProcessSideboardDeadline", StringComparison.Ordinal)
                      && !controller.Contains("OnTimeout", StringComparison.Ordinal),
             "sideboard countdown displays the server deadline and never decides timeout locally");
+        runner.Check(controller.Contains("SideboardPanelController : MonoBehaviour", StringComparison.Ordinal)
+                     && controller.Contains("public static SideboardPanelController Instance", StringComparison.Ordinal)
+                     && controller.Contains("root.pickingMode = PickingMode.Ignore", StringComparison.Ordinal)
+                     && controller.Contains("SetDocumentVisibility(_state.IsVisible)", StringComparison.Ordinal)
+                     && controller.Contains("_documentRoot.style.display = visible ? DisplayStyle.Flex : DisplayStyle.None", StringComparison.Ordinal)
+                     && controller.Contains("BindServerProxy(", StringComparison.Ordinal)
+                     && controller.Contains("ApplyRecoverySnapshot(", StringComparison.Ordinal)
+                     && !hudController.Contains("SideboardPanelController", StringComparison.Ordinal)
+                     && proxy.Contains("SideboardPanelController.Instance?.BindServerProxy(this)", StringComparison.Ordinal)
+                     && proxy.Contains("SideboardPanelController.Instance?.UnbindServerProxy(this)", StringComparison.Ordinal)
+                     && gameManager.Contains("SideboardPanelController.Instance?.ApplyRecoverySnapshot(snapshot.sideboard)", StringComparison.Ordinal),
+            "the independent sideboard document leaves layout and input while closed, then owns live binding and recovery without GameHUD lifecycle coupling");
+
+        string scene = File.ReadAllText(scenePath);
+        string objectBlock = ReadSceneGameObjectBlock(scene, "UIDocument_SideboardPanel");
+        string controllerGuid = ReadMetaGuid(controllerPath + ".meta");
+        string panelGuid = ReadMetaGuid(panelPath + ".meta");
+        runner.Check(!string.IsNullOrWhiteSpace(objectBlock)
+                     && objectBlock.Contains("m_Script: {fileID: 11500000, guid: " + controllerGuid, StringComparison.Ordinal)
+                     && objectBlock.Contains("sourceAsset: {fileID: 9197481963319205126, guid: " + panelGuid, StringComparison.Ordinal)
+                     && objectBlock.Contains("m_SortingOrder: 50", StringComparison.Ordinal),
+            "03_Game hosts SideboardPanel on an independent UIDocument above gameplay HUD input layers");
     }
 
     private static string FindRepositoryRoot()
@@ -515,6 +545,25 @@ internal static class SideboardTests
                && !File.Exists(Path.Combine(directory.FullName, "ProjectSettings", "ProjectVersion.txt")))
             directory = directory.Parent;
         return directory?.FullName ?? throw new InvalidOperationException("Repository root not found.");
+    }
+
+    private static string ReadSceneGameObjectBlock(string scene, string gameObjectName)
+    {
+        string marker = "  m_Name: " + gameObjectName;
+        int nameIndex = scene.IndexOf(marker, StringComparison.Ordinal);
+        if (nameIndex < 0) return string.Empty;
+        int blockStart = scene.LastIndexOf("--- !u!1 &", nameIndex, StringComparison.Ordinal);
+        int blockEnd = scene.IndexOf("--- !u!1 &", nameIndex + marker.Length, StringComparison.Ordinal);
+        if (blockStart < 0) return string.Empty;
+        if (blockEnd < 0) blockEnd = scene.Length;
+        return scene.Substring(blockStart, blockEnd - blockStart);
+    }
+
+    private static string ReadMetaGuid(string path)
+    {
+        foreach (string line in File.ReadAllLines(path))
+            if (line.StartsWith("guid: ", StringComparison.Ordinal)) return line.Substring("guid: ".Length).Trim();
+        return string.Empty;
     }
 
     private static void TestRemoteProxyPublishesOnlySequenceGatedSideboardEvents(RegressionRunner runner)
@@ -795,15 +844,14 @@ internal static class SideboardTests
 
         runner.Check(submitted
                      && errorCode == null
-                     && room.State == RoomState.WaitingForNextRound
+                     && room.State == RoomState.InRound
                      && locked?.acceptedSelection == true
                      && locked.reason == "accepted"
                      && locked.ownTotalAlienation == 10,
-            "a valid selection atomically replaces the runtime set, privately locks the owner, then enters next-round ready");
+            "a valid selection atomically replaces the runtime set, privately locks the owner, then starts the second half without another ready gate");
         runner.Check(room.Session.Scores[0] == 50,
             "sideboarding does not replay StartingCapital or any match-start effect");
 
-        room.SetReady("host", ReadyPhase.NextRound, out _);
         room.GameServer?.CompleteDrawRound();
         runner.Check(room.Session.TotalRoundsPlayed == 5 && room.Session.Scores[0] == 50,
             "the next round uses the replacement set, with the deactivated draw reward no longer firing");
@@ -925,7 +973,7 @@ internal static class SideboardTests
         SideboardLockedMessage restoredLock = GetLastMessage<SideboardLockedMessage>(restoredEndpoint, "SideboardLocked");
         SideboardProgressMessage restoredProgress = GetLastMessage<SideboardProgressMessage>(restoredEndpoint, "SideboardProgress");
 
-        runner.Check(disconnectedRoom.State == RoomState.WaitingForNextRound
+        runner.Check(disconnectedRoom.State == RoomState.InRound
                      && reconnected
                      && disconnectedSnapshot.sideboard.isActive
                      && disconnectedSnapshot.sideboard.decisionId == disconnectedDecisionId
@@ -933,12 +981,11 @@ internal static class SideboardTests
                      && disconnectedSnapshot.sideboard.seatLocked.SequenceEqual(new[] { true, false, true, true })
                      && !disconnectedSnapshotJson.Contains("Talent", System.StringComparison.OrdinalIgnoreCase)
                      && !disconnectedSnapshotJson.Contains("draft", System.StringComparison.OrdinalIgnoreCase)
-                     && restoredLock?.acceptedSelection == false
-                     && restoredLock.reason == "disconnected"
-                     && restoredProgress?.isComplete == true
+                     && restoredLock == null
+                     && restoredProgress == null
                      && !resubmit
-                     && resubmitError == SideboardErrorCodes.AlreadyLocked,
-            "disconnect locks the original immediately and reconnect restores only the locked state without selection rights");
+                     && resubmitError == SideboardErrorCodes.WrongPhase,
+            "disconnect locks the original immediately; once every seat locks, reconnect restores the running second half without reopening sideboard");
     }
 
     private static void TestTimeoutLocksOriginal(RegressionRunner runner)
@@ -953,10 +1000,10 @@ internal static class SideboardTests
             timeoutEndpoint, "SideboardStarted").deadlineUnixMilliseconds;
         timeoutRoom.ProcessSideboardDeadline(DateTimeOffset.FromUnixTimeMilliseconds(deadline).UtcDateTime);
         SideboardLockedMessage timeoutLock = GetLastMessage<SideboardLockedMessage>(timeoutEndpoint, "SideboardLocked");
-        runner.Check(timeoutRoom.State == RoomState.WaitingForNextRound
+        runner.Check(timeoutRoom.State == RoomState.InRound
                      && timeoutLock?.acceptedSelection == false
                      && timeoutLock.reason == "timeout",
-            "the 45-second deadline locks every pending human to the original set and completes sideboarding");
+            "the 45-second deadline locks every pending human to the original set and starts the second half");
     }
 
     private static void TestRoomManagerRoutesSubmitAndDeadline(RegressionRunner runner)
@@ -979,10 +1026,10 @@ internal static class SideboardTests
                 }));
 
             SideboardLockedMessage locked = GetLastMessage<SideboardLockedMessage>(endpoint, "SideboardLocked");
-            runner.Check(room.State == RoomState.WaitingForNextRound
+            runner.Check(room.State == RoomState.InRound
                          && locked?.acceptedSelection == true
                          && locked.reason == "accepted",
-                "RoomManager routes SideboardSubmit through the authenticated bound seat to the active room decision");
+                "RoomManager routes SideboardSubmit through the authenticated bound seat and starts the second half when all seats lock");
         }
 
         using (var manager = new RoomManager(
@@ -994,10 +1041,10 @@ internal static class SideboardTests
             manager.Tick(DateTimeOffset.FromUnixTimeMilliseconds(deadline).UtcDateTime);
 
             SideboardLockedMessage locked = GetLastMessage<SideboardLockedMessage>(endpoint, "SideboardLocked");
-            runner.Check(room.State == RoomState.WaitingForNextRound
+            runner.Check(room.State == RoomState.InRound
                          && locked?.acceptedSelection == false
                          && locked.reason == "timeout",
-                "RoomManager Tick advances a pending sideboard at its authoritative deadline");
+                "RoomManager Tick locks a pending sideboard at its authoritative deadline and starts the second half");
         }
     }
 

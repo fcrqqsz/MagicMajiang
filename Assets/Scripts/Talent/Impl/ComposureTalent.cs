@@ -17,8 +17,11 @@ namespace MahjongGame.Talents.Impl
             if (context.State.GetFlag(ConsumedKey, TalentStateScope.Round)) return false;
 
             context.State.SetFlag(ConsumedKey, true, TalentStateScope.Round);
-            context.Reveal("blocked_negative_effect", 1);
+            context.Reveal("blocked_negative_effect", 0);
             return true;
         }
+
+        public override int GetSnapshotPrivateValue(TalentRuntimeState state) =>
+            state.IsActive && !state.GetFlag(ConsumedKey, TalentStateScope.Round) ? 1 : 0;
     }
 }

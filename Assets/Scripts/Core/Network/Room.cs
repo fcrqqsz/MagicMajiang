@@ -1091,7 +1091,8 @@ namespace MahjongGame.Core.Network
         private void FinishSideboardIfAllLocked()
         {
             if (_sideboardTracker?.AllLocked != true) return;
-            EnterWaitingForNextRound();
+            _sideboardTracker = null;
+            StartRound();
         }
 
         private void RecordSideboardLockTelemetry(int seatIndex)

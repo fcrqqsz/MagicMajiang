@@ -5,29 +5,35 @@ using MahjongGame.Core;
 using MahjongGame.Core.Network;
 using MahjongGame.Core.Network.Messages;
 using MahjongGame.Talents;
+using MahjongGame.Systems;
 using UnityEngine;
 using UnityEngine.UIElements;
 
 namespace MahjongGame.UI
 {
     /// <summary>Owns the local sideboard presentation only; authority stays in ClientRoomService.</summary>
-    public sealed class SideboardPanelController : IDisposable
+    public sealed class SideboardPanelController : MonoBehaviour
     {
-        private readonly VisualElement _overlay;
-        private readonly Label _timerLabel;
-        private readonly VisualElement _activeTalents;
-        private readonly VisualElement _reserveCards;
-        private readonly VisualElement _knownOpponentIntel;
-        private readonly VisualElement _budgetTrack;
-        private readonly VisualElement _budgetFill;
-        private readonly Label _deckCostLabel;
-        private readonly Label _talentCostLabel;
-        private readonly Label _budgetLabel;
-        private readonly VisualElement _seatLockStatus;
-        private readonly Label _errorLabel;
-        private readonly Button _lockButton;
+        public static SideboardPanelController Instance { get; private set; }
+
+        [SerializeField] private UIDocument _document;
+
+        private VisualElement _documentRoot;
+        private VisualElement _overlay;
+        private Label _timerLabel;
+        private VisualElement _activeTalents;
+        private VisualElement _reserveCards;
+        private VisualElement _knownOpponentIntel;
+        private VisualElement _budgetTrack;
+        private VisualElement _budgetFill;
+        private Label _deckCostLabel;
+        private Label _talentCostLabel;
+        private Label _budgetLabel;
+        private VisualElement _seatLockStatus;
+        private Label _errorLabel;
+        private Button _lockButton;
         private readonly Dictionary<Button, Action> _cardCallbacks = new Dictionary<Button, Action>();
-        private readonly Action _lockClicked;
+        private Action _lockClicked;
 
         private RemoteServerProxy _proxy;
         private ClientRoomService _roomService;
@@ -35,27 +41,55 @@ namespace MahjongGame.UI
         private IVisualElementScheduledItem _deadlineSchedule;
         private bool _disposed;
 
-        public SideboardPanelController(VisualElement hudRoot)
+        private void Awake()
         {
-            if (hudRoot == null) throw new ArgumentNullException(nameof(hudRoot));
-            _overlay = hudRoot.Q<VisualElement>("SideboardOverlay");
-            _timerLabel = hudRoot.Q<Label>("TimerLabel");
-            _activeTalents = hudRoot.Q<VisualElement>("ActiveTalents");
-            _reserveCards = hudRoot.Q<VisualElement>("ReserveCards");
-            _knownOpponentIntel = hudRoot.Q<VisualElement>("KnownOpponentIntel");
-            _budgetTrack = hudRoot.Q<VisualElement>("BudgetTrack");
-            _budgetFill = hudRoot.Q<VisualElement>("BudgetFill");
-            _deckCostLabel = hudRoot.Q<Label>("DeckCostLabel");
-            _talentCostLabel = hudRoot.Q<Label>("TalentCostLabel");
-            _budgetLabel = hudRoot.Q<Label>("BudgetLabel");
-            _seatLockStatus = hudRoot.Q<VisualElement>("SeatLockStatus");
-            _errorLabel = hudRoot.Q<Label>("ErrorLabel");
-            _lockButton = hudRoot.Q<Button>("LockButton");
+            if (Instance != null && Instance != this)
+            {
+                Destroy(gameObject);
+                return;
+            }
+            Instance = this;
+            if (_document == null) _document = GetComponent<UIDocument>();
+            _documentRoot = _document?.rootVisualElement;
+            VisualElement root = _documentRoot;
+            if (root == null)
+            {
+                Debug.LogError("[SideboardPanel] Missing UIDocument root.");
+                return;
+            }
+            root.pickingMode = PickingMode.Ignore;
+
+            _overlay = root.Q<VisualElement>("SideboardOverlay");
+            _timerLabel = root.Q<Label>("TimerLabel");
+            _activeTalents = root.Q<VisualElement>("ActiveTalents");
+            _reserveCards = root.Q<VisualElement>("ReserveCards");
+            _knownOpponentIntel = root.Q<VisualElement>("KnownOpponentIntel");
+            _budgetTrack = root.Q<VisualElement>("BudgetTrack");
+            _budgetFill = root.Q<VisualElement>("BudgetFill");
+            _deckCostLabel = root.Q<Label>("DeckCostLabel");
+            _talentCostLabel = root.Q<Label>("TalentCostLabel");
+            _budgetLabel = root.Q<Label>("BudgetLabel");
+            _seatLockStatus = root.Q<VisualElement>("SeatLockStatus");
+            _errorLabel = root.Q<Label>("ErrorLabel");
+            _lockButton = root.Q<Button>("LockButton");
 
             _lockClicked = HandleLockClicked;
             if (_lockButton != null) _lockButton.clicked += _lockClicked;
             Render();
         }
+
+        private void OnDestroy()
+        {
+            DisposePresentation();
+            if (Instance == this) Instance = null;
+        }
+
+        public void BindServerProxy(RemoteServerProxy proxy) =>
+            Bind(proxy, NetworkManager.Instance?.RoomService);
+
+        public void UnbindServerProxy(RemoteServerProxy proxy) => Unbind(proxy);
+
+        public void ApplyRecoverySnapshot(SnapshotSideboardState state) => ApplyRecovery(state);
 
         public void Bind(RemoteServerProxy proxy, ClientRoomService roomService)
         {
@@ -142,6 +176,7 @@ namespace MahjongGame.UI
 
         private void Render()
         {
+            SetDocumentVisibility(_state.IsVisible);
             if (_overlay == null) return;
             SetClass(_overlay, "sideboard-overlay--visible", _state.IsVisible);
             if (!_state.IsVisible)
@@ -158,6 +193,12 @@ namespace MahjongGame.UI
             RenderKnownOpponentIntel();
             RenderSeatLocks();
             RenderBudgetAndAction();
+        }
+
+        private void SetDocumentVisibility(bool visible)
+        {
+            if (_documentRoot == null) return;
+            _documentRoot.style.display = visible ? DisplayStyle.Flex : DisplayStyle.None;
         }
 
         private void RenderCards()
@@ -379,7 +420,7 @@ namespace MahjongGame.UI
             Render();
         }
 
-        public void Dispose()
+        private void DisposePresentation()
         {
             if (_disposed) return;
             Unbind(_proxy);

@@ -49,7 +49,6 @@ namespace MahjongGame.UI
         private Tweener _talentChipTween;
         private Tweener _talentToastTween;
         private VisualElement _talentPulsedChip;
-        private SideboardPanelController _sideboardPanel;
         private bool _missingAudioWarningLogged;
         private bool _missingTemplateWarningLogged;
 
@@ -101,15 +100,12 @@ namespace MahjongGame.UI
 
             _timerText = _root.Q<Label>("TimerText");
             BindTalentElements();
-            _sideboardPanel = new SideboardPanelController(_root);
         }
 
         void OnDestroy()
         {
             UnbindTalentElementCallbacks();
             UnbindServerProxy(_serverProxy);
-            _sideboardPanel?.Dispose();
-            _sideboardPanel = null;
             _toastHideSchedule?.Pause();
             _toastHideSchedule = null;
             _pulseTween?.Kill();
@@ -172,7 +168,6 @@ namespace MahjongGame.UI
             _acceptedPublicTalentEvents.Clear();
             _serverProxy.TalentRuntimeEventReceived += HandleTalentRuntimeEvent;
             _serverProxy.TalentActionsChanged += HandleTalentActionsChanged;
-            _sideboardPanel?.Bind(_serverProxy, NetworkManager.Instance?.RoomService);
             RebuildTalentHudFromClientState();
         }
 
@@ -181,7 +176,6 @@ namespace MahjongGame.UI
             if (proxy == null || !ReferenceEquals(_serverProxy, proxy)) return;
             _serverProxy.TalentRuntimeEventReceived -= HandleTalentRuntimeEvent;
             _serverProxy.TalentActionsChanged -= HandleTalentActionsChanged;
-            _sideboardPanel?.Unbind(_serverProxy);
             _serverProxy = null;
         }
 
@@ -539,7 +533,6 @@ namespace MahjongGame.UI
             _acceptedPublicTalentEvents.Clear();
             _talentSnapshot = snapshot;
             RenderTalentHud(snapshot);
-            _sideboardPanel?.ApplyRecovery(snapshot.sideboard);
             UpdateRoundInfo(session);
             UpdateRemainingCount(snapshot.remainingWallCount);
 
