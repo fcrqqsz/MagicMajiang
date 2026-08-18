@@ -187,7 +187,9 @@ namespace MahjongGame.UI
 
         private void HandleTalentRuntimeEvent(TalentRuntimeEventMessage runtimeEvent)
         {
-            if (!_talentFeedbackHistory.TryBuild(runtimeEvent, false, out TalentFeedbackView feedback)) return;
+            if (runtimeEvent == null) return;
+            string playerName = ResolvePlayerDisplayName(runtimeEvent.ownerSeatIndex);
+            if (!_talentFeedbackHistory.TryBuild(runtimeEvent, false, playerName, out TalentFeedbackView feedback)) return;
             _talentTransientState.RecordLiveFeedback(feedback);
 
             if (runtimeEvent.visibility == (int)MahjongGame.Talents.TalentEventVisibility.Public)
@@ -206,6 +208,35 @@ namespace MahjongGame.UI
                 ShowTalentToast(feedback.Copy);
             if (feedback.PlayAudio)
                 PlayTalentAudio();
+        }
+
+        private string ResolvePlayerDisplayName(int seatIndex)
+        {
+            if (seatIndex < 0 || seatIndex >= 4) return null;
+
+            RoomGameSnapshot snapshot = _talentSnapshot ?? NetworkManager.Instance?.RoomService?.GameState?.Snapshot;
+            int localSeatIndex = snapshot?.requestingSeatIndex >= 0
+                ? snapshot.requestingSeatIndex
+                : (NetworkManager.Instance?.RoomService?.SeatIndex ?? 0);
+
+            if (seatIndex == localSeatIndex) return "你";
+
+            if (snapshot?.seats != null && seatIndex < snapshot.seats.Length)
+            {
+                var seat = snapshot.seats[seatIndex];
+                if (seat != null && seat.isOccupied && !seat.isAi && !string.IsNullOrWhiteSpace(seat.displayName))
+                    return seat.displayName;
+            }
+
+            var roomSeats = NetworkManager.Instance?.RoomService?.Seats;
+            if (roomSeats != null && seatIndex < roomSeats.Length)
+            {
+                var seat = roomSeats[seatIndex];
+                if (seat != null && seat.isOccupied && !seat.isAi && !string.IsNullOrWhiteSpace(seat.displayName))
+                    return seat.displayName;
+            }
+
+            return $"AI {seatIndex + 1}";
         }
 
         private void RebuildTalentHudFromClientState()
@@ -403,6 +434,8 @@ namespace MahjongGame.UI
 
         private VisualElement FindTalentChip(int ownerSeatIndex, string talentId, bool isOwn)
         {
+            if (!isOwn && (ownerSeatIndex < 0 || ownerSeatIndex >= 4)) return null;
+
             IEnumerable<VisualElement> containers;
             if (isOwn)
                 containers = new[] { _ownTalentBar, _ownTalentDrawer };

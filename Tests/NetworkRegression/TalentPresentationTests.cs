@@ -338,18 +338,42 @@ internal static class TalentPresentationTests
     {
         TalentFeedbackView strong = TalentEventPresentationPolicy.Build(ActiveAppliedEvent(), false);
         runner.Check(strong.Level == TalentFeedbackLevel.Strong
-            && strong.ShowToast && strong.AppendFeed && strong.PulseChip && strong.PlayAudio,
-            "only standardized applied active effects produce the four-part strong feedback");
+            && strong.ShowToast && strong.AppendFeed && strong.PulseChip && strong.PlayAudio
+            && strong.Copy == "【AI 1】窥探已生效",
+            "only standardized applied active effects produce the four-part strong feedback with fallback player name");
+
+        TalentFeedbackView localPlayer = TalentEventPresentationPolicy.Build(ActiveAppliedEvent(), false, "你");
+        runner.Check(localPlayer.Copy == "【你】窥探已生效",
+            "local player '你' is formatted as expected in feedback copy");
+
+        TalentFeedbackView customPlayer = TalentEventPresentationPolicy.Build(ActiveAppliedEvent(), false, "张三");
+        runner.Check(customPlayer.Copy == "【张三】窥探已生效",
+            "custom player name is formatted as expected in feedback copy");
 
         TalentFeedbackView reveal = TalentEventPresentationPolicy.Build(new TalentRuntimeEventMessage
         {
+            ownerSeatIndex = 1,
             talentId = "peek", eventType = "talent_revealed"
-        }, false);
-        TalentFeedbackView blocked = TalentEventPresentationPolicy.Build(BlockedEvent(), false);
+        }, false, "李四");
+        runner.Check(reveal.Copy == "【李四】窥探已揭示", "talent revealed copy includes player name");
+
+        TalentFeedbackView blocked = TalentEventPresentationPolicy.Build(BlockedEvent(), false, "王五");
+        runner.Check(blocked.Copy == "【王五】截流已阻止负面效果", "blocked negative effect copy includes player name");
+
         TalentFeedbackView publicCounter = TalentEventPresentationPolicy.Build(new TalentRuntimeEventMessage
         {
+            ownerSeatIndex = 2,
             talentId = "sheathed_edge", eventType = "public_counter_changed"
         }, false);
+        runner.Check(publicCounter.Copy == "【AI 3】藏锋的状态已变化", "public counter changed copy includes fallback player name");
+
+        TalentFeedbackView publicCharge = TalentEventPresentationPolicy.Build(new TalentRuntimeEventMessage
+        {
+            ownerSeatIndex = 0,
+            talentId = "sheathed_edge", eventType = "public_charge_reduced"
+        }, false, "张三");
+        runner.Check(publicCharge.Copy == "【张三】藏锋的充能已变化", "public charge reduced copy includes player name");
+
         runner.Check(reveal.Level == TalentFeedbackLevel.Medium && blocked.Level == TalentFeedbackLevel.Medium
             && publicCounter.Level == TalentFeedbackLevel.Medium
             && !reveal.ShowToast && !reveal.PlayAudio
@@ -372,8 +396,24 @@ internal static class TalentPresentationTests
             eventType = "<script>alert(1)</script>"
         }, false);
         runner.Check(unknown.Level == TalentFeedbackLevel.Weak
-            && unknown.Copy == "天赋状态已更新" && unknown.ShouldLogWarning,
+            && unknown.Copy == "【AI 1】天赋状态已更新" && unknown.ShouldLogWarning,
             "unknown events use safe generic copy rather than server-provided rich text");
+
+        TalentFeedbackView globalEvent = TalentEventPresentationPolicy.Build(new TalentRuntimeEventMessage
+        {
+            ownerSeatIndex = -1,
+            talentId = "peek",
+            eventType = "talent_revealed"
+        }, false);
+        runner.Check(globalEvent.Copy == "窥探已揭示", "global/unassigned event has no prefix");
+
+        TalentFeedbackView whitespacePlayer = TalentEventPresentationPolicy.Build(new TalentRuntimeEventMessage
+        {
+            ownerSeatIndex = 2,
+            talentId = "peek",
+            eventType = "talent_revealed"
+        }, false, "   ");
+        runner.Check(whitespacePlayer.Copy == "【AI 3】窥探已揭示", "whitespace-only playerName falls back to seat index");
 
         var history = new TalentFeedbackHistory();
         runner.Check(!history.TryAccept(0) && history.TryAccept(10) && !history.TryAccept(10) && !history.TryAccept(9),
