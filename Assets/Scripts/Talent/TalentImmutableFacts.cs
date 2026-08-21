@@ -52,6 +52,32 @@ namespace MahjongGame.Talents
         }
     }
 
+    public sealed class TalentInitialHandFacts
+    {
+        private readonly ReadOnlyCollection<TalentTileFacts> _tiles;
+
+        public int OwnerSeatIndex { get; }
+        public int RoundNumber { get; }
+        public IReadOnlyList<TalentTileFacts> Tiles => _tiles;
+
+        internal TalentInitialHandFacts(
+            GameSession session,
+            int ownerSeatIndex,
+            IEnumerable<TileData> tiles)
+        {
+            if (session == null) throw new ArgumentNullException(nameof(session));
+            if (ownerSeatIndex < 0 || ownerSeatIndex > 3)
+                throw new ArgumentOutOfRangeException(nameof(ownerSeatIndex));
+
+            OwnerSeatIndex = ownerSeatIndex;
+            RoundNumber = session.TotalRoundsPlayed + 1;
+            _tiles = Array.AsReadOnly((tiles ?? Enumerable.Empty<TileData>())
+                .Where(tile => tile != null)
+                .Select(tile => new TalentTileFacts(tile))
+                .ToArray());
+        }
+    }
+
     public sealed class TalentWinFacts
     {
         private readonly ReadOnlyCollection<TalentTileFacts> _concealedHandTiles;

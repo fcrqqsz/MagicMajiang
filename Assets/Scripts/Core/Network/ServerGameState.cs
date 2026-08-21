@@ -14,6 +14,7 @@ namespace MahjongGame.Core.Network
     public class ServerGameState
     {
         private PlayerSnapshot[] _players;
+        public int PlayerCount => _players.Length;
 
         public ServerGameState(int playerCount)
         {

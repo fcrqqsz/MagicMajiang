@@ -199,7 +199,7 @@ namespace MahjongGame.Talents
         {
             if (context == null) throw new ArgumentNullException(nameof(context));
             EnsureSession(context);
-            EnsurePhase(RuntimePhase.WallBuilt, nameof(ResolvePostShuffle));
+            EnsurePhase(RuntimePhase.InitialHandsCompleted, nameof(ResolvePostShuffle));
 
             foreach (RuntimeEntry entry in GetAllActiveEntries())
             {
@@ -223,6 +223,22 @@ namespace MahjongGame.Talents
                 _privatePeekTiles[entry.OwnerSeatIndex] = snapshot;
             }
             _phase = RuntimePhase.RoundReady;
+        }
+
+        public void CompleteInitialHands(TalentInitialHandsContext context)
+        {
+            if (context == null) throw new ArgumentNullException(nameof(context));
+            EnsureSession(context);
+            EnsurePhase(RuntimePhase.WallBuilt, nameof(CompleteInitialHands));
+
+            foreach (RuntimeEntry entry in GetGlobalPipeline(TalentPhase.InitialHandCompleted))
+            {
+                entry.Rule.OnInitialHandCompleted(context.BindInitialHand(
+                    entry.OwnerSeatIndex,
+                    entry.State,
+                    runtimeEvent => EmitEvent(entry, runtimeEvent)));
+            }
+            _phase = RuntimePhase.InitialHandsCompleted;
         }
 
         public TileData ApplyDraw(TalentDrawContext context, TileData drawnTile)
@@ -994,6 +1010,7 @@ namespace MahjongGame.Talents
             {
                 if (_phase != RuntimePhase.RoundStarted
                     && _phase != RuntimePhase.WallBuilt
+                    && _phase != RuntimePhase.InitialHandsCompleted
                     && _phase != RuntimePhase.RoundReady)
                 {
                     throw new InvalidOperationException(
@@ -1347,6 +1364,7 @@ namespace MahjongGame.Talents
             BetweenRounds,
             RoundStarted,
             WallBuilt,
+            InitialHandsCompleted,
             RoundReady
         }
     }

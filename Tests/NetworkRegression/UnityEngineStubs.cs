@@ -397,6 +397,9 @@ namespace MahjongGame.Core.Network
             };
             TalentRuntime.BeginRound(new MahjongGame.Talents.TalentRoundContext(session));
             TalentRuntime.ApplyWallBuilding(new MahjongGame.Talents.TalentWallContext(session, wall));
+            TalentRuntime.CompleteInitialHands(new MahjongGame.Talents.TalentInitialHandsContext(
+                session,
+                new ServerGameState(4)));
             TalentRuntime.ResolvePostShuffle(new MahjongGame.Talents.TalentPostShuffleContext(session, wall));
             OnTalentEventsAvailable?.Invoke();
             if (NextStartFailure == StubGameStartFailure.Loop)

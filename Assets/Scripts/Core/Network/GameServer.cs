@@ -198,6 +198,8 @@ namespace MahjongGame.Core.Network
                         _deckConfigs)),
                     shuffleWall: _wallService.ShuffleWall,
                     dealStartingHands: DealStartingHands,
+                    completeInitialHands: () => _talentRuntime.CompleteInitialHands(
+                        new TalentInitialHandsContext(_session, _gameState, _deckConfigs)),
                     capturePeek: () => _talentRuntime.ResolvePostShuffle(new TalentPostShuffleContext(
                         _session,
                         _wallService.GetWallTiles())));

@@ -83,6 +83,12 @@ static async Task RealGameServerCountsOnlyMainLoopDrawAndEmitsAcceptedWinOnce(Li
           && acceptedHu.DecisionId > 0
           && ReferenceEquals(acceptedHu.WinFacts, WinFactsObserverTalent.AcceptedFacts),
         "real GameServer emits one committed Hu fact carrying the accepted TalentWinFacts instance", failures);
+    Check(InitialHandObserverTalent.ByOwner.TryGetValue(0, out TalentInitialHandFacts initialHand)
+          && initialHand.RoundNumber == 1
+          && initialHand.Tiles.Count == 13
+          && initialHand.Tiles.All(tile => tile.OriginalOwnerId == 0),
+        "real GameServer completes the owner-private initial-hand hook after all 13 authoritative tiles are stored",
+        failures);
 }
 
 static async Task ThrowingSinkCannotInterruptRealGameServerCompletion(List<string> failures)
@@ -294,10 +300,12 @@ static GameServer CreateWinningServer(
 {
     WinFactsObserverTalent.Reset();
     ActionFactsGlobalObserverTalent.Reset();
+    InitialHandObserverTalent.Reset();
     var loadouts = Enumerable.Range(0, 4)
         .ToDictionary(index => index, _ => new TalentSlotConfig());
     loadouts[0].SlotTalentIds[3] = "network_test_win_facts_observer";
     loadouts[0].SlotTalentIds[4] = "network_test_action_global_observer";
+    loadouts[0].SlotTalentIds[5] = "network_test_initial_hand_observer";
     var runtime = new TalentMatchRuntime(
         loadouts,
         TalentRegistry.Instance,

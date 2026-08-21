@@ -42,6 +42,7 @@ namespace MahjongGame.Core
     public enum TalentPhase
     {
         WallBuilding,     // 牌山构建后、洗牌前
+        InitialHandCompleted, // 四席起手牌进入服务端权威状态后
         OnDraw,           // 摸牌时
         OnDiscard,        // 出牌时
         ActionValidation, // 吃碰杠胡判定

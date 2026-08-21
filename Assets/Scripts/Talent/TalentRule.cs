@@ -33,6 +33,7 @@ namespace MahjongGame.Talents
         public virtual void InitializeMatchState(TalentMatchContext context) { }
         public virtual int GetMatchStartScoreDelta(TalentMatchContext context) => 0;
         public virtual void OnRoundStarted(TalentRoundContext context) { }
+        public virtual void OnInitialHandCompleted(TalentInitialHandContext context) { }
         public virtual void OnRoundEnded(TalentRoundContext context, TalentRoundOutcome outcome) { }
         public virtual void OnActionCommitted(TalentActionCommittedContext context) { }
         public virtual int GetRoundStartPeekCount(TalentRoundContext context) => 0;

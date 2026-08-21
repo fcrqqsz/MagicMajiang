@@ -14,6 +14,65 @@ internal static class TalentServiceFoundationTests
         CommittedActionsRouteOnceAndBuildAnImmutableRoundLedger(runner);
         GenericChoicesRejectForgedIdsBeforeRuleMutation(runner);
         GenericChoicesRoundTripThroughPrivateProtocolAndAiDefault(runner);
+        InitialHandHookOwnsImmutablePrivateFactsAndStrictLifecycle(runner);
+    }
+
+    private static void InitialHandHookOwnsImmutablePrivateFactsAndStrictLifecycle(
+        RegressionRunner runner)
+    {
+        InitialHandObserverTalent.Reset();
+        var seat0 = new TalentSlotConfig();
+        seat0.SlotTalentIds[3] = "network_test_initial_hand_observer";
+        var seat1 = new TalentSlotConfig();
+        seat1.SlotTalentIds[3] = "network_test_initial_hand_observer";
+        var seat2 = new TalentSlotConfig();
+        seat2.ReserveTalentIds[0] = "network_test_initial_hand_observer";
+        var runtime = new TalentMatchRuntime(
+            new Dictionary<int, TalentSlotConfig>
+            {
+                [0] = seat0,
+                [1] = seat1,
+                [2] = seat2
+            },
+            TalentRegistry.Instance);
+        var session = new GameSession(GameMode.Single);
+        var gameState = new ServerGameState(4);
+        for (int seatIndex = 0; seatIndex < 4; seatIndex++)
+        {
+            gameState.InitHand(seatIndex, new List<TileData>
+            {
+                new TileData(Suit.Man, seatIndex + 1, seatIndex),
+                new TileData(Suit.Pin, seatIndex + 2, seatIndex)
+            });
+        }
+
+        runtime.BeginMatch(session);
+        runtime.BeginRound(new TalentRoundContext(session));
+        runtime.ApplyWallBuilding(new TalentWallContext(
+            session,
+            new List<TileData>(),
+            gameState,
+            new Dictionary<int, DeckConfig>()));
+        bool postShuffleBeforeHandsRejected = ThrowsInvalidOperation(() =>
+            runtime.ResolvePostShuffle(new TalentPostShuffleContext(session, new List<TileData>())));
+
+        runtime.CompleteInitialHands(new TalentInitialHandsContext(session, gameState));
+        gameState.RemoveTile(0, gameState.GetHand(0)[0]);
+        bool duplicateRejected = ThrowsInvalidOperation(() =>
+            runtime.CompleteInitialHands(new TalentInitialHandsContext(session, gameState)));
+        runtime.ResolvePostShuffle(new TalentPostShuffleContext(session, new List<TileData>()));
+
+        runner.Check(postShuffleBeforeHandsRejected && duplicateRejected,
+            "initial-hand completion is a strict one-shot lifecycle boundary before post-shuffle readiness");
+        runner.Check(InitialHandObserverTalent.ByOwner.Count == 2
+                     && InitialHandObserverTalent.ByOwner[0].OwnerSeatIndex == 0
+                     && InitialHandObserverTalent.ByOwner[0].RoundNumber == 1
+                     && InitialHandObserverTalent.ByOwner[0].Tiles.Count == 2
+                     && InitialHandObserverTalent.ByOwner[0].Tiles.All(tile => tile.OriginalOwnerId == 0)
+                     && InitialHandObserverTalent.ByOwner[0].Tiles[0].Value == 1
+                     && InitialHandObserverTalent.ByOwner[1].Tiles.All(tile => tile.OriginalOwnerId == 1)
+                     && !InitialHandObserverTalent.ByOwner.ContainsKey(2),
+            "each active rule receives only its owner's immutable physical starting hand; inactive reserves receive nothing");
     }
 
     private static void GenericChoicesRoundTripThroughPrivateProtocolAndAiDefault(
@@ -205,6 +264,7 @@ internal static class TalentServiceFoundationTests
         runtime.BeginMatch(session);
         runtime.BeginRound(new TalentRoundContext(session));
         runtime.ApplyWallBuilding(new TalentWallContext(session, new List<TileData>()));
+        runtime.CompleteInitialHands(new TalentInitialHandsContext(session, new ServerGameState(4)));
         runtime.ResolvePostShuffle(new TalentPostShuffleContext(session, new List<TileData>()));
         TalentWinFacts facts = TalentWinFacts.Create(
             session,
@@ -314,10 +374,24 @@ internal static class TalentServiceFoundationTests
         SpecialEffectID = modifiedBy
     };
 
+    private static bool ThrowsInvalidOperation(Action action)
+    {
+        try
+        {
+            action();
+            return false;
+        }
+        catch (InvalidOperationException)
+        {
+            return true;
+        }
+    }
+
     private static void BeginReadyRound(TalentMatchRuntime runtime, GameSession session)
     {
         runtime.BeginRound(new TalentRoundContext(session));
         runtime.ApplyWallBuilding(new TalentWallContext(session, new List<TileData>()));
+        runtime.CompleteInitialHands(new TalentInitialHandsContext(session, new ServerGameState(4)));
         runtime.ResolvePostShuffle(new TalentPostShuffleContext(session, new List<TileData>()));
     }
 }
@@ -454,4 +528,21 @@ internal sealed class ChoiceContractTestTalent : TalentRule
         AuthoritativeCalls = 0;
         AcceptedChoiceId = null;
     }
+}
+
+[TalentRule("network_test_initial_hand_observer", "Initial Hand Observer", "test",
+    TalentTier.Small, 0, TalentPhase.InitialHandCompleted)]
+internal sealed class InitialHandObserverTalent : TalentRule
+{
+    public static Dictionary<int, TalentInitialHandFacts> ByOwner { get; } =
+        new Dictionary<int, TalentInitialHandFacts>();
+
+    public override TalentScope Scope => TalentScope.Global;
+
+    public override void OnInitialHandCompleted(TalentInitialHandContext context)
+    {
+        ByOwner[OwnerSeatIndex] = context.Facts;
+    }
+
+    public static void Reset() => ByOwner.Clear();
 }

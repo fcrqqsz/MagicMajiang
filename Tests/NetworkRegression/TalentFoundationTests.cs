@@ -274,8 +274,10 @@ internal static class TalentFoundationTests
         runner.Check(Throws<InvalidOperationException>(() =>
                          runtime.ApplyWallBuilding(new TalentWallContext(session, wall)))
                      && Throws<InvalidOperationException>(() =>
+                         runtime.ResolvePostShuffle(new TalentPostShuffleContext(session, wall)))
+                     && Throws<InvalidOperationException>(() =>
                          runtime.EndRound(new TalentRoundOutcome(), session)),
-            "wall building runs once and a wall-built round cannot end before post-shuffle");
+            "wall building runs once and a wall-built round requires initial-hand completion");
         runner.Check(WallLifecycleTestTalent.Calls == 1
                      && wall.Count == 3
                      && LifecycleTestTalent.RoundEnds == 0,
@@ -287,6 +289,10 @@ internal static class TalentFoundationTests
                          new TalentScoringContext(session, 0))),
             "draw and scoring are unavailable until the round is post-shuffle ready");
 
+        CompleteEmptyInitialHands(runtime, session);
+        runner.Check(Throws<InvalidOperationException>(() =>
+                runtime.CompleteInitialHands(new TalentInitialHandsContext(session, new ServerGameState(4)))),
+            "initial-hand completion runs exactly once per round");
         runtime.ResolvePostShuffle(new TalentPostShuffleContext(session, wall));
         runner.Check(Throws<InvalidOperationException>(() =>
                          runtime.ResolvePostShuffle(new TalentPostShuffleContext(session, wall)))
@@ -502,6 +508,7 @@ internal static class TalentFoundationTests
         };
 
         runtime.ApplyWallBuilding(new TalentWallContext(session, shuffledWall));
+        CompleteEmptyInitialHands(runtime, session);
         runtime.ResolvePostShuffle(new TalentPostShuffleContext(session, shuffledWall));
 
         runner.Check(runtime.GetPrivatePeekTiles(0).Select(tile => (tile.TileSuit, tile.Value))
@@ -535,6 +542,7 @@ internal static class TalentFoundationTests
                 for (int index = 0; index < 52; index++)
                     dealtTiles.Add(wall.DrawTile());
             },
+            completeInitialHands: () => CompleteEmptyInitialHands(runtime, session),
             capturePeek: () => runtime.ResolvePostShuffle(
                 new TalentPostShuffleContext(session, wall.GetWallTiles())));
 
@@ -894,7 +902,16 @@ internal static class TalentFoundationTests
         List<TileData> roundWall = wall ?? new List<TileData>();
         runtime.BeginRound(new TalentRoundContext(session));
         runtime.ApplyWallBuilding(new TalentWallContext(session, roundWall));
+        CompleteEmptyInitialHands(runtime, session);
         runtime.ResolvePostShuffle(new TalentPostShuffleContext(session, roundWall));
+    }
+
+    private static void CompleteEmptyInitialHands(
+        TalentMatchRuntime runtime,
+        GameSession session)
+    {
+        runtime.CompleteInitialHands(
+            new TalentInitialHandsContext(session, new ServerGameState(4)));
     }
 
     private static TalentAcceptedWinContext CreateAcceptedWinContext(GameSession session, int seatIndex)

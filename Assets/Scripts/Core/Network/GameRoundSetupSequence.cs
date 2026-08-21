@@ -12,18 +12,21 @@ namespace MahjongGame.Core.Network
             Action applyWallTalents,
             Action shuffleWall,
             Action dealStartingHands,
+            Action completeInitialHands,
             Action capturePeek)
         {
             if (buildWall == null) throw new ArgumentNullException(nameof(buildWall));
             if (applyWallTalents == null) throw new ArgumentNullException(nameof(applyWallTalents));
             if (shuffleWall == null) throw new ArgumentNullException(nameof(shuffleWall));
             if (dealStartingHands == null) throw new ArgumentNullException(nameof(dealStartingHands));
+            if (completeInitialHands == null) throw new ArgumentNullException(nameof(completeInitialHands));
             if (capturePeek == null) throw new ArgumentNullException(nameof(capturePeek));
 
             buildWall();
             applyWallTalents();
             shuffleWall();
             dealStartingHands();
+            completeInitialHands();
             capturePeek();
         }
     }

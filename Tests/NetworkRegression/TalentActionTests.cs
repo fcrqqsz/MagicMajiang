@@ -333,6 +333,7 @@ internal static class TalentActionTests
         runtime.BeginMatch(session);
         runtime.BeginRound(new TalentRoundContext(session));
         runtime.ApplyWallBuilding(new TalentWallContext(session, new List<TileData>()));
+        runtime.CompleteInitialHands(new TalentInitialHandsContext(session, new ServerGameState(4)));
         runtime.ResolvePostShuffle(new TalentPostShuffleContext(session, new List<TileData>()));
 
         TalentActionResult accepted = runtime.TryActivate(
@@ -1193,6 +1194,7 @@ internal static class TalentActionTests
     {
         runtime.BeginRound(new TalentRoundContext(session));
         runtime.ApplyWallBuilding(new TalentWallContext(session, new List<TileData>()));
+        runtime.CompleteInitialHands(new TalentInitialHandsContext(session, new ServerGameState(4)));
         runtime.ResolvePostShuffle(new TalentPostShuffleContext(session, new List<TileData>()));
     }
 }

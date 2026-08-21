@@ -315,6 +315,64 @@ namespace MahjongGame.Talents
         }
     }
 
+    /// <summary>
+    /// Authority-only source used to fan out owner-private initial-hand facts.
+    /// Concrete rules never receive this aggregate context.
+    /// </summary>
+    public sealed class TalentInitialHandsContext : TalentContext
+    {
+        private readonly IReadOnlyDictionary<int, TalentInitialHandFacts> _factsBySeat;
+
+        internal TalentInitialHandsContext(
+            GameSession session,
+            ServerGameState gameState,
+            IReadOnlyDictionary<int, DeckConfig> deckConfigs = null)
+            : base(session, null, gameState, deckConfigs)
+        {
+            if (gameState == null) throw new ArgumentNullException(nameof(gameState));
+            var facts = new Dictionary<int, TalentInitialHandFacts>();
+            for (int seatIndex = 0; seatIndex < gameState.PlayerCount; seatIndex++)
+            {
+                facts[seatIndex] = new TalentInitialHandFacts(
+                    session,
+                    seatIndex,
+                    gameState.GetHand(seatIndex));
+            }
+            _factsBySeat = new ReadOnlyDictionary<int, TalentInitialHandFacts>(facts);
+        }
+
+        internal TalentInitialHandContext BindInitialHand(
+            int ownerSeatIndex,
+            TalentRuntimeState state,
+            Action<TalentRuntimeEvent> eventSink)
+        {
+            if (!_factsBySeat.TryGetValue(ownerSeatIndex, out TalentInitialHandFacts facts))
+                throw new InvalidOperationException($"Initial hand for seat {ownerSeatIndex} is unavailable.");
+            var context = new TalentInitialHandContext(
+                Session,
+                GameState,
+                DeckSnapshots,
+                facts);
+            context.ConfigureEntry(ownerSeatIndex, state, eventSink);
+            return context;
+        }
+    }
+
+    public sealed class TalentInitialHandContext : TalentContext
+    {
+        public TalentInitialHandFacts Facts { get; }
+
+        internal TalentInitialHandContext(
+            TalentSessionSnapshot session,
+            TalentGameStateSnapshot gameState,
+            IReadOnlyDictionary<int, TalentDeckSnapshot> deckSnapshots,
+            TalentInitialHandFacts facts)
+            : base(session, null, gameState, deckSnapshots)
+        {
+            Facts = facts ?? throw new ArgumentNullException(nameof(facts));
+        }
+    }
+
     public sealed class TalentDrawContext : TalentContext
     {
         public new int CurrentSeatIndex => base.CurrentSeatIndex.Value;
