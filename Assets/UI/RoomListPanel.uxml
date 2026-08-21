@@ -26,6 +26,12 @@
                 <ui:Button name="BtnLinkWorkshop" text="前往工坊调整构筑 >" class="btn-link-workshop" />
             </ui:VisualElement>
 
+            <!-- Error Banner -->
+            <ui:VisualElement name="RoomListErrorBanner" class="room-list-error-banner" style="display: none;">
+                <ui:Label name="RoomListErrorLabel" text="" class="room-list-error-label" />
+                <ui:Button name="BtnCloseError" text="X" class="btn-close-error" />
+            </ui:VisualElement>
+
             <!-- Filter Toolbar -->
             <ui:VisualElement class="filter-toolbar">
                 <ui:VisualElement class="filter-group">

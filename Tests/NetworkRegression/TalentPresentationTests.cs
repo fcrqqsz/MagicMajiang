@@ -633,6 +633,14 @@ internal static class TalentPresentationTests
             && mismatch.Message.Contains("标准 80", StringComparison.Ordinal),
             "room admission shows both mismatched presets");
 
+        RoomLoadoutAdmissionView standardZeroVsLow = RoomLoadoutAdmissionPresentationPolicy.Validate(
+            AlienationPreset.Standard, AlienationPreset.Low, total: 0);
+        runner.Check(!standardZeroVsLow.CanEnter
+            && standardZeroVsLow.Code == PlayerLoadoutErrorCodes.AlienationPresetMismatch
+            && standardZeroVsLow.Message.Contains("标准 80", StringComparison.Ordinal)
+            && standardZeroVsLow.Message.Contains("低异化 40", StringComparison.Ordinal),
+            "standard 0-pt loadout is rejected when trying to join low-preset room due to preset mismatch");
+
         RoomLoadoutAdmissionView overMatching = RoomLoadoutAdmissionPresentationPolicy.Validate(
             AlienationPreset.Low, AlienationPreset.Low, total: 45);
         runner.Check(!overMatching.CanEnter
@@ -651,7 +659,7 @@ internal static class TalentPresentationTests
         RoomLoadoutAdmissionPresentationPolicy.Validate(
             saved.AlienationPreset, AlienationPreset.Low, saved.AlienationScore);
         runner.Check((int)saved.AlienationPreset == 999 && saved.AlienationScore == 123,
-            "room admission presentation never mutates a saved deck");
+            "room alienation presentation never mutates a saved deck");
 
         RoomAlienationVisibilityView roomAlienation = RoomAlienationPresentationPolicy.Build(
             AlienationPreset.Standard, ownTotal: 45);
@@ -659,7 +667,6 @@ internal static class TalentPresentationTests
             && roomAlienation.OwnSummary == "本家异化：45 / 80"
             && string.IsNullOrEmpty(roomAlienation.SeatSummary),
             "room alienation presentation exposes one public preset, one private own total, and no seat copy");
-
     }
 
     private static void RunLoadoutPresetTests(RegressionRunner runner)
