@@ -111,3 +111,7 @@ InitTestScene*.unity*
 
 # Codex isolated feature worktrees
 /.worktrees/
+
+# codely
+.codely*
+.com-unity-codely.json
