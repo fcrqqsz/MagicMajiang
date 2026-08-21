@@ -274,7 +274,8 @@ internal static class TalentCommandClientTests
         {
             TalentId = "interception",
             TargetSeatIndex = 2,
-            TargetTalentId = "sheathed_edge"
+            TargetTalentId = "sheathed_edge",
+            SelectedChoiceId = "risk"
         };
         RoomGameSnapshot before = service.GameState.Snapshot;
 
@@ -291,8 +292,9 @@ internal static class TalentCommandClientTests
             && message?.decisionId == MainDecisionId
             && message.talentId == "interception"
             && message.targetSeatIndex == 2
-            && message.targetTalentId == "sheathed_edge",
-            "RemoteServerProxy serializes a typed TalentAction with the current authoritative own-main-turn decision");
+            && message.targetTalentId == "sheathed_edge"
+            && message.selectedChoiceId == "risk",
+            "RemoteServerProxy serializes target and selected choice with the current authoritative own-main-turn decision");
         runner.Check(
             before.activeDecision.decisionId == after.activeDecision.decisionId
             && before.privateSeat.availableTalentActions.Length == after.privateSeat.availableTalentActions.Length

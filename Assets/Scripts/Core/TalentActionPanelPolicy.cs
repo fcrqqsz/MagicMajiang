@@ -136,6 +136,8 @@ namespace MahjongGame.Core
                 return "充能不足";
             if (string.Equals(errorCode, TalentActionErrorCodes.AlreadyUsedThisTurn, StringComparison.Ordinal))
                 return "本回合已使用";
+            if (string.Equals(errorCode, TalentActionErrorCodes.InvalidChoice, StringComparison.Ordinal))
+                return "选择已不可用";
             if (string.Equals(errorCode, TalentActionErrorCodes.NotCarriedOrInactive, StringComparison.Ordinal)
                 || string.Equals(errorCode, TalentActionErrorCodes.NotAvailable, StringComparison.Ordinal))
                 return "天赋当前不可用";
@@ -233,7 +235,19 @@ namespace MahjongGame.Core
                     TalentId = source.TalentId,
                     TargetSeatIndex = source.TargetSeatIndex,
                     TargetTalentId = source.TargetTalentId,
-                    TargetPublicCharge = source.TargetPublicCharge
+                    TargetPublicCharge = source.TargetPublicCharge,
+                    Choice = source.Choice,
+                    SelectedChoiceId = source.SelectedChoiceId
                 };
+
+        public static TalentActionOption SelectChoice(
+            TalentActionOption source,
+            string choiceId)
+        {
+            if (source?.Choice == null || !source.Choice.Contains(choiceId)) return null;
+            TalentActionOption selected = CloneOption(source);
+            selected.SelectedChoiceId = choiceId;
+            return selected;
+        }
     }
 }

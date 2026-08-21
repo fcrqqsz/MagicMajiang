@@ -834,7 +834,8 @@ namespace MahjongGame.Core.Network
                     DecisionId = message.decisionId,
                     TalentId = message.talentId,
                     TargetSeatIndex = message.targetSeatIndex,
-                    TargetTalentId = message.targetTalentId
+                    TargetTalentId = message.targetTalentId,
+                    ChoiceId = message.selectedChoiceId
                 },
                 new TalentActivationContext(
                     _session,

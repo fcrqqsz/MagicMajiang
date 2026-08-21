@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 using MahjongGame.Core;
 using MahjongGame.Core.Network;
+using MahjongGame.Core.Network.Messages;
 using MahjongGame.Talents;
 
 internal static class TalentServiceFoundationTests
@@ -11,6 +12,119 @@ internal static class TalentServiceFoundationTests
         WinFactsOwnDeepImmutablePhysicalSnapshots(runner);
         RuntimeCarriesOneWinFactsInstanceThroughEvaluationAndAcceptance(runner);
         CommittedActionsRouteOnceAndBuildAnImmutableRoundLedger(runner);
+        GenericChoicesRejectForgedIdsBeforeRuleMutation(runner);
+        GenericChoicesRoundTripThroughPrivateProtocolAndAiDefault(runner);
+    }
+
+    private static void GenericChoicesRoundTripThroughPrivateProtocolAndAiDefault(
+        RegressionRunner runner)
+    {
+        var serverOption = new TalentActionOption
+        {
+            TalentId = "network_test_choice_contract",
+            Choice = new TalentChoiceSet(
+                TalentChoiceKind.Mode,
+                "choose_contract",
+                "safe",
+                new[]
+                {
+                    new TalentChoiceOption("safe", "contract_safe", 1),
+                    new TalentChoiceOption("risk", "contract_risk", 2)
+                })
+        };
+        SnapshotTalentActionOption snapshot = TalentActionSnapshotCodec.ToSnapshot(serverOption);
+        TalentActionOption restored = TalentActionSnapshotCodec.FromSnapshot(snapshot);
+        TalentActionOption selected = TalentActionPanelPolicy.SelectChoice(restored, "risk");
+        TalentActionOption aiChoice = MahjongGame.Core.Agents.AiTalentDecisionPolicy
+            .ChooseActiveAction(new[] { serverOption });
+        NetworkMessageEnvelope envelope = MessageSerializer.DeserializeEnvelope(
+            MessageSerializer.Serialize(
+                "TalentAction",
+                9,
+                new TalentActionMessage
+                {
+                    decisionId = 77,
+                    talentId = selected.TalentId,
+                    selectedChoiceId = selected.SelectedChoiceId
+                }));
+        TalentActionMessage roundTrip = MessageSerializer.DeserializePayload<TalentActionMessage>(envelope.data);
+
+        snapshot.choice.options[0].choiceId = "mutated";
+        runner.Check(restored.Choice.Options[0].ChoiceId == "safe"
+                     && restored.Choice.DefaultChoiceId == "safe",
+            "owner-private snapshot conversion deep-copies generic choice options");
+        runner.Check(selected.SelectedChoiceId == "risk"
+                     && serverOption.SelectedChoiceId == null
+                     && roundTrip.selectedChoiceId == "risk",
+            "client selection returns a copied option and the protocol carries only the selected choice id");
+        runner.Check(aiChoice.SelectedChoiceId == "safe",
+            "AI uses the server-authored default when no talent-specific choice strategy exists");
+    }
+
+    private static void GenericChoicesRejectForgedIdsBeforeRuleMutation(
+        RegressionRunner runner)
+    {
+        ChoiceContractTestTalent.Reset();
+        var config = new TalentSlotConfig();
+        config.SlotTalentIds[3] = "network_test_choice_contract";
+        var runtime = new TalentMatchRuntime(
+            new Dictionary<int, TalentSlotConfig> { [0] = config },
+            TalentRegistry.Instance);
+        var session = new GameSession(GameMode.Single);
+        runtime.BeginMatch(session);
+        BeginReadyRound(runtime, session);
+        runtime.OpenMainDecision(0, decisionId: 77);
+
+        TalentActionQueryContext query = new TalentActionQueryContext(
+            session, 0, TalentActivationWindow.MainTurn, decisionId: 77);
+        TalentActionOption option = runtime.GetAvailableActions(0, query).Single();
+        TalentActivationContext activation = new TalentActivationContext(
+            session, 0, TalentActivationWindow.MainTurn, decisionId: 77);
+        TalentActionResult missing = runtime.TryActivate(
+            0,
+            new TalentActionRequest
+            {
+                DecisionId = 77,
+                TalentId = "network_test_choice_contract"
+            },
+            activation);
+        TalentActionResult forged = runtime.TryActivate(
+            0,
+            new TalentActionRequest
+            {
+                DecisionId = 77,
+                TalentId = "network_test_choice_contract",
+                ChoiceId = "forged"
+            },
+            activation);
+
+        runner.Check(option.Choice.Kind == TalentChoiceKind.Mode
+                     && option.Choice.PromptKey == "choose_contract"
+                     && option.Choice.DefaultChoiceId == "safe"
+                     && option.Choice.Options.Select(choice => choice.ChoiceId)
+                         .SequenceEqual(new[] { "safe", "risk" }),
+            "rules publish a bounded server-authored generic choice set");
+        runner.Check(!missing.Accepted
+                     && !forged.Accepted
+                     && missing.ErrorCode == TalentActionErrorCodes.InvalidChoice
+                     && forged.ErrorCode == TalentActionErrorCodes.InvalidChoice
+                     && ChoiceContractTestTalent.AuthoritativeCalls == 0,
+            "missing and forged choice ids are rejected before the rule can mutate authoritative state");
+
+        TalentActionResult accepted = runtime.TryActivate(
+            0,
+            new TalentActionRequest
+            {
+                DecisionId = 77,
+                TalentId = "network_test_choice_contract",
+                ChoiceId = "risk"
+            },
+            activation);
+        runner.Check(accepted.Accepted
+                     && accepted.EffectApplied
+                     && ChoiceContractTestTalent.AuthoritativeCalls == 1
+                     && ChoiceContractTestTalent.AcceptedChoiceId == "risk",
+            "an advertised choice id reaches the rule exactly once through the authoritative activation path");
     }
 
     private static void CommittedActionsRouteOnceAndBuildAnImmutableRoundLedger(
@@ -296,5 +410,48 @@ internal sealed class ActionFactsSelfObserverTalent : TalentRule
     {
         OwnerSeats.Clear();
         RoundEndLedger = null;
+    }
+}
+
+[TalentRule("network_test_choice_contract", "Choice Contract", "test",
+    TalentTier.Small, 0,
+    ActivationWindow = TalentActivationWindow.MainTurn)]
+internal sealed class ChoiceContractTestTalent : TalentRule
+{
+    public static int AuthoritativeCalls { get; private set; }
+    public static string AcceptedChoiceId { get; private set; }
+
+    public override void GetAvailableActions(
+        TalentActionQueryContext context,
+        List<TalentActionOption> output)
+    {
+        output.Add(new TalentActionOption
+        {
+            TalentId = Id,
+            Choice = new TalentChoiceSet(
+                TalentChoiceKind.Mode,
+                promptKey: "choose_contract",
+                defaultChoiceId: "safe",
+                new[]
+                {
+                    new TalentChoiceOption("safe", "contract_safe", value: 1),
+                    new TalentChoiceOption("risk", "contract_risk", value: 2)
+                })
+        });
+    }
+
+    public override TalentActionResult TryActivate(
+        TalentActivationContext context,
+        TalentActionRequest request)
+    {
+        AuthoritativeCalls++;
+        AcceptedChoiceId = request.ChoiceId;
+        return TalentActionResult.Success(effectApplied: true);
+    }
+
+    public static void Reset()
+    {
+        AuthoritativeCalls = 0;
+        AcceptedChoiceId = null;
     }
 }

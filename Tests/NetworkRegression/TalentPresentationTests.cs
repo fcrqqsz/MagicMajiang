@@ -671,8 +671,8 @@ internal static class TalentPresentationTests
 
     private static void RunLoadoutPresetTests(RegressionRunner runner)
     {
-        runner.Check(NetworkProtocol.IsSupported(4) && !NetworkProtocol.IsSupported(3),
-            "protocol v4 rejects protocol v3 before room loadout admission");
+        runner.Check(NetworkProtocol.IsSupported(5) && !NetworkProtocol.IsSupported(4),
+            "protocol v5 rejects protocol v4 before room loadout admission");
 
         var legacy = new SavedDeck { Config = DeckConfig.CreateStandard(), Talents = new TalentSlotConfig() };
         legacy.Normalize();
@@ -757,14 +757,14 @@ internal static class TalentPresentationTests
         using var manager = new RoomManager(4, true, connections, messageCacheSize: 8);
 
         var legacyProtocolEndpoint = new GameEndpoint();
-        legacyProtocolEndpoint.Connect("protocol-v3", 1);
-        legacyProtocolEndpoint.Receive("protocol-v3", 1, MessageSerializer.Serialize("Hello", 0,
-            new HelloMessage { protocolVersion = 3, username = "Legacy" }));
+        legacyProtocolEndpoint.Connect("protocol-v4", 1);
+        legacyProtocolEndpoint.Receive("protocol-v4", 1, MessageSerializer.Serialize("Hello", 0,
+            new HelloMessage { protocolVersion = 4, username = "Legacy" }));
         RoomErrorMessage protocolError = GetLastRoomError(legacyProtocolEndpoint);
-        connections.TryGet("protocol-v3", out ConnectionRegistry.ConnectionRecord legacyRecord);
+        connections.TryGet("protocol-v4", out ConnectionRegistry.ConnectionRecord legacyRecord);
         runner.Check(protocolError.code == NetworkErrorCodes.ProtocolMismatch
             && legacyRecord != null && !legacyRecord.IsAuthenticated,
-            "protocol v3 fails during Hello before room admission");
+            "protocol v4 fails during Hello before room admission");
 
         GameEndpoint host = ConnectAuthenticated("preset-host", "Host");
 

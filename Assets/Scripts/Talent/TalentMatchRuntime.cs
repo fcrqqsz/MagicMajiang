@@ -422,6 +422,12 @@ namespace MahjongGame.Talents
             if (!entry.Metadata.ActivationWindow.HasFlag(context.RequiredWindow))
                 return TalentActionResult.Reject(TalentActionErrorCodes.NotAvailable);
 
+            TalentActionResult choiceValidation = ValidateAuthorizedChoice(
+                entry,
+                request,
+                context);
+            if (choiceValidation != null) return choiceValidation;
+
             TalentActionResult result = entry.Rule.TryActivate(
                 context.WithState(
                     entry.State,
@@ -442,6 +448,52 @@ namespace MahjongGame.Talents
                 });
             }
             return result;
+        }
+
+        private TalentActionResult ValidateAuthorizedChoice(
+            RuntimeEntry entry,
+            TalentActionRequest request,
+            TalentActivationContext context)
+        {
+            var advertised = new List<TalentActionOption>();
+            entry.Rule.GetAvailableActions(
+                new TalentActionQueryContext(
+                        _session,
+                        context.CurrentSeatIndex,
+                        context.RequiredWindow,
+                        context.DecisionId)
+                    .WithState(
+                        entry.State.CreateDetachedCopy(),
+                        IsFirstMainDecision(
+                            context.CurrentSeatIndex,
+                            context.RequiredWindow,
+                            context.DecisionId),
+                        this),
+                advertised);
+            TalentActionOption[] matching = advertised
+                .Where(option => option != null
+                                 && string.Equals(option.TalentId, request.TalentId, StringComparison.Ordinal)
+                                 && option.TargetSeatIndex == request.TargetSeatIndex
+                                 && string.Equals(
+                                     option.TargetTalentId,
+                                     request.TargetTalentId,
+                                     StringComparison.Ordinal))
+                .ToArray();
+            bool requestHasChoice = !string.IsNullOrWhiteSpace(request.ChoiceId);
+            TalentActionOption[] choices = matching
+                .Where(option => option.Choice != null)
+                .ToArray();
+
+            if (choices.Length == 0)
+            {
+                return requestHasChoice
+                    ? TalentActionResult.Reject(TalentActionErrorCodes.InvalidChoice)
+                    : null;
+            }
+
+            return requestHasChoice && choices.Any(option => option.Choice.Contains(request.ChoiceId))
+                ? null
+                : TalentActionResult.Reject(TalentActionErrorCodes.InvalidChoice);
         }
 
         public int GetPublicCounter(int ownerSeatIndex, string talentId, string key)

@@ -149,7 +149,8 @@ namespace MahjongGame.Core.Network
                 decisionId = projection.DecisionId,
                 talentId = option.TalentId,
                 targetSeatIndex = option.TargetSeatIndex,
-                targetTalentId = option.TargetTalentId
+                targetTalentId = option.TargetTalentId,
+                selectedChoiceId = option.SelectedChoiceId
             });
             return true;
         }

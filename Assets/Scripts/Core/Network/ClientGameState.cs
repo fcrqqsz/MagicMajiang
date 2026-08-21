@@ -749,22 +749,15 @@ namespace MahjongGame.Core.Network
             }).ToArray();
 
         private static SnapshotTalentActionOption[] CloneTalentActionOptions(SnapshotTalentActionOption[] options) =>
-            (options ?? Array.Empty<SnapshotTalentActionOption>()).Select(option => option == null ? null : new SnapshotTalentActionOption
-            {
-                talentId = option.talentId,
-                targetSeatIndex = option.targetSeatIndex,
-                targetTalentId = option.targetTalentId,
-                targetPublicCharge = option.targetPublicCharge
-            }).ToArray();
+            (options ?? Array.Empty<SnapshotTalentActionOption>())
+                .Select(TalentActionSnapshotCodec.CloneSnapshot)
+                .ToArray();
 
         private static TalentActionOption[] ToTalentActionOptions(SnapshotTalentActionOption[] options) =>
-            (options ?? Array.Empty<SnapshotTalentActionOption>()).Where(option => option != null).Select(option => new TalentActionOption
-            {
-                TalentId = option.talentId,
-                TargetSeatIndex = option.targetSeatIndex,
-                TargetTalentId = option.targetTalentId,
-                TargetPublicCharge = option.targetPublicCharge
-            }).ToArray();
+            (options ?? Array.Empty<SnapshotTalentActionOption>())
+                .Select(TalentActionSnapshotCodec.FromSnapshot)
+                .Where(option => option != null)
+                .ToArray();
 
         private static SnapshotSideboardState CloneSideboard(SnapshotSideboardState sideboard) =>
             sideboard == null ? null : new SnapshotSideboardState

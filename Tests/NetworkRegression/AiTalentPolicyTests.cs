@@ -366,7 +366,16 @@ internal static class AiTalentPolicyTests
             TalentId = "interception",
             TargetSeatIndex = 2,
             TargetTalentId = "sheathed_edge",
-            TargetPublicCharge = 3
+            TargetPublicCharge = 3,
+            Choice = new TalentChoiceSet(
+                TalentChoiceKind.Mode,
+                "talent.choice.mode",
+                "safe",
+                new[]
+                {
+                    new TalentChoiceOption("safe", "talent.choice.safe"),
+                    new TalentChoiceOption("risk", "talent.choice.risk")
+                })
         };
         RoomGameSnapshot ownerSnapshot = CreateTalentOptionSnapshot(
             requestingSeatIndex: 0,
@@ -378,18 +387,21 @@ internal static class AiTalentPolicyTests
         state.ApplySnapshot(ownerSnapshot, 0);
         sourceOption.TargetPublicCharge = 99;
         ownerSnapshot.privateSeat.availableTalentActions[0].targetPublicCharge = 77;
+        ownerSnapshot.privateSeat.availableTalentActions[0].choice.options[0].choiceId = "forged";
         TalentActionOption firstRead = state.AvailableTalentActions.Single();
         firstRead.TargetPublicCharge = 55;
         TalentActionOption secondRead = state.AvailableTalentActions.Single();
 
         runner.Check(secondRead.TargetPublicCharge == 3
                      && secondRead.TargetSeatIndex == 2
-                     && secondRead.TargetTalentId == "sheathed_edge",
-            "public target charge crosses snapshot/recovery projection as a deep-copied authoritative option");
+                     && secondRead.TargetTalentId == "sheathed_edge"
+                     && secondRead.Choice.DefaultChoiceId == "safe"
+                     && secondRead.Choice.Options[0].ChoiceId == "safe",
+            "public target charge and private choices cross recovery as deep-copied authoritative options");
         runner.Check(otherSnapshot.privateSeat.availableTalentActions.Length == 0
                      && !UnityEngine.JsonUtility.ToJson(otherSnapshot)
-                         .Contains("sheathed_edge", StringComparison.Ordinal),
-            "another seat receives no private talent action or target charge projection");
+                         .Contains("talent.choice.safe", StringComparison.Ordinal),
+            "another seat receives no private talent action, target charge, or choice projection");
     }
 
     private static RoomGameSnapshot CreateTalentOptionSnapshot(

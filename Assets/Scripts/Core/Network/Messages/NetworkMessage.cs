@@ -309,6 +309,7 @@ namespace MahjongGame.Core.Network.Messages
         public string talentId;
         public int targetSeatIndex = -1;
         public string targetTalentId;
+        public string selectedChoiceId;
     }
 
     [Serializable]

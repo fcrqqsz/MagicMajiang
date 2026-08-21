@@ -248,13 +248,8 @@ namespace MahjongGame.Core.Network
         {
             return (options ?? Array.Empty<TalentActionOption>())
                 .Where(option => option != null && !string.IsNullOrWhiteSpace(option.TalentId))
-                .Select(option => new SnapshotTalentActionOption
-                {
-                    talentId = option.TalentId,
-                    targetSeatIndex = option.TargetSeatIndex,
-                    targetTalentId = option.TargetTalentId,
-                    targetPublicCharge = option.TargetPublicCharge
-                })
+                .Select(TalentActionSnapshotCodec.ToSnapshot)
+                .Where(option => option != null)
                 .ToArray();
         }
 
@@ -403,6 +398,25 @@ namespace MahjongGame.Core.Network.Messages
         public int targetSeatIndex = -1;
         public string targetTalentId;
         public int targetPublicCharge;
+        public SnapshotTalentChoiceSet choice;
+    }
+
+    [Serializable]
+    public sealed class SnapshotTalentChoiceSet
+    {
+        public int kind;
+        public string promptKey;
+        public string defaultChoiceId;
+        public SnapshotTalentChoiceOption[] options;
+    }
+
+    [Serializable]
+    public sealed class SnapshotTalentChoiceOption
+    {
+        public string choiceId;
+        public string displayKey;
+        public int value;
+        public SimpleTileData tile;
     }
 
     [Serializable]

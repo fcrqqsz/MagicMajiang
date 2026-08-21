@@ -60,6 +60,7 @@
     <Compile Include="..\..\Assets\Scripts\Core\Network\SideboardDecisionTracker.cs" Link="SideboardDecisionTracker.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\SideboardLoadoutPolicy.cs" Link="SideboardLoadoutPolicy.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\TalentActionAdmissionPolicy.cs" Link="TalentActionAdmissionPolicy.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\Network\TalentActionSnapshotCodec.cs" Link="TalentActionSnapshotCodec.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\NetworkDecisionClient.cs" Link="NetworkDecisionClient.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\NetworkActionSubmissionPolicy.cs" Link="NetworkActionSubmissionPolicy.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\RoomGameSnapshot.cs" Link="RoomGameSnapshot.cs" />

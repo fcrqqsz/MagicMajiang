@@ -47,7 +47,8 @@ namespace MahjongGame.Core.Agents
                     decisionId = decision.DecisionId,
                     talentId = selected.TalentId,
                     targetSeatIndex = selected.TargetSeatIndex,
-                    targetTalentId = selected.TargetTalentId
+                    targetTalentId = selected.TargetTalentId,
+                    selectedChoiceId = selected.SelectedChoiceId
                 },
                 out _);
         }
@@ -185,7 +186,10 @@ namespace MahjongGame.Core.Agents
                 TalentId = option.TalentId,
                 TargetSeatIndex = option.TargetSeatIndex,
                 TargetTalentId = option.TargetTalentId,
-                TargetPublicCharge = option.TargetPublicCharge
+                TargetPublicCharge = option.TargetPublicCharge,
+                Choice = option.Choice,
+                SelectedChoiceId = option.SelectedChoiceId
+                    ?? option.Choice?.DefaultChoiceId
             };
     }
 }

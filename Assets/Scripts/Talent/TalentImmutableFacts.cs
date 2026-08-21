@@ -26,6 +26,8 @@ namespace MahjongGame.Talents
             IsModified = tile.IsModified;
             SpecialEffectId = tile.SpecialEffectID;
         }
+
+        public static TalentTileFacts FromTile(TileData tile) => new TalentTileFacts(tile);
     }
 
     public sealed class TalentMeldFacts

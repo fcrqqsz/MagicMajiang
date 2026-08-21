@@ -934,13 +934,8 @@ namespace MahjongGame.Core.Network
                     availableTalentActions = (GameServer?.GetAvailableTalentActionsSnapshot(seat.SeatIndex)
                                               ?? Array.Empty<TalentActionOption>())
                         .Where(option => option != null && !string.IsNullOrWhiteSpace(option.TalentId))
-                        .Select(option => new SnapshotTalentActionOption
-                        {
-                            talentId = option.TalentId,
-                            targetSeatIndex = option.TargetSeatIndex,
-                            targetTalentId = option.TargetTalentId,
-                            targetPublicCharge = option.TargetPublicCharge
-                        })
+                        .Select(TalentActionSnapshotCodec.ToSnapshot)
+                        .Where(option => option != null)
                         .ToArray()
                 });
             }
