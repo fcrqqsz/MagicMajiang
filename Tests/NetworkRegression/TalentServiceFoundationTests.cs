@@ -96,6 +96,29 @@ internal static class TalentServiceFoundationTests
         TalentActionOption selected = TalentActionPanelPolicy.SelectChoice(restored, "risk");
         TalentActionOption aiChoice = MahjongGame.Core.Agents.AiTalentDecisionPolicy
             .ChooseActiveAction(new[] { serverOption });
+        var physicalTile = new TileData(Suit.Dragon, 2, 3)
+        {
+            ID = "choice-physical-1",
+            IsModified = true,
+            SpecialEffectID = "future_mutation"
+        };
+        var tileOption = new TalentActionOption
+        {
+            TalentId = "network_test_choice_contract",
+            Choice = new TalentChoiceSet(
+                TalentChoiceKind.Tile,
+                "choose_tile",
+                "physical-1",
+                new[]
+                {
+                    new TalentChoiceOption(
+                        "physical-1",
+                        "choose_tile_physical_1",
+                        tile: TalentTileFacts.FromTile(physicalTile))
+                })
+        };
+        TalentActionOption restoredTileOption = TalentActionSnapshotCodec.FromSnapshot(
+            TalentActionSnapshotCodec.ToSnapshot(tileOption));
         NetworkMessageEnvelope envelope = MessageSerializer.DeserializeEnvelope(
             MessageSerializer.Serialize(
                 "TalentAction",
@@ -118,6 +141,11 @@ internal static class TalentServiceFoundationTests
             "client selection returns a copied option and the protocol carries only the selected choice id");
         runner.Check(aiChoice.SelectedChoiceId == "safe",
             "AI uses the server-authored default when no talent-specific choice strategy exists");
+        runner.Check(restoredTileOption.Choice.Options[0].Tile.Id == "choice-physical-1"
+                     && restoredTileOption.Choice.Options[0].Tile.OriginalOwnerId == 3
+                     && restoredTileOption.Choice.Options[0].Tile.IsModified
+                     && restoredTileOption.Choice.Options[0].Tile.SpecialEffectId == "future_mutation",
+            "tile choices preserve complete immutable physical-tile identity across recovery");
     }
 
     private static void GenericChoicesRejectForgedIdsBeforeRuleMutation(

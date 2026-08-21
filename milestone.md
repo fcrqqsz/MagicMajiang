@@ -82,6 +82,12 @@
     *   [x] 半庄/全庄第 4 小局后恰好进入一次 45 秒备牌；AI 立即选择，断线/超时锁回合法方案，重连只恢复权威锁定状态。
     *   [x] 算番拆为基础、门槛、post-legal 奖励/惩罚和最终番；杠上开花等场况由统一权威胡牌上下文计算。
     *   [x] `TalentMatchRuntime` 输出匿名玩法遥测，Dedicated Server 以 JSONL 落盘，sink 异常不影响房间生命周期。
+*   [x] **下一批天赋服务基础 (2026-08-21)**:
+    *   [x] `TalentWinFacts` 以不可变实体牌、副露和场况快照贯穿 detached 候选、反事实、归因及最终接受；仅接受路径提交一次性状态。
+    *   [x] `TalentActionCommittedFacts` 与 runtime 小局动作账本覆盖权威吃碰杠胡和自动兜底，按 `decisionId` 去重并在规则回调前入账。
+    *   [x] 通用 Mode/Suit/Seat/Tile 选择事务完成服务端授权、本家私有快照、恢复、客户端 ID 回传、AI 默认项和执行前二次校验；协议升级为 v5，构筑 schema 保持 v3。
+    *   [x] 新增 `InitialHandCompleted` 生命周期，在发牌写入 `ServerGameState` 后、Peek 与首个决策前，仅向激活规则提供本席不可变起手事实。
+    *   [x] focused 纯 C#、完整 `NetworkRegression` 与真实 `GameServerTelemetryRegression` 覆盖生命周期、隐私、恢复、AI、算番归因和动作提交。
 
 ## 联机框架
 

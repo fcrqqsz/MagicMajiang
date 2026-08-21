@@ -35,9 +35,7 @@ namespace MahjongGame.Core.Network
                             candidate.choiceId,
                             candidate.displayKey,
                             candidate.value,
-                            candidate.tile?.isValid == true
-                                ? TalentTileFacts.FromTile(candidate.tile.ToTileData())
-                                : null))
+                            FromSnapshot(candidate.tile)))
                         .ToArray();
                     choice = new TalentChoiceSet(
                         (TalentChoiceKind)option.choice.kind,
@@ -108,24 +106,45 @@ namespace MahjongGame.Core.Network
                     value = option.Value,
                     tile = option.Tile == null
                         ? null
-                        : new SimpleTileData
+                        : new SnapshotTalentTileFacts
                         {
                             suit = (int)option.Tile.Suit,
                             value = option.Tile.Value,
-                            ownerId = option.Tile.OriginalOwnerId,
+                            id = option.Tile.Id,
+                            originalOwnerId = option.Tile.OriginalOwnerId,
+                            isModified = option.Tile.IsModified,
+                            specialEffectId = option.Tile.SpecialEffectId,
                             isValid = true
                         }
                 }).ToArray()
             };
         }
 
-        private static SimpleTileData CloneTile(SimpleTileData tile) => tile == null
+        private static TalentTileFacts FromSnapshot(SnapshotTalentTileFacts tile)
+        {
+            if (tile?.isValid != true) return null;
+            var restored = new MahjongGame.Core.TileData(
+                (MahjongGame.Core.Suit)tile.suit,
+                tile.value,
+                tile.originalOwnerId)
+            {
+                ID = tile.id,
+                IsModified = tile.isModified,
+                SpecialEffectID = tile.specialEffectId
+            };
+            return TalentTileFacts.FromTile(restored);
+        }
+
+        private static SnapshotTalentTileFacts CloneTile(SnapshotTalentTileFacts tile) => tile == null
             ? null
-            : new SimpleTileData
+            : new SnapshotTalentTileFacts
             {
                 suit = tile.suit,
                 value = tile.value,
-                ownerId = tile.ownerId,
+                id = tile.id,
+                originalOwnerId = tile.originalOwnerId,
+                isModified = tile.isModified,
+                specialEffectId = tile.specialEffectId,
                 isValid = tile.isValid
             };
     }

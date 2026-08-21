@@ -416,7 +416,19 @@ namespace MahjongGame.Core.Network.Messages
         public string choiceId;
         public string displayKey;
         public int value;
-        public SimpleTileData tile;
+        public SnapshotTalentTileFacts tile;
+    }
+
+    [Serializable]
+    public sealed class SnapshotTalentTileFacts
+    {
+        public int suit;
+        public int value;
+        public string id;
+        public int originalOwnerId;
+        public bool isModified;
+        public string specialEffectId;
+        public bool isValid;
     }
 
     [Serializable]

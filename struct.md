@@ -43,6 +43,7 @@
     *   `GameServer.cs`: 权威异步对局循环，管理决策截止时间、`decisionId` 和并发仲裁。
     *   `ServerGameState.cs`: 权威记录四席手牌、副露和牌河；超时兜底与恢复快照均从该状态读取。
     *   `RoomGameSnapshot.cs`: 构建按席隐私快照；本家可见完整手牌，他家只包含暗牌数量和公开牌面。
+    *   `TalentActionSnapshotCodec.cs`: 通用主动天赋目标与类型化选择集合的私有快照、深拷贝及恢复编解码。
     *   `ClientRoomService.cs`: 客户端协议入口，负责 Hello、房间命令、序号门、心跳、票据、自动重试和 Reconnect/Resync。
     *   `ClientGameState.cs`: 纯 C# 客户端投影，幂等应用有序消息并以完整快照原子替换旧状态。
     *   `RemoteServerProxy.cs`: 将 `ClientRoomService` 的有序游戏状态桥接到 Unity 对局表现，不直接订阅 WebSocket。
@@ -71,7 +72,7 @@ WebSocketClient
   -> Hand / River / HUD / Result presentation
 ```
 
-协议版本为 v4，携带构筑 schema 为 v3。username 目前仅作为开发期身份桥接，经 `IAccountAuthenticator` 规范化为稳定 `playerId`；它不是正式鉴权。`Room` 锁定四席构筑后重建并验证 Low 40 / Standard 80 / High 120 异化值预算，公开消息只携带档位而非其他玩家精确总值。主动天赋、基础动作和备牌提交都使用权威 `decisionId`；半庄/全庄第 4 小局后恰好开放一次备牌阶段。断线时物理 endpoint 与逻辑席位分离，席位可进入 `OfflineReserved` / `AiControlled`，并只在安全决策边界切换控制者。重连使用 `{roomId, streamId}` 和已认证身份定位席位，当前始终请求完整权威快照；Dedicated Server 重启不恢复房间。
+协议版本为 v5，携带构筑 schema 为 v3。username 目前仅作为开发期身份桥接，经 `IAccountAuthenticator` 规范化为稳定 `playerId`；它不是正式鉴权。`Room` 锁定四席构筑后重建并验证 Low 40 / Standard 80 / High 120 异化值预算，公开消息只携带档位而非其他玩家精确总值。主动天赋、基础动作和备牌提交都使用权威 `decisionId`；类型化天赋选择集合仅进入本家私有快照，客户端只回传所选 `choiceId`，runtime 在执行前重新生成授权集合。半庄/全庄第 4 小局后恰好开放一次备牌阶段。断线时物理 endpoint 与逻辑席位分离，席位可进入 `OfflineReserved` / `AiControlled`，并只在安全决策边界切换控制者。重连使用 `{roomId, streamId}` 和已认证身份定位席位，当前始终请求完整权威快照；Dedicated Server 重启不恢复房间。
 *   **表现层控制器 (MonoBehaviour)**:
     *   `HandController.cs`: 管理 3D 手牌生成、布局、DoTween 动画及交互。含 `ForceRemoveTile()` 超时出牌专用方法。
     *   `RiverController.cs`: 管理牌河的 3D 排布。
@@ -99,15 +100,17 @@ WebSocketClient
 
 *   **基础设施**:
     *   `TalentRuleAttribute.cs`: 标记属性，定义天赋的 Id、DisplayName、Description、Tier、AlienationCost、Phases。
-    *   `TalentRule.cs`: 运行时抽象基类，覆盖比赛/小局生命周期、牌山/摸牌/出牌/动作/算番、主动动作、防御、公开快照和接受胡牌提交钩子。
-    *   `TalentContext.cs`: 上下文数据类，传递当前玩家 ID、牌山引用、GameState 快照等信息。
+    *   `TalentRule.cs`: 运行时抽象基类，覆盖比赛/小局生命周期、起手完成、牌山/摸牌/出牌/动作/算番、主动动作、防御、公开快照和接受胡牌提交钩子。
+    *   `TalentContext.cs`: 窄上下文数据类；起手完成时只向每条规则绑定本席不可变事实，不暴露四席权威聚合输入。
+    *   `TalentImmutableFacts.cs`: `TalentWinFacts`、`TalentInitialHandFacts` 及实体牌/副露的不可变物理快照。
+    *   `TalentActionFacts.cs`: 已提交权威动作事实和每小局只读动作账本；候选、过期及被抢占动作不入账。
     *   `TalentMetadata.cs`: 生命周期、公开策略与备选限制等不可变元数据。
     *   `TalentSlotConfig.cs`: 可序列化 6+3 携带构筑：主槽 index 0=大、1-2=中、3-5=小，另有三个备选槽；支持向下兼容装配。
     *   `TalentRegistry.cs`: 纯 C# 懒加载单例，反射自动发现 `[TalentRuleAttribute]` 标记的类，提供 `CreateInstance`、`GetDisplayName`、`GetDescription`、`GetCost`、`GetTier` 等查询方法。
     *   `TalentRuntimeState.cs`: 每席每个天赋的带类型比赛/小局计数器、标志和公开状态。
     *   `TalentRuntimeEvent.cs`: 带单调事件 ID 的结构化公开/私有天赋事件。
-    *   `TalentMatchRuntime.cs`: Room 持有的唯一生命周期协调器，执行管道、私有 Peek、主动动作、防御/负面效果、公开充能、备牌生效集合、算番归因和小局结束效果；`TalentManager` 与 `SessionTalentPolicy` 已删除。
-    *   `TalentActionModels.cs`: 服务端下发的主动天赋选项、请求和结果模型。
+    *   `TalentMatchRuntime.cs`: Room 持有的唯一生命周期协调器，执行起手完成、动作账本、管道、私有 Peek、主动动作、防御/负面效果、公开充能、备牌生效集合、算番归因和小局结束效果；`TalentManager` 与 `SessionTalentPolicy` 已删除。
+    *   `TalentActionModels.cs`: 服务端下发的主动天赋目标、Mode/Suit/Seat/Tile 类型化选择集合、请求和结果模型。
     *   `TalentNegativeEffect.cs`: 窄负面效果描述与公开充能能力边界，runtime 保证阻挡时不执行、放行时只执行一次。
     *   `TalentTelemetry.cs`: 匿名玩法记录与 Null/Memory/JSONL sink；Dedicated Server 默认写 `Logs/talent-playtest.jsonl`。
     *   `TalentDefinition.cs`: ScriptableObject 元数据（图标/显示名/描述），仅供 UI 展示，运行时逻辑不依赖。
@@ -160,6 +163,8 @@ WebSocketClient
    | 阶段 | 方法签名 | 说明 |
    |------|---------|------|
    | Match / Round | `InitializeMatchState` / `OnRoundStarted` / `OnRoundEnded` | 初始化比赛状态、重置小局状态与结算跨局效果 |
+   | InitialHandCompleted | `OnInitialHandCompleted` | 四席发牌进入权威状态后，只读取本席不可变起手事实 |
+   | Committed Action | `OnActionCommitted` | 读取已提交动作及当前小局只读账本，候选动作不触发 |
    | WallBuilding | `void OnWallBuilding(TalentWallContext ctx)` | 通过窄上下文修改牌山 |
    | OnDraw | `TileData OnDraw(TalentContext ctx, TileData tile)` | 返回修改后的牌，管道链式 |
    | OnDiscard | `TileData OnDiscard(TalentContext ctx, TileData tile)` | 返回修改后的牌，管道链式 |

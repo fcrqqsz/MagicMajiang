@@ -1,5 +1,5 @@
 麻将 Roguelike 项目进度快照 (Project Snapshot)
-日期: 2026-08-16 版本: Alpha - Talent Vertical Slice Complete 引擎: Unity (2022.3.61t9 / Tuanjie 1.6.8)
+日期: 2026-08-21 版本: Alpha - Talent Gameplay Foundations 引擎: Unity (2022.3.61t9 / Tuanjie 1.6.8)
 
 > **文档约定**: 已完成的任务统一记录在 `milestone.md`，`plan.md` 仅保留待办与未来规划。
 
@@ -8,7 +8,12 @@
 *   **核心规则**: 以国标麻将 (MCR) 为基础，支持81番种计算。
 *   **特色玩法**: Roguelike 天赋系统、自定义 34 张牌库及异化值机制。
 
-2. 最近进展 (Recent Progress, snapshot 2026-08-19)
+2. 最近进展 (Recent Progress, snapshot 2026-08-21)
+*   **下一批天赋服务基础完成 (2026-08-21)**:
+    *   新增不可变 `TalentWinFacts`，候选算番、反事实、归因和最终接受共享同一事实对象；仅最终接受胡牌提交一次性消耗。
+    *   新增 `TalentActionCommittedFacts` 与 runtime 小局动作账本，只记录已提交的权威动作，覆盖吃碰杠胡、自动兜底、决策 ID 和接受胡牌事实。
+    *   通用天赋选择事务支持 Mode/Suit/Seat/Tile 类型化候选、本家私有快照、断线恢复、客户端只回传 `choiceId`、runtime 二次授权及 AI 默认选择；协议升级为 v5，构筑 schema 仍为 v3。
+    *   新增严格的起手完成生命周期：四席起手写入 `ServerGameState` 后、窥探捕获和首个决策前，规则只获得本席不可变 `TalentInitialHandFacts`。
 *   **大厅房间列表浏览面板 (Room Browser) 与重连抢占保护 (2026-08-19)**:
     *   实现了独立弹窗 `RoomListPanel` (UXML/USS/CS)，支持主动拉取、手动刷新与多局模式/可用状态筛选。
     *   房间卡片展示房主、模式、档位、席位实时人数及异化构筑适配预检（超标禁用加入并支持一键跳转工坊）。
@@ -16,7 +21,7 @@
     *   修复历史断线票据恢复失败时意外中断前台业务请求的问题；优化 UI Toolkit `sortingOrder`、防抖与生命周期。
 *   **天赋玩法垂直切片与联机架构完成 (2026-08-16)**:
     *   一人游玩和多人游玩统一进入在线 `Room`，由 AI 补足空席；`GameManager` 只协调权威网络投影、恢复与场景，不持有服务端、会话或天赋 runtime。
-    *   协议为 v4，携带构筑 schema 为 v3。服务端验证 34 张牌库、6 主槽 + 3 备选槽及 Low 40 / Standard 80 / High 120 档位；预算只计牌库与当前激活主天赋，精确值仅本家可见。
+    *   协议为 v5，携带构筑 schema 为 v3。服务端验证 34 张牌库、6 主槽 + 3 备选槽及 Low 40 / Standard 80 / High 120 档位；预算只计牌库与当前激活主天赋，精确值仅本家可见。
     *   `TalentMatchRuntime` 跨小局复用，统一管理生命周期、主动动作、防御/负面效果、公开充能、Peek、算番归因、恢复快照和匿名 JSONL 遥测。
     *   九个天赋已落地：点金手、窥探、如龙、厚积、快人一步、初始资金、定心、截流、藏锋。藏锋至少 1 层即可消耗全部锋，本局下次合法胡牌每层 +12 番。
     *   半庄/全庄第 4 小局后进入一次 45 秒中场备牌；真人、AI、断线和超时均走服务端权威锁定，后半场复用同一 runtime 且不重放比赛开始效果。
@@ -28,7 +33,7 @@
     *   切换、新建、删除当前牌库和退出统一使用保存/放弃/取消保护，人工 Unity 布局与点击验收已通过。
 *   **联机网络化框架 Phase A-E 最终验收 (2026-07-25)**:
     *   Dedicated Server 使用独立 `00_ServerBootstrap` 场景启动，正式服务端不依赖 `03_Game`、`GameManager.Instance`、`DeckManager.Instance` 或 UI。
-    *   完成开发期 username 身份桥接、连接代次、房间/席位管理、四席构筑锁定、服务端天赋执行和多人 Ready 流程；当前协议与构筑版本已升级为 v4 / v3。
+    *   完成开发期 username 身份桥接、连接代次、房间/席位管理、四席构筑锁定、服务端天赋执行和多人 Ready 流程；当前协议与构筑版本已升级为 v5 / v3。
     *   `ServerGameState` 权威记录手牌、副露和牌河；`RoomGameSnapshot` 按席保护隐私，`ClientGameState` 幂等应用有序消息和完整快照。
     *   完成断线席位保留、决策边界 AI 托管、endpoint 重绑、心跳检测、自动重试、场景路由和客户端桌面原子恢复。
     *   已通过 1/2/3/4 真人组合、EastOnly 多小局、强退重连、心跳超时、加载/主回合/响应/局间/结算恢复和 Dedicated Server 验收。
@@ -110,4 +115,3 @@
 *   **HTML 原型转译 UXML/USS 严格子集约束**:
     *   *原则*: 允许先写 HTML/CSS 预览文件，但 HTML/CSS 必须严格限定为 UI Toolkit 支持的子集。
     *   *禁令*: 严禁 `cursor`、`box-shadow`/`filter`、`transform`、`display: grid/inline/block`、`z-index`、伪元素 `::before/::after`、高级选择器 `:nth-child`、相对单位 `rem/vw` 及 Unicode Emoji。所有 Flex 容器必须显式写明 `flex-direction: column` 或 `row`（UI Toolkit 默认 column）。
-
