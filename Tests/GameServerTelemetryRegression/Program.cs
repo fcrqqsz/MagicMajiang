@@ -35,11 +35,19 @@ static async Task RealGameServerCountsOnlyMainLoopDrawAndEmitsAcceptedWinOnce(Li
         out GameSession session,
         beforeWinningSubmission: (candidateServer, drawnTile) =>
         {
-            object[] arguments = { 0, drawnTile, true, false, null, null };
+            object[] arguments = { 0, drawnTile, true, false, null, null, null };
             bool candidateLegal = (bool)typeof(GameServer)
                 .GetMethod("TryResolveWin", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
                 .Invoke(candidateServer, arguments);
             if (!candidateLegal) failures.Add("real GameServer candidate fixture must be legal");
+            if (arguments[6] is not TalentWinFacts candidateFacts
+                || candidateFacts.WinnerSeatIndex != 0
+                || !candidateFacts.IsSelfDraw
+                || candidateFacts.WinningTile.Suit != Suit.Wind
+                || candidateFacts.WinningTile.Value != 1)
+            {
+                failures.Add("real GameServer candidate resolution must produce authoritative immutable win facts");
+            }
             acceptedBeforeFinalSubmission = sink.Records.Count(record => record.eventType == "accepted_win");
         });
     int completions = 0;
@@ -66,6 +74,9 @@ static async Task RealGameServerCountsOnlyMainLoopDrawAndEmitsAcceptedWinOnce(Li
         "real GameServer legal candidate evaluation must not emit accepted_win before final acceptance", failures);
     Check(accepted.Length == 1 && accepted[0].drawsPerSeat.SequenceEqual(new[] { 1, 0, 0, 0 }),
         "real GameServer telemetry counts the seat-0 main-loop wall draw, excluding all initial deal tiles", failures);
+    Check(ReferenceEquals(WinFactsObserverTalent.AttributionFacts,
+                          WinFactsObserverTalent.AcceptedFacts),
+        "real GameServer final evaluation, attribution, and acceptance share one TalentWinFacts instance", failures);
 }
 
 static async Task ThrowingSinkCannotInterruptRealGameServerCompletion(List<string> failures)
@@ -262,8 +273,10 @@ static GameServer CreateWinningServer(
     out GameSession session,
     Action<GameServer, TileData> beforeWinningSubmission = null)
 {
+    WinFactsObserverTalent.Reset();
     var loadouts = Enumerable.Range(0, 4)
         .ToDictionary(index => index, _ => new TalentSlotConfig());
+    loadouts[0].SlotTalentIds[3] = "network_test_win_facts_observer";
     var runtime = new TalentMatchRuntime(
         loadouts,
         TalentRegistry.Instance,

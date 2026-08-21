@@ -970,9 +970,9 @@ internal static class TalentActionTests
                 new TalentActivationContext(
                     session, 0, TalentActivationWindow.MainTurn, decisionId));
             TalentFanResolution first = runtime.ResolvePostLegalFan(
-                new TalentWinContext(session, 0), eligibilityFan: 8);
+                new TalentWinContext(session, 0, TalentTestFacts.Win(session, 0)), eligibilityFan: 8);
             TalentFanResolution second = runtime.ResolvePostLegalFan(
-                new TalentWinContext(session, 0), eligibilityFan: 8);
+                new TalentWinContext(session, 0, TalentTestFacts.Win(session, 0)), eligibilityFan: 8);
 
             runner.Check(availableActions == 1 && result.Accepted && result.EffectApplied,
                 $"{layers} sheathed-edge layers expose and accept the active action");
@@ -1028,14 +1028,14 @@ internal static class TalentActionTests
         runtime.DrainEventsForSeat(0);
 
         TalentFanResolution first = runtime.ResolvePostLegalFan(
-            new TalentWinContext(session, 0), eligibilityFan: 8);
+            new TalentWinContext(session, 0, TalentTestFacts.Win(session, 0)), eligibilityFan: 8);
         TalentFanResolution second = runtime.ResolvePostLegalFan(
-            new TalentWinContext(session, 0), eligibilityFan: 8);
+            new TalentWinContext(session, 0, TalentTestFacts.Win(session, 0)), eligibilityFan: 8);
         bool candidatesStayedQuiet = runtime.DrainEventsForSeat(0)
             .All(runtimeEvent => runtimeEvent.EventType != "armed_consumed");
 
-        runtime.ConfirmAcceptedWin(new TalentWinContext(session, 0));
-        runtime.ConfirmAcceptedWin(new TalentWinContext(session, 0));
+        runtime.ConfirmAcceptedWin(new TalentWinContext(session, 0, TalentTestFacts.Win(session, 0)));
+        runtime.ConfirmAcceptedWin(new TalentWinContext(session, 0, TalentTestFacts.Win(session, 0)));
         int consumedEvents = runtime.DrainEventsForSeat(0)
             .Count(runtimeEvent => runtimeEvent.EventType == "armed_consumed");
 
@@ -1056,7 +1056,7 @@ internal static class TalentActionTests
         BeginReadyRound(runtime, session);
 
         TalentFanResolution nextRound = runtime.ResolvePostLegalFan(
-            new TalentWinContext(session, 0), eligibilityFan: 8);
+            new TalentWinContext(session, 0, TalentTestFacts.Win(session, 0)), eligibilityFan: 8);
 
         runner.Check(nextRound.PostLegalBonusFan == 0 && nextRound.FinalFan == 8,
             "consumed sheathed-edge charge does not carry its armed bonus across rounds");

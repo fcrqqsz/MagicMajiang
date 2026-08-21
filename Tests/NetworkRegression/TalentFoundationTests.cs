@@ -602,6 +602,7 @@ internal static class TalentFoundationTests
         var acceptedContext = new TalentAcceptedWinContext(
             session,
             0,
+            TalentTestFacts.Win(session, 0),
             accepted,
             options => new TalentWinEvaluation(isLegal: true, finalFan: options.BonusFan));
         runtime.ResolveAcceptedWinVisibility(acceptedContext);
@@ -745,6 +746,7 @@ internal static class TalentFoundationTests
         scoringRuntime.ResolveAcceptedWinVisibility(new TalentAcceptedWinContext(
             scoringSession,
             0,
+            TalentTestFacts.Win(scoringSession, 0),
             ordinaryAcceptedWin,
             options => new TalentWinEvaluation(
                 isLegal: true,
@@ -760,6 +762,7 @@ internal static class TalentFoundationTests
         scoringRuntime.ResolveAcceptedWinVisibility(new TalentAcceptedWinContext(
             scoringSession,
             0,
+            TalentTestFacts.Win(scoringSession, 0),
             ordinaryAcceptedWin,
             options => options.RelaxedPureStraight
                 ? ordinaryAcceptedWin
@@ -803,9 +806,10 @@ internal static class TalentFoundationTests
             TalentMatchRuntime runtime = CreateRuntime(mainIds: new[] { testCase.TalentId });
             runtime.BeginMatch(session);
             BeginReadyRound(runtime, session);
+            TalentWinFacts winFacts = TalentTestFacts.Win(session, 0);
 
             TalentFanResolution acceptedResolution = runtime.ResolvePostLegalFan(
-                new TalentWinContext(session, 0),
+                new TalentWinContext(session, 0, winFacts),
                 eligibilityFan: 8);
             var accepted = new TalentWinEvaluation(
                 isLegal: true,
@@ -813,11 +817,12 @@ internal static class TalentFoundationTests
             runtime.ResolveAcceptedWinVisibility(new TalentAcceptedWinContext(
                 session,
                 0,
+                winFacts,
                 accepted,
                 withoutEntryOptions =>
                 {
                     TalentFanResolution counterfactual = runtime.ResolvePostLegalFan(
-                        new TalentWinContext(session, 0),
+                        new TalentWinContext(session, 0, winFacts),
                         eligibilityFan: 8,
                         withoutEntryOptions);
                     return new TalentWinEvaluation(true, counterfactual.FinalFan);
@@ -829,11 +834,12 @@ internal static class TalentFoundationTests
             runtime.ResolveAcceptedWinVisibility(new TalentAcceptedWinContext(
                 session,
                 0,
+                winFacts,
                 accepted,
                 withoutEntryOptions =>
                 {
                     TalentFanResolution counterfactual = runtime.ResolvePostLegalFan(
-                        new TalentWinContext(session, 0),
+                        new TalentWinContext(session, 0, winFacts),
                         eligibilityFan: 8,
                         withoutEntryOptions);
                     return new TalentWinEvaluation(true, counterfactual.FinalFan);
@@ -894,7 +900,12 @@ internal static class TalentFoundationTests
     private static TalentAcceptedWinContext CreateAcceptedWinContext(GameSession session, int seatIndex)
     {
         TalentWinEvaluation accepted = new TalentWinEvaluation(isLegal: true, finalFan: 8);
-        return new TalentAcceptedWinContext(session, seatIndex, accepted, _ => accepted);
+        return new TalentAcceptedWinContext(
+            session,
+            seatIndex,
+            TalentTestFacts.Win(session, seatIndex),
+            accepted,
+            _ => accepted);
     }
 
     private static bool Throws<TException>(Action action) where TException : Exception

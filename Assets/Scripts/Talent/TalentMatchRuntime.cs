@@ -621,7 +621,10 @@ namespace MahjongGame.Talents
                 ScoringOptions options = BuildScoringOptions(scoringContext, included);
                 FanEvaluation evaluation = EvaluateAttributionCandidate(context, options);
                 int eligibilityFan = evaluation.HasWinningShape ? evaluation.Fan : 0;
-                int postLegalBonus = SumPostLegalBonuses(context.WinnerSeatIndex, included);
+                int postLegalBonus = SumPostLegalBonuses(
+                    context.WinnerSeatIndex,
+                    included,
+                    context.Facts);
                 int nextPositiveFan = Math.Max(0, eligibilityFan + postLegalBonus);
                 int delta = nextPositiveFan - previousPositiveFan;
                 if (delta != 0)
@@ -647,7 +650,10 @@ namespace MahjongGame.Talents
             var requestedPenalties = new List<int>();
             foreach (RuntimeEntry entry in entries)
             {
-                int requestedPenalty = GetPostLegalPenalty(context.WinnerSeatIndex, entry);
+                int requestedPenalty = GetPostLegalPenalty(
+                    context.WinnerSeatIndex,
+                    entry,
+                    context.Facts);
                 if (requestedPenalty >= 0) continue;
 
                 requestedPenalties.Add(requestedPenalty);
@@ -673,8 +679,8 @@ namespace MahjongGame.Talents
             int eligibility = authoritativeEvaluation.HasWinningShape
                 ? authoritativeEvaluation.Fan
                 : 0;
-            int bonus = SumPostLegalBonuses(context.WinnerSeatIndex, entries);
-            int negative = SumPostLegalPenalties(context.WinnerSeatIndex, entries);
+            int bonus = SumPostLegalBonuses(context.WinnerSeatIndex, entries, context.Facts);
+            int negative = SumPostLegalPenalties(context.WinnerSeatIndex, entries, context.Facts);
             int authoritativeFinal = Math.Max(0, eligibility + bonus + negative);
             int attributedFinal = baseFan + contributions.Sum(row => row.FanDelta);
             if (attributedFinal != authoritativeFinal
@@ -726,10 +732,13 @@ namespace MahjongGame.Talents
             };
         }
 
-        private int SumPostLegalBonuses(int winnerSeatIndex, IEnumerable<RuntimeEntry> entries)
+        private int SumPostLegalBonuses(
+            int winnerSeatIndex,
+            IEnumerable<RuntimeEntry> entries,
+            TalentWinFacts facts)
         {
             int bonus = 0;
-            var winContext = new TalentWinContext(_session, winnerSeatIndex);
+            var winContext = new TalentWinContext(_session, winnerSeatIndex, facts);
             foreach (RuntimeEntry entry in entries)
             {
                 TalentWinContext bound = winContext.BindWin(
@@ -741,9 +750,12 @@ namespace MahjongGame.Talents
             return bonus;
         }
 
-        private int SumPostLegalPenalties(int winnerSeatIndex, IEnumerable<RuntimeEntry> entries)
+        private int SumPostLegalPenalties(
+            int winnerSeatIndex,
+            IEnumerable<RuntimeEntry> entries,
+            TalentWinFacts facts)
         {
-            var winContext = new TalentWinContext(_session, winnerSeatIndex);
+            var winContext = new TalentWinContext(_session, winnerSeatIndex, facts);
             var requested = new List<int>();
             foreach (RuntimeEntry entry in entries)
             {
@@ -756,9 +768,12 @@ namespace MahjongGame.Talents
             return TalentFanModifierPolicy.SumPenalties(requested);
         }
 
-        private int GetPostLegalPenalty(int winnerSeatIndex, RuntimeEntry entry)
+        private int GetPostLegalPenalty(
+            int winnerSeatIndex,
+            RuntimeEntry entry,
+            TalentWinFacts facts)
         {
-            var winContext = new TalentWinContext(_session, winnerSeatIndex);
+            var winContext = new TalentWinContext(_session, winnerSeatIndex, facts);
             TalentWinContext bound = winContext.BindWin(
                 entry.OwnerSeatIndex,
                 entry.State.CreateDetachedCopy(),

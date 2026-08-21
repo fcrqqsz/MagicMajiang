@@ -1,5 +1,11 @@
 var runner = new RegressionRunner();
 
+if (args.Length == 1 && string.Equals(args[0], "talent-services", StringComparison.OrdinalIgnoreCase))
+{
+    TalentServiceFoundationTests.Run(runner);
+    return runner.Complete();
+}
+
 if (args.Length == 1 && string.Equals(args[0], "ai-talents", StringComparison.OrdinalIgnoreCase))
 {
     AiTalentPolicyTests.Run(runner);
@@ -48,6 +54,7 @@ NetworkAuthorityBoundaryTests.Run(runner);
 SnapshotReconnectTests.Run(runner);
 ActionValidationTests.Run(runner);
 TalentFoundationTests.Run(runner);
+TalentServiceFoundationTests.Run(runner);
 TalentResultAttributionTests.Run(runner);
 TalentActionTests.Run(runner);
 TalentCommandClientTests.Run(runner);

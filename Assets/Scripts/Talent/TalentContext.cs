@@ -430,15 +430,26 @@ namespace MahjongGame.Talents
     public sealed class TalentWinContext : TalentContext
     {
         public new int CurrentSeatIndex => base.CurrentSeatIndex.Value;
+        public TalentWinFacts Facts { get; }
 
-        public TalentWinContext(GameSession session, int currentSeatIndex)
+        public TalentWinContext(
+            GameSession session,
+            int currentSeatIndex,
+            TalentWinFacts facts)
             : base(session, ValidateSeatIndex(currentSeatIndex))
         {
+            Facts = facts ?? throw new ArgumentNullException(nameof(facts));
+            if (facts.WinnerSeatIndex != currentSeatIndex)
+                throw new ArgumentException("Win facts must belong to the current winner seat.", nameof(facts));
         }
 
-        private TalentWinContext(TalentSessionSnapshot session, int currentSeatIndex)
+        private TalentWinContext(
+            TalentSessionSnapshot session,
+            int currentSeatIndex,
+            TalentWinFacts facts)
             : base(session, currentSeatIndex, null, null)
         {
+            Facts = facts;
         }
 
         internal TalentWinContext BindWin(
@@ -446,7 +457,7 @@ namespace MahjongGame.Talents
             TalentRuntimeState state,
             Action<TalentRuntimeEvent> eventSink)
         {
-            var context = new TalentWinContext(Session, CurrentSeatIndex);
+            var context = new TalentWinContext(Session, CurrentSeatIndex, Facts);
             context.ConfigureEntry(ownerSeatIndex, state, eventSink);
             return context;
         }
@@ -498,16 +509,21 @@ namespace MahjongGame.Talents
     public sealed class TalentAcceptedWinContext : TalentContext
     {
         public new int CurrentSeatIndex => base.CurrentSeatIndex.Value;
+        public TalentWinFacts Facts { get; }
         public TalentWinEvaluation AcceptedResult { get; }
         public Func<ScoringOptions, TalentWinEvaluation> EvaluateWithOptions { get; }
 
         public TalentAcceptedWinContext(
             GameSession session,
             int currentSeatIndex,
+            TalentWinFacts facts,
             TalentWinEvaluation acceptedResult,
             Func<ScoringOptions, TalentWinEvaluation> evaluateWithOptions)
             : base(session, ValidateSeatIndex(currentSeatIndex))
         {
+            Facts = facts ?? throw new ArgumentNullException(nameof(facts));
+            if (facts.WinnerSeatIndex != currentSeatIndex)
+                throw new ArgumentException("Win facts must belong to the current winner seat.", nameof(facts));
             AcceptedResult = acceptedResult ?? throw new ArgumentNullException(nameof(acceptedResult));
             EvaluateWithOptions = evaluateWithOptions ?? throw new ArgumentNullException(nameof(evaluateWithOptions));
         }
@@ -516,6 +532,7 @@ namespace MahjongGame.Talents
     public sealed class TalentAcceptedWinAttributionContext : TalentContext
     {
         public int WinnerSeatIndex => CurrentSeatIndex.Value;
+        public TalentWinFacts Facts { get; }
         public int AlreadyAcceptedFinalFan { get; }
         public Func<ScoringOptions, FanEvaluation> EvaluateOptions { get; }
 
@@ -523,11 +540,15 @@ namespace MahjongGame.Talents
             GameSession session,
             int winnerSeatIndex,
             int alreadyAcceptedFinalFan,
+            TalentWinFacts facts,
             Func<ScoringOptions, FanEvaluation> evaluateOptions)
             : base(session, ValidateSeatIndex(winnerSeatIndex))
         {
             if (alreadyAcceptedFinalFan < 0)
                 throw new ArgumentOutOfRangeException(nameof(alreadyAcceptedFinalFan));
+            Facts = facts ?? throw new ArgumentNullException(nameof(facts));
+            if (facts.WinnerSeatIndex != winnerSeatIndex)
+                throw new ArgumentException("Win facts must belong to the attributed winner seat.", nameof(facts));
             AlreadyAcceptedFinalFan = alreadyAcceptedFinalFan;
             EvaluateOptions = evaluateOptions ?? throw new ArgumentNullException(nameof(evaluateOptions));
         }

@@ -184,7 +184,7 @@ internal static class ActionValidationTests
             out int baseEight,
             out List<string> eightFanDetails);
         TalentFanResolution resolved = runtime.ResolvePostLegalFan(
-            new TalentWinContext(session, 0), baseEight);
+            new TalentWinContext(session, 0, TalentTestFacts.Win(session, 0)), baseEight);
 
         runner.Check(!sixFanIsLegal && sixPlusEligibilityBonusIsLegal && boostedToEight == 8,
             $"a six-fan hand remains ineligible because sheathed edge is not an eligibility bonus " +
@@ -206,7 +206,7 @@ internal static class ActionValidationTests
             armSheathedEdge: false);
 
         TalentFanResolution resolved = runtime.ResolvePostLegalFan(
-            new TalentWinContext(session, 0), eligibilityFan: 8);
+            new TalentWinContext(session, 0, TalentTestFacts.Win(session, 0)), eligibilityFan: 8);
 
         runner.Check(TalentFanModifierPolicy.ClampPenalty(-10) == -4
                      && TalentFanModifierPolicy.ClampPenalty(-5) == -4,

@@ -859,9 +859,10 @@ namespace MahjongGame.Core.Network
                         playerId,
                         targetTile,
                         isSelfDraw: false,
-                        isRobKongWin: IsRobKongResponseActive,
-                        out _,
-                        out _))
+                         isRobKongWin: IsRobKongResponseActive,
+                         out _,
+                         out _,
+                         out _))
                 {
                     potentialHuPlayerIds.Add(playerId);
                 }
@@ -915,9 +916,10 @@ namespace MahjongGame.Core.Network
                             pid,
                             _lastDrawnTile,
                             isSelfDraw: true,
-                            isRobKongWin: false,
-                            out _,
-                            out _))
+                             isRobKongWin: false,
+                             out _,
+                             out _,
+                             out _))
                     {
                         Debug.LogWarning($"[ServerValidation] 玩家{pid} 自摸胡验证失败，自动出牌");
                         var fallback = _gameState.GetAutoDiscardTile(pid, _lastDrawnTile);
@@ -986,9 +988,10 @@ namespace MahjongGame.Core.Network
                             pid,
                             _lastDiscardedTile,
                             isSelfDraw: false,
-                            isRobKongWin: false,
-                            out _,
-                            out _))
+                             isRobKongWin: false,
+                             out _,
+                             out _,
+                             out _))
                     {
                         Debug.LogWarning($"[ServerValidation] 玩家{pid} 点炮胡验证失败，自动Skip");
                         Debug.LogWarning($"[ServerValidation] 点炮胡快照: 目标={_lastDiscardedTile}, 手牌=[{string.Join(", ", hand)}], 副露数={melds.Count}, 圈风={roundWind}, 门风={seatWind}");
@@ -1080,9 +1083,10 @@ namespace MahjongGame.Core.Network
                     pid,
                     _pendingRobKongTile,
                     isSelfDraw: false,
-                    isRobKongWin: true,
-                    out _,
-                    out _))
+                     isRobKongWin: true,
+                     out _,
+                     out _,
+                     out _))
             {
                 Debug.LogWarning($"[ServerValidation] 玩家{pid} 抢杠胡验证失败，自动Skip");
                 return ClientAction.Skip(pid);
@@ -1236,10 +1240,12 @@ namespace MahjongGame.Core.Network
             bool isSelfDraw,
             bool isRobKongWin,
             out TalentFanResolution fanResolution,
-            out List<string> fanDetails)
+            out List<string> fanDetails,
+            out TalentWinFacts winFacts)
         {
             fanResolution = new TalentFanResolution();
             fanDetails = null;
+            winFacts = null;
             if (winTile == null) return false;
 
             List<TileData> hand = _gameState.GetHand(playerId);
@@ -1265,8 +1271,18 @@ namespace MahjongGame.Core.Network
                 return false;
             }
 
+            winFacts = TalentWinFacts.Create(
+                _session,
+                playerId,
+                isSelfDraw ? (int?)null : _currentPlayerIndex,
+                hand,
+                melds,
+                winTile,
+                isSelfDraw,
+                isRobKongWin,
+                isKongReplacement: isSelfDraw && _currentDrawIsKongReplacement);
             fanResolution = _talentRuntime.ResolvePostLegalFan(
-                new TalentWinContext(_session, playerId),
+                new TalentWinContext(_session, playerId, winFacts),
                 eligibilityFan);
             return true;
         }
@@ -1294,7 +1310,8 @@ namespace MahjongGame.Core.Network
                 isSelfDraw,
                 isRobKongWin,
                 out TalentFanResolution serverResolution,
-                out List<string> serverDetails);
+                out List<string> serverDetails,
+                out TalentWinFacts acceptedWinFacts);
             int serverFan = acceptedLegal ? serverResolution.FinalFan : 0;
 
             if (acceptedLegal)
@@ -1306,6 +1323,7 @@ namespace MahjongGame.Core.Network
                             _session,
                             pid,
                             serverFan,
+                            acceptedWinFacts,
                             candidateOptions => MahjongLogic.EvaluateBestFan(
                                 hand,
                                 melds,
@@ -1339,42 +1357,44 @@ namespace MahjongGame.Core.Network
                 }
             }
 
-            TalentWinEvaluation acceptedEvaluation = new TalentWinEvaluation(
-                isLegal: acceptedLegal,
-                finalFan: serverFan);
-            _talentRuntime.ResolveAcceptedWinVisibility(new TalentAcceptedWinContext(
-                _session,
-                pid,
-                acceptedEvaluation,
-                counterfactualOptions =>
-                {
-                    int counterfactualFan = 0;
-                    bool isLegal = winTile != null && MahjongLogic.CheckWinWithFan(
-                        hand,
-                        melds,
-                        winTile,
-                        isSelfDraw,
-                        out counterfactualFan,
-                        out _,
-                        roundWind,
-                        seatWind,
-                        counterfactualOptions,
-                        isRobKongWin,
-                        isKongWin);
-                    if (!isLegal) return new TalentWinEvaluation(false, 0);
-
-                    TalentFanResolution counterfactualResolution =
-                        _talentRuntime.ResolvePostLegalFan(
-                            new TalentWinContext(_session, pid),
-                            counterfactualFan,
-                            counterfactualOptions);
-                    return new TalentWinEvaluation(
-                        true,
-                        counterfactualResolution.FinalFan);
-                }));
             if (acceptedLegal)
             {
-                _talentRuntime.ConfirmAcceptedWin(new TalentWinContext(_session, pid));
+                TalentWinEvaluation acceptedEvaluation = new TalentWinEvaluation(
+                    isLegal: true,
+                    finalFan: serverFan);
+                _talentRuntime.ResolveAcceptedWinVisibility(new TalentAcceptedWinContext(
+                    _session,
+                    pid,
+                    acceptedWinFacts,
+                    acceptedEvaluation,
+                    counterfactualOptions =>
+                    {
+                        int counterfactualFan = 0;
+                        bool isLegal = MahjongLogic.CheckWinWithFan(
+                            hand,
+                            melds,
+                            winTile,
+                            isSelfDraw,
+                            out counterfactualFan,
+                            out _,
+                            roundWind,
+                            seatWind,
+                            counterfactualOptions,
+                            isRobKongWin,
+                            isKongWin);
+                        if (!isLegal) return new TalentWinEvaluation(false, 0);
+
+                        TalentFanResolution counterfactualResolution =
+                            _talentRuntime.ResolvePostLegalFan(
+                                new TalentWinContext(_session, pid, acceptedWinFacts),
+                                counterfactualFan,
+                                counterfactualOptions);
+                        return new TalentWinEvaluation(
+                            true,
+                            counterfactualResolution.FinalFan);
+                    }));
+                _talentRuntime.ConfirmAcceptedWin(
+                    new TalentWinContext(_session, pid, acceptedWinFacts));
                 _talentRuntime.RecordAcceptedWinTelemetry(pid, serverResolution, GetDrawCountsSnapshot());
             }
             // 断言比对：记录客户端与服务端计算差异（Phase 0 验证用）

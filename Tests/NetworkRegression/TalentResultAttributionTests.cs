@@ -89,6 +89,7 @@ internal static class TalentResultAttributionTests
                 session,
                 0,
                 alreadyAcceptedFinalFan: 0,
+                facts: TalentTestFacts.Win(session, 0),
                 _ => throw new InvalidOperationException("injected zero-final failure")));
 
         runner.Check(TalentFanBreakdownMessage.FromResolution(resolution) == null,
@@ -104,6 +105,7 @@ internal static class TalentResultAttributionTests
                 session,
                 0,
                 alreadyAcceptedFinalFan: 8,
+                facts: TalentTestFacts.Win(session, 0),
                 _ => new FanEvaluation
                 {
                     HasWinningShape = true,
@@ -166,6 +168,7 @@ internal static class TalentResultAttributionTests
                 session,
                 0,
                 alreadyAcceptedFinalFan: 8,
+                facts: TalentTestFacts.Win(session, 0),
                 _ => throw new InvalidOperationException("injected attribution failure")));
 
         runner.Check(resolution.FinalFan == 8
@@ -330,6 +333,7 @@ internal static class TalentResultAttributionTests
                 session,
                 0,
                 alreadyAcceptedFinalFan: 8,
+                facts: TalentTestFacts.Win(session, 0),
                 options =>
                 {
                     evaluations++;
@@ -386,6 +390,7 @@ internal static class TalentResultAttributionTests
                 session,
                 0,
                 alreadyAcceptedFinalFan: 44,
+                facts: TalentTestFacts.Win(session, 0),
                 options => MahjongLogic.EvaluateBestFan(
                     hand, melds, winTile, isSelfDraw: false,
                     WindDirection.East, WindDirection.East,
@@ -428,6 +433,7 @@ internal static class TalentResultAttributionTests
                 session,
                 0,
                 alreadyAcceptedFinalFan: 21,
+                facts: TalentTestFacts.Win(session, 0),
                 options => MahjongLogic.EvaluateBestFan(
                     hand, new List<Meld>(), winTile, isSelfDraw: false,
                     WindDirection.East, WindDirection.South,
@@ -459,6 +465,7 @@ internal static class TalentResultAttributionTests
                 session,
                 0,
                 alreadyAcceptedFinalFan: 0,
+                facts: TalentTestFacts.Win(session, 0),
                 options => MahjongLogic.EvaluateBestFan(
                     hand, melds, Tile(Suit.Dragon, 1), isSelfDraw: false,
                     WindDirection.East, WindDirection.East,
@@ -511,6 +518,7 @@ internal static class TalentResultAttributionTests
                 session,
                 0,
                 alreadyAcceptedFinalFan: 13,
+                facts: TalentTestFacts.Win(session, 0),
                 options => new FanEvaluation
                 {
                     HasWinningShape = true,
@@ -538,6 +546,7 @@ internal static class TalentResultAttributionTests
             session,
             0,
             alreadyAcceptedFinalFan: ids[0] == "network_test_attribution_seed" ? 10 : 8,
+            facts: TalentTestFacts.Win(session, 0),
             options => new FanEvaluation
             {
                 HasWinningShape = true,
