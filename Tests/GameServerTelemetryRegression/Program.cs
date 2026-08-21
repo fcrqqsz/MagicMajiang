@@ -77,6 +77,12 @@ static async Task RealGameServerCountsOnlyMainLoopDrawAndEmitsAcceptedWinOnce(Li
     Check(ReferenceEquals(WinFactsObserverTalent.AttributionFacts,
                           WinFactsObserverTalent.AcceptedFacts),
         "real GameServer final evaluation, attribution, and acceptance share one TalentWinFacts instance", failures);
+    TalentActionCommittedFacts acceptedHu = ActionFactsGlobalObserverTalent.Facts.SingleOrDefault();
+    Check(acceptedHu?.ActionType == ClientActionType.Hu
+          && acceptedHu.ActorSeatIndex == 0
+          && acceptedHu.DecisionId > 0
+          && ReferenceEquals(acceptedHu.WinFacts, WinFactsObserverTalent.AcceptedFacts),
+        "real GameServer emits one committed Hu fact carrying the accepted TalentWinFacts instance", failures);
 }
 
 static async Task ThrowingSinkCannotInterruptRealGameServerCompletion(List<string> failures)
@@ -133,6 +139,17 @@ static async Task RealGameServerMarksAndScoresEveryCommittedKongReplacementDraw(
             $"real GameServer {flow} replacement self-draw must finish with kong win and exclude self-draw " +
             $"(kind={completion.Kind}, fan={server.WinFan}, details={string.Join("|", server.WinFanDetails)})",
             failures);
+        ClientActionType[] expectedActions = flow switch
+        {
+            KongFlow.Concealed => new[] { ClientActionType.AnGan, ClientActionType.Hu },
+            KongFlow.Added => new[] { ClientActionType.JiaGang, ClientActionType.Hu },
+            _ => new[] { ClientActionType.Discard, ClientActionType.MingGan, ClientActionType.Hu }
+        };
+        TalentActionCommittedFacts[] committed = ActionFactsGlobalObserverTalent.Facts.ToArray();
+        Check(committed.Select(facts => facts.ActionType).SequenceEqual(expectedActions)
+              && committed.Select(facts => facts.DecisionId).Distinct().Count() == committed.Length,
+            $"real GameServer {flow} records only resolved authoritative actions in decision order",
+            failures);
     }
 }
 
@@ -143,8 +160,10 @@ static GameServer CreateKongFlowServer(
     out List<DeckConfig> configs,
     out GameSession session)
 {
+    ActionFactsGlobalObserverTalent.Reset();
     var loadouts = Enumerable.Range(0, 4)
         .ToDictionary(index => index, _ => new TalentSlotConfig());
+    loadouts[0].SlotTalentIds[3] = "network_test_action_global_observer";
     var runtime = new TalentMatchRuntime(loadouts, TalentRegistry.Instance);
     session = new GameSession(GameMode.Single);
     runtime.BeginMatch(session);
@@ -274,9 +293,11 @@ static GameServer CreateWinningServer(
     Action<GameServer, TileData> beforeWinningSubmission = null)
 {
     WinFactsObserverTalent.Reset();
+    ActionFactsGlobalObserverTalent.Reset();
     var loadouts = Enumerable.Range(0, 4)
         .ToDictionary(index => index, _ => new TalentSlotConfig());
     loadouts[0].SlotTalentIds[3] = "network_test_win_facts_observer";
+    loadouts[0].SlotTalentIds[4] = "network_test_action_global_observer";
     var runtime = new TalentMatchRuntime(
         loadouts,
         TalentRegistry.Instance,

@@ -128,6 +128,7 @@
     <Compile Include="..\..\Assets\Scripts\Talent\TalentNegativeEffect.cs" Link="TalentNegativeEffect.cs" />
     <Compile Include="..\..\Assets\Scripts\Talent\TalentFanModifierPolicy.cs" Link="TalentFanModifierPolicy.cs" />
     <Compile Include="..\..\Assets\Scripts\Talent\TalentActionModels.cs" Link="TalentActionModels.cs" />
+    <Compile Include="..\..\Assets\Scripts\Talent\TalentActionFacts.cs" Link="TalentActionFacts.cs" />
     <Compile Include="..\..\Assets\Scripts\Talent\TalentImmutableFacts.cs" Link="TalentImmutableFacts.cs" />
     <Compile Include="..\..\Assets\Scripts\Talent\TalentContext.cs" Link="TalentContext.cs" />
     <Compile Include="..\..\Assets\Scripts\Talent\TalentMatchRuntime.cs" Link="TalentMatchRuntime.cs" />

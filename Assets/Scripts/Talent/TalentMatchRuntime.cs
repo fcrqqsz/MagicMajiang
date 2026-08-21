@@ -18,6 +18,9 @@ namespace MahjongGame.Talents
             new Dictionary<int, List<TileData>>();
         private readonly Dictionary<int, long> _firstMainDecisionIds =
             new Dictionary<int, long>();
+        private readonly List<TalentActionCommittedFacts> _roundActions =
+            new List<TalentActionCommittedFacts>();
+        private readonly HashSet<long> _committedActionDecisionIds = new HashSet<long>();
         private readonly ITalentTelemetrySink _telemetrySink;
         private readonly string _anonymousSessionId;
         private readonly AlienationPreset _telemetryPreset;
@@ -170,6 +173,8 @@ namespace MahjongGame.Talents
 
             _privatePeekTiles.Clear();
             _firstMainDecisionIds.Clear();
+            _roundActions.Clear();
+            _committedActionDecisionIds.Clear();
             foreach (RuntimeEntry entry in _entries)
                 entry.State.ResetRoundState();
 
@@ -261,6 +266,25 @@ namespace MahjongGame.Talents
                 context.IsAllowed = false;
                 return;
             }
+        }
+
+        public bool CommitAction(TalentActionCommittedFacts facts)
+        {
+            if (facts == null) throw new ArgumentNullException(nameof(facts));
+            EnsurePhase(RuntimePhase.RoundReady, nameof(CommitAction));
+            if (!_committedActionDecisionIds.Add(facts.DecisionId)) return false;
+
+            _roundActions.Add(facts);
+            var ledger = new TalentRoundActionLedgerSnapshot(_roundActions);
+            var context = new TalentActionCommittedContext(_session, facts, ledger);
+            foreach (RuntimeEntry entry in GetActiveEntriesForSeat(facts.ActorSeatIndex))
+            {
+                entry.Rule.OnActionCommitted(context.BindCommittedAction(
+                    entry.OwnerSeatIndex,
+                    entry.State,
+                    runtimeEvent => EmitEvent(entry, runtimeEvent)));
+            }
+            return true;
         }
 
         public TalentNegativeEffectResult ApplyNegativeEffect(TalentNegativeEffect effect)
@@ -931,7 +955,9 @@ namespace MahjongGame.Talents
             ValidateOptionalSeat(outcome.WinnerSeatIndex, nameof(outcome.WinnerSeatIndex));
             ValidateOptionalSeat(outcome.DiscarderSeatIndex, nameof(outcome.DiscarderSeatIndex));
 
-            TalentRoundContext context = new TalentRoundContext(session);
+            TalentRoundContext context = new TalentRoundContext(
+                session,
+                new TalentRoundActionLedgerSnapshot(_roundActions));
             foreach (RuntimeEntry entry in GetAllActiveEntries())
             {
                 entry.Rule.OnRoundEnded(BindRoundContext(

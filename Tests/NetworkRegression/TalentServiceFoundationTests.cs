@@ -10,6 +10,72 @@ internal static class TalentServiceFoundationTests
     {
         WinFactsOwnDeepImmutablePhysicalSnapshots(runner);
         RuntimeCarriesOneWinFactsInstanceThroughEvaluationAndAcceptance(runner);
+        CommittedActionsRouteOnceAndBuildAnImmutableRoundLedger(runner);
+    }
+
+    private static void CommittedActionsRouteOnceAndBuildAnImmutableRoundLedger(
+        RegressionRunner runner)
+    {
+        ActionFactsGlobalObserverTalent.Reset();
+        ActionFactsSelfObserverTalent.Reset();
+        var globalConfig = new TalentSlotConfig();
+        globalConfig.SlotTalentIds[3] = "network_test_action_global_observer";
+        var actorConfig = new TalentSlotConfig();
+        actorConfig.SlotTalentIds[3] = "network_test_action_self_observer";
+        var otherConfig = new TalentSlotConfig();
+        otherConfig.SlotTalentIds[3] = "network_test_action_self_observer";
+        var runtime = new TalentMatchRuntime(
+            new Dictionary<int, TalentSlotConfig>
+            {
+                [0] = globalConfig,
+                [1] = actorConfig,
+                [2] = otherConfig
+            },
+            TalentRegistry.Instance);
+        var session = new GameSession(GameMode.EastOnly);
+        runtime.BeginMatch(session);
+        BeginReadyRound(runtime, session);
+
+        TileData target = Tile(Suit.Pin, 7, ownerId: 0, id: "committed-target", modifiedBy: "midas_touch");
+        int[] chi = { 6, 8 };
+        TalentActionCommittedFacts facts = TalentActionCommittedFacts.Create(
+            decisionId: 41,
+            actorSeatIndex: 1,
+            sourceSeatIndex: 0,
+            ClientActionType.Chi,
+            target,
+            chi,
+            wasAutomatic: false,
+            winFacts: null);
+
+        bool firstCommit = runtime.CommitAction(facts);
+        bool duplicateCommit = runtime.CommitAction(facts);
+        target.Value = 9;
+        target.ID = "mutated-target";
+        chi[0] = 1;
+
+        runner.Check(firstCommit && !duplicateCommit,
+            "runtime accepts one authoritative committed action per decision and ignores duplicate delivery");
+        runner.Check(ActionFactsGlobalObserverTalent.Calls == 1
+                     && ActionFactsSelfObserverTalent.OwnerSeats.SequenceEqual(new[] { 1 }),
+            "committed actions route to global rules and only the actor's self-scoped rules");
+        runner.Check(ActionFactsGlobalObserverTalent.LedgerAtHook.GetCount(1, ClientActionType.Chi) == 1
+                     && ActionFactsGlobalObserverTalent.LedgerAtHook.Actions.Count == 1,
+            "round action ledger records the action before polymorphic committed-action hooks run");
+        runner.Check(facts.TargetTile.Value == 7
+                     && facts.TargetTile.Id == "committed-target"
+                     && facts.TargetTile.IsModified
+                     && facts.ChiCombinations.SequenceEqual(new[] { 6, 8 }),
+            "committed-action facts own immutable tile and chi-combination snapshots");
+
+        runtime.EndRound(new TalentRoundOutcome { WinnerSeatIndex = 3 }, session);
+        runner.Check(ActionFactsSelfObserverTalent.RoundEndLedger.GetCount(1, ClientActionType.Chi) == 1,
+            "round-end hooks receive the final immutable action ledger");
+
+        BeginReadyRound(runtime, session);
+        runtime.EndRound(new TalentRoundOutcome(), session);
+        runner.Check(ActionFactsSelfObserverTalent.RoundEndLedger.Actions.Count == 0,
+            "a new small round starts with an empty action ledger");
     }
 
     private static void RuntimeCarriesOneWinFactsInstanceThroughEvaluationAndAcceptance(
@@ -133,6 +199,13 @@ internal static class TalentServiceFoundationTests
         IsModified = !string.IsNullOrEmpty(modifiedBy),
         SpecialEffectID = modifiedBy
     };
+
+    private static void BeginReadyRound(TalentMatchRuntime runtime, GameSession session)
+    {
+        runtime.BeginRound(new TalentRoundContext(session));
+        runtime.ApplyWallBuilding(new TalentWallContext(session, new List<TileData>()));
+        runtime.ResolvePostShuffle(new TalentPostShuffleContext(session, new List<TileData>()));
+    }
 }
 
 internal static class TalentTestFacts
@@ -178,5 +251,50 @@ internal sealed class WinFactsObserverTalent : TalentRule
         AttributionFacts = null;
         AcceptedFacts = null;
         _postLegalCalls = 0;
+    }
+}
+
+[TalentRule("network_test_action_global_observer", "Action Global Observer", "test",
+    TalentTier.Small, 0)]
+internal sealed class ActionFactsGlobalObserverTalent : TalentRule
+{
+    public override TalentScope Scope => TalentScope.Global;
+    public static int Calls { get; private set; }
+    public static TalentRoundActionLedgerSnapshot LedgerAtHook { get; private set; }
+    public static List<TalentActionCommittedFacts> Facts { get; } =
+        new List<TalentActionCommittedFacts>();
+
+    public override void OnActionCommitted(TalentActionCommittedContext context)
+    {
+        Calls++;
+        Facts.Add(context.Facts);
+        LedgerAtHook = context.RoundActions;
+    }
+
+    public static void Reset()
+    {
+        Calls = 0;
+        Facts.Clear();
+        LedgerAtHook = null;
+    }
+}
+
+[TalentRule("network_test_action_self_observer", "Action Self Observer", "test",
+    TalentTier.Small, 0)]
+internal sealed class ActionFactsSelfObserverTalent : TalentRule
+{
+    public static List<int> OwnerSeats { get; } = new List<int>();
+    public static TalentRoundActionLedgerSnapshot RoundEndLedger { get; private set; }
+
+    public override void OnActionCommitted(TalentActionCommittedContext context) =>
+        OwnerSeats.Add(context.OwnerSeatIndex);
+
+    public override void OnRoundEnded(TalentRoundContext context, TalentRoundOutcome outcome) =>
+        RoundEndLedger = context.RoundActions;
+
+    public static void Reset()
+    {
+        OwnerSeats.Clear();
+        RoundEndLedger = null;
     }
 }

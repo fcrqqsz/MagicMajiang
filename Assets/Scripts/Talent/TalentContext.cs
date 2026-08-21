@@ -177,8 +177,19 @@ namespace MahjongGame.Talents
     public sealed class TalentRoundContext : TalentContext
     {
         private Action<int, string> _scoreDeltaSink;
+        public TalentRoundActionLedgerSnapshot RoundActions { get; }
 
-        public TalentRoundContext(GameSession session) : base(session) { }
+        public TalentRoundContext(GameSession session) : base(session)
+        {
+            RoundActions = TalentRoundActionLedgerSnapshot.Empty;
+        }
+
+        internal TalentRoundContext(
+            GameSession session,
+            TalentRoundActionLedgerSnapshot roundActions) : base(session)
+        {
+            RoundActions = roundActions ?? TalentRoundActionLedgerSnapshot.Empty;
+        }
 
         public void ApplyScoreDelta(int delta, string reason)
         {
@@ -192,9 +203,11 @@ namespace MahjongGame.Talents
         internal TalentRoundContext(
             TalentSessionSnapshot session,
             TalentGameStateSnapshot gameState,
-            IReadOnlyDictionary<int, TalentDeckSnapshot> deckSnapshots)
+            IReadOnlyDictionary<int, TalentDeckSnapshot> deckSnapshots,
+            TalentRoundActionLedgerSnapshot roundActions = null)
             : base(session, null, gameState, deckSnapshots)
         {
+            RoundActions = roundActions ?? TalentRoundActionLedgerSnapshot.Empty;
         }
 
         internal TalentRoundContext BindRound(
@@ -206,9 +219,48 @@ namespace MahjongGame.Talents
             TalentRoundContext context = new TalentRoundContext(
                 Session,
                 GameState,
-                DeckSnapshots);
+                DeckSnapshots,
+                RoundActions);
             context.ConfigureEntry(ownerSeatIndex, state, eventSink);
             context._scoreDeltaSink = scoreDeltaSink;
+            return context;
+        }
+    }
+
+    public sealed class TalentActionCommittedContext : TalentContext
+    {
+        public new int CurrentSeatIndex => base.CurrentSeatIndex.Value;
+        public TalentActionCommittedFacts Facts { get; }
+        public TalentRoundActionLedgerSnapshot RoundActions { get; }
+
+        internal TalentActionCommittedContext(
+            GameSession session,
+            TalentActionCommittedFacts facts,
+            TalentRoundActionLedgerSnapshot roundActions)
+            : base(session, ValidateSeatIndex(facts?.ActorSeatIndex
+                                              ?? throw new ArgumentNullException(nameof(facts))))
+        {
+            Facts = facts;
+            RoundActions = roundActions ?? throw new ArgumentNullException(nameof(roundActions));
+        }
+
+        private TalentActionCommittedContext(
+            TalentSessionSnapshot session,
+            TalentActionCommittedFacts facts,
+            TalentRoundActionLedgerSnapshot roundActions)
+            : base(session, facts.ActorSeatIndex, null, null)
+        {
+            Facts = facts;
+            RoundActions = roundActions;
+        }
+
+        internal TalentActionCommittedContext BindCommittedAction(
+            int ownerSeatIndex,
+            TalentRuntimeState state,
+            Action<TalentRuntimeEvent> eventSink)
+        {
+            var context = new TalentActionCommittedContext(Session, Facts, RoundActions);
+            context.ConfigureEntry(ownerSeatIndex, state, eventSink);
             return context;
         }
     }

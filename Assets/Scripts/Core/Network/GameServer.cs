@@ -403,11 +403,13 @@ namespace MahjongGame.Core.Network
 
                 // 2. 等待当前玩家出牌或自摸、暗杠（带超时）
                 TileData _autoDiscardCache = null;
+                bool mainActionWasAutomatic = false;
                 ClientAction action = await AwaitWithTimeout(
                     _pendingActionTcs,
                     ActionTimeoutMs,
                     onTimeout: () =>
                     {
+                        mainActionWasAutomatic = true;
                         _autoDiscardCache = _gameState.GetAutoDiscardTile(_currentPlayerIndex, _lastDrawnTile);
                         Debug.LogWarning($"[GameServer] 玩家 {_currentPlayerIndex} 主回合超时，自动出牌: {_autoDiscardCache}");
                         _turnCts.Cancel();
@@ -421,7 +423,10 @@ namespace MahjongGame.Core.Network
                 if (action.ActionType == ClientActionType.Hu)
                 {
                     // 自摸胡
-                    HandlePlayerWin(action, true);
+                    HandlePlayerWin(
+                        action,
+                        true,
+                        decisionId: mainDecision.DecisionId);
                     break;
                 }
                 else if (action.ActionType == ClientActionType.AnGan)
@@ -432,11 +437,16 @@ namespace MahjongGame.Core.Network
                             action.TargetTile,
                             action.ChiCombinations,
                             BroadcastAction,
-                            out _))
+                            out ClientAction committedConcealedKong))
                     {
                         Debug.LogError($"[GameServer] Could not commit concealed kong for player {_currentPlayerIndex}.");
                         continue;
                     }
+                    CommitTalentAction(
+                        mainDecision.DecisionId,
+                        committedConcealedKong,
+                        sourceSeatIndex: null,
+                        wasAutomatic: mainActionWasAutomatic);
                     _pendingKongReplacementDraw = true;
                     OnTalentEventsAvailable?.Invoke();
                     continue; // 直接重新循环
@@ -457,11 +467,18 @@ namespace MahjongGame.Core.Network
                         action.ActionType,
                         authoritativeAddedKongTile,
                         action.ChiCombinations);
-                    ClientAction robKongWin = await CollectRobKongResponses(declaration);
+                    ResolvedResponseAction robKongResolution = await CollectRobKongResponses(declaration);
+                    ClientAction robKongWin = robKongResolution.Action;
                     bool wasRobbed = robKongWin != null && robKongWin.ActionType == ClientActionType.Hu;
                     if (wasRobbed)
                     {
-                        HandlePlayerWin(robKongWin, false, _currentPlayerIndex, authoritativeAddedKongTile, true);
+                        HandlePlayerWin(
+                            robKongWin,
+                            false,
+                            _currentPlayerIndex,
+                            authoritativeAddedKongTile,
+                            true,
+                            robKongResolution.DecisionId);
                         break;
                     }
 
@@ -471,11 +488,16 @@ namespace MahjongGame.Core.Network
                             authoritativeAddedKongTile,
                             action.ChiCombinations,
                             BroadcastAction,
-                            out _))
+                            out ClientAction committedAddedKong))
                     {
                         Debug.LogError($"[GameServer] Could not commit added kong for player {_currentPlayerIndex}.");
                         continue;
                     }
+                    CommitTalentAction(
+                        mainDecision.DecisionId,
+                        committedAddedKong,
+                        sourceSeatIndex: null,
+                        wasAutomatic: mainActionWasAutomatic);
                     _pendingKongReplacementDraw = true;
                     continue;
                 }
@@ -489,6 +511,11 @@ namespace MahjongGame.Core.Network
                         new TalentDiscardContext(_session, action.PlayerId),
                         discardedTile);
                     _gameState.RecordDiscard(action.PlayerId, discardedTile);
+                    CommitTalentAction(
+                        mainDecision.DecisionId,
+                        ClientAction.Discard(action.PlayerId, discardedTile),
+                        sourceSeatIndex: null,
+                        wasAutomatic: mainActionWasAutomatic);
 
                     // 3. 广播他人打牌，并收集响应
                     _lastDiscardedTile = discardedTile; // 缓存，供响应阶段验证使用
@@ -549,7 +576,11 @@ namespace MahjongGame.Core.Network
                     {
                         if (resolvedAction.ActionType == ClientActionType.Hu)
                         {
-                            HandlePlayerWin(resolvedAction, false, _currentPlayerIndex);
+                            HandlePlayerWin(
+                                resolvedAction,
+                                false,
+                                _currentPlayerIndex,
+                                decisionId: responseDecision.DecisionId);
                             break;
                         }
                         else
@@ -570,6 +601,11 @@ namespace MahjongGame.Core.Network
                             NotifyTilesBecamePublic(
                                 resolvedAction.PlayerId,
                                 handTilesBecomingPublic);
+                            CommitTalentAction(
+                                responseDecision.DecisionId,
+                                resolvedAction,
+                                sourceSeatIndex: _currentPlayerIndex,
+                                wasAutomatic: false);
 
                             // 跳转回合
                             _currentPlayerIndex = resolvedAction.PlayerId;
@@ -608,7 +644,7 @@ namespace MahjongGame.Core.Network
                 _clients.Count);
         }
 
-        private async Task<ClientAction> CollectRobKongResponses(ClientAction declaration)
+        private async Task<ResolvedResponseAction> CollectRobKongResponses(ClientAction declaration)
         {
             TileData targetTile = declaration.TargetTile;
             _pendingRobKongTile = targetTile;
@@ -662,7 +698,9 @@ namespace MahjongGame.Core.Network
                     },
                     fallbackFactory: () => true);
 
-                return ResolveResponses();
+                return new ResolvedResponseAction(
+                    ResolveResponses(),
+                    robKongDecision.DecisionId);
             }
             finally
             {
@@ -1186,6 +1224,26 @@ namespace MahjongGame.Core.Network
             OnTalentEventsAvailable?.Invoke();
         }
 
+        private void CommitTalentAction(
+            long decisionId,
+            ClientAction action,
+            int? sourceSeatIndex,
+            bool wasAutomatic,
+            TalentWinFacts winFacts = null)
+        {
+            if (action == null) throw new ArgumentNullException(nameof(action));
+            bool committed = _talentRuntime.CommitAction(TalentActionCommittedFacts.Create(
+                decisionId,
+                action.PlayerId,
+                sourceSeatIndex,
+                action.ActionType,
+                action.TargetTile,
+                action.ChiCombinations,
+                wasAutomatic,
+                winFacts));
+            if (committed) OnTalentEventsAvailable?.Invoke();
+        }
+
         private static long GetDeadlineUnixMilliseconds(int timeoutMilliseconds)
         {
             return DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() + Math.Max(0, timeoutMilliseconds);
@@ -1287,7 +1345,13 @@ namespace MahjongGame.Core.Network
             return true;
         }
 
-        private void HandlePlayerWin(ClientAction winAction, bool isSelfDraw, int loserId = -1, TileData winTileOverride = null, bool isRobKongWin = false)
+        private void HandlePlayerWin(
+            ClientAction winAction,
+            bool isSelfDraw,
+            int loserId = -1,
+            TileData winTileOverride = null,
+            bool isRobKongWin = false,
+            long decisionId = 0)
         {
             _isGameActive = false;
             CloseActiveDecision();
@@ -1395,6 +1459,12 @@ namespace MahjongGame.Core.Network
                     }));
                 _talentRuntime.ConfirmAcceptedWin(
                     new TalentWinContext(_session, pid, acceptedWinFacts));
+                CommitTalentAction(
+                    decisionId,
+                    new ClientAction(pid, ClientActionType.Hu, winTile),
+                    isSelfDraw ? (int?)null : loserId,
+                    wasAutomatic: false,
+                    winFacts: acceptedWinFacts);
                 _talentRuntime.RecordAcceptedWinTelemetry(pid, serverResolution, GetDrawCountsSnapshot());
             }
             // 断言比对：记录客户端与服务端计算差异（Phase 0 验证用）
@@ -1492,6 +1562,18 @@ namespace MahjongGame.Core.Network
                 return false;
             OnRoundFinished?.Invoke(completion);
             return true;
+        }
+
+        private sealed class ResolvedResponseAction
+        {
+            public ClientAction Action { get; }
+            public long DecisionId { get; }
+
+            public ResolvedResponseAction(ClientAction action, long decisionId)
+            {
+                Action = action;
+                DecisionId = decisionId;
+            }
         }
     }
 }
