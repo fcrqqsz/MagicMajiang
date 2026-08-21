@@ -47,6 +47,12 @@
 *   **动态面板隐藏规范**: 动态弹窗、目标选择器和阶段面板在隐藏时，**必须**让整个 `UIDocument.rootVisualElement` 设置 `DisplayStyle.None`，显示时恢复为 `DisplayStyle.Flex`。仅降低透明度或设置 `PickingMode.Ignore` 不足以解决跨 `UIDocument` 的输入拦截问题。
 *   **全屏阶段面板独立性**: 具有独立阶段、全屏输入或独立恢复状态的面板（如 `SideboardPanel`），必须优先设计为独立 `UIDocument` / Scene Object。
 *   **清理与恢复**: `Show`、`Hide`、取消、超时、恢复、回合切换和 `OnDestroy` 必须汇入同一套生命周期清理边界（停止 schedule/tween/coroutine，解绑回调，重置状态并归还下层输入）。
+*   **HTML/CSS 原型转译与严格子集约束**:
+    - **原型流程**: 复杂新界面可先编写纯 HTML/CSS 预览文件供用户查看排版与设计，确认后再 1:1 转译为 UXML/USS。
+    - **严禁 USS 不支持的属性**: 严禁 `cursor`（避免 `UpdateRuntimePanels` 运行时贴图警告）、`box-shadow`/`filter`（改用 `border` 或色块）、`transform`、`display: grid/inline/block`（仅支持 `flex` 与 `none`）、`z-index`（由 DOM 声明顺序或 `sortingOrder` 决定）、伪元素 `::before`/`::after`、高级选择器 `:nth-child`、相对单位 `rem`/`vw`/`calc`（仅用 `px` 与 `%`）。
+    - **显式 Flex 方向**: HTML 原型所有 flex 容器必须显式写明 `flex-direction: column` 或 `row`（因浏览器默认 `row` 而 UI Toolkit 默认 `column`）。
+    - **Emoji 绝对禁令**: HTML 原型与 UXML 文本严禁使用 Unicode Emoji（📋/👑/🔄/🀄/●/✓/✕ 等），避免 TextCore 字体出现 `[□]` 方块乱码。
+    - **字体引用**: USS 统一引用 `MSYH_UITK.asset`，对齐使用 `-unity-text-align`，加粗使用 `-unity-font-style: bold;`。
 
 ### 编码与架构规范
 *   **单例模式**: 逻辑层核心管理器（如 `FanRuleRegistry`, `TalentRegistry`）必须使用纯 C# 懒加载单例，避免对场景 GameObject 的硬依赖。
@@ -61,6 +67,10 @@
 
 ### 代码编辑与 Git Diff 规范 (Code Editing & Clean Diff Constraints)
 *   **严禁擅自整文件覆盖修改**: 修改已有源文件时，必须严格使用精准局部替换（`replace_file_content` / `multi_replace_file_content`），明确指定唯一的上下文范围与锚点。严禁因局部匹配不准或存在同名方法就退化为整文件重写/覆盖写入（`write_to_file`）。
+*   **精准单点追加（Append-Only / Minimal Diff 规范）**:
+    - **新增方法末尾单点追加**: 为大型类（如 `LobbyController` 等）新增独立功能、辅助方法或事件回调时，必须在类的安全末尾或指定分区精准追加，**严禁跨越大段包含存量代码的区间做整体重写**，杜绝因“上下文吞噬”误删同一文件内其他存量辅助方法（如轮播、设置、工坊联动等）。
+    - **收敛修改锚点与跨度 (Tight Anchor Bounds)**: 修改已有方法时，`StartLine` 到 `EndLine` 必须严格聚焦在目标方法本身的局部范围（通常 5~20 行），严禁跨越多个方法边界大面积框选替换。
+    - **编辑后存量方法完整性核验**: 编辑大型单文件控制器后，必须主动确认文件内原有存量功能与声明未被意外破坏或遗漏。
 *   **避免 Diff 噪点与换行符污染**: 全量重写会导致跨平台换行符（CRLF/LF）转换及格式化微调，在 Git Diff 中产生大面积“删除整段又原样加回”的严重 Review 干扰。修改必须保持最小变动集（Minimal Diff）。
 *   **修改后主动核对 Diff**: 修改代码后，应通过 `git diff` 检查改动范围是否精准聚焦，确保 Diff 中仅包含本次任务必要的增删改行，绝不带入无意义的空白符、格式化或不相关代码重排。
 

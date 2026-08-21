@@ -190,6 +190,7 @@ WebSocketClient
 
 #### 核心面板与组件：
 *   **LoginPanel & MainLobby**: `01_Login` 和 `02_MainLobby` 场景中的 UI 主体面板。Home 页包含 `DeckSelector`（左右箭头循环切换卡组）、异化值显示及匹配入口。
+*   **房间大厅面板 (`RoomListPanel`)**: `RoomListPanel.uxml/uss` + `RoomListController.cs` + `RoomCardTemplate.uxml`，独立弹窗浏览当前在线房间。支持多局模式与可用性筛选、出战构筑异化值与房间上限实时预检、房号直连加入与一键快速创建。生命周期集成 `sortingOrder: 50` 自动提升、初始化幂等保护与点击防抖锁定。对应纯 HTML 原型为 `RoomListPreview.html`。
 *   **操作面板 (`ActionPanel`)**: 基础吃碰杠胡与主动天赋按钮共存；只消费服务器下发的合法选项，pending/reject/过期/恢复均按 `decisionId` 隔离。
 *   **常驻天赋 HUD (`GameHUD`)**: 展示本家生效天赋、已公开对手天赋、最近事件流及三级反馈；恢复快照只重建状态，不重播 toast/音效。
 *   **独立备牌面板 (`SideboardPanel`)**: 独立 Scene Object / `UIDocument`，权威阶段到来时全屏显示，隐藏时整个文档 `display:none`，不拦截 ActionPanel 或 3D 手牌输入。

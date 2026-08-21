@@ -36,6 +36,12 @@ if (args.Length == 1 && string.Equals(args[0], "talent-attribution", StringCompa
     return runner.Complete();
 }
 
+if (args.Length == 1 && string.Equals(args[0], "compendium", StringComparison.OrdinalIgnoreCase))
+{
+    CompendiumPresentationTests.Run(runner);
+    return runner.Complete();
+}
+
 IdentityConnectionTests.Run(runner);
 RoomSessionTests.Run(runner);
 NetworkAuthorityBoundaryTests.Run(runner);
@@ -49,5 +55,6 @@ TalentPresentationTests.Run(runner);
 SideboardTests.Run(runner);
 AiTalentPolicyTests.Run(runner);
 AuthoritativePublicTileTransitionTests.Run(runner);
+CompendiumPresentationTests.Run(runner);
 
 return runner.Complete();

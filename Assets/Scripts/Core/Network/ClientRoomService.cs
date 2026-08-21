@@ -65,6 +65,7 @@ namespace MahjongGame.Core.Network
         public int RecoveryPresentationVersion { get; private set; }
 
         public event Action<RoomJoinedMessage> RoomJoined;
+        public event Action<RoomSummaryMessage[]> RoomListReceived;
         public event Action RoomReady;
         public event Action<RoomSeatMessage[]> SeatSnapshotChanged;
         public event Action<string> RoomError;
@@ -116,6 +117,14 @@ namespace MahjongGame.Core.Network
                     address)) return false;
             ClearCompletedStateForNewRoom();
             return true;
+        }
+
+        public bool QueryRoomList(string nickname = null, string address = null)
+        {
+            if (string.IsNullOrWhiteSpace(nickname))
+                nickname = !string.IsNullOrWhiteSpace(_activeUsername) ? _activeUsername : "Player";
+
+            return BeginRoomCommand(nickname, () => Send("QueryRoomList", new QueryRoomListMessage()), address);
         }
 
         public void SendReady(ReadyPhase phase)
@@ -327,6 +336,10 @@ namespace MahjongGame.Core.Network
                         MessageSerializer.DeserializePayload<SideboardProgressMessage>(envelope.data));
                     break;
                 case "SessionEnd": CompleteSessionRoomState(); break;
+                case "RoomList":
+                    var roomList = MessageSerializer.DeserializePayload<RoomListMessage>(envelope.data);
+                    RoomListReceived?.Invoke(roomList?.rooms ?? Array.Empty<RoomSummaryMessage>());
+                    break;
                 case "RoomClosed":
                     var closed = MessageSerializer.DeserializePayload<RoomClosedMessage>(envelope.data);
                     if (closed == null || closed.roomId != RoomId) return;
@@ -750,12 +763,24 @@ namespace MahjongGame.Core.Network
         private void HandleTerminalReconnectFailure(string errorCode, string message)
         {
             string display = RoomErrorPresentationPolicy.GetDisplayMessage(new RoomErrorMessage { code = errorCode, message = message });
+            var pendingCommand = _pendingRoomCommandAfterHello;
+            _pendingRoomCommandAfterHello = null;
+            _pendingReconnect = false;
+            _ticketStore.Clear();
+            ResetRoomState(true);
+
+            if (pendingCommand != null)
+            {
+                // A new user action was waiting for connection. Hello has been accepted,
+                // so execute the pending action instead of closing the socket.
+                pendingCommand.Invoke();
+                return;
+            }
+
             _hasHelloAccepted = false;
             _helloHandshake.Reset();
             _pendingAfterConnect = null;
-            _pendingRoomCommandAfterHello = null;
             WebSocketClient.Instance?.Disconnect();
-            ResetRoomState(true);
             PublishRecoveryProgress(ClientRecoveryStage.TerminalFailure, display);
             RoomError?.Invoke(display);
         }

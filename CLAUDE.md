@@ -99,6 +99,10 @@ Assets/Scripts/
 Assets/UI/                   # UI Toolkit 面板
 ├── MainLobby.uxml/uss       # 大厅主界面 (含 DeckSelector 卡组切换器)
 ├── LobbyController.cs       # 大厅逻辑 (标签页切换、卡组选择、匹配入口)
+├── RoomListPanel.uxml/uss   # 房间大厅独立浏览弹窗 UIDocument
+├── RoomListController.cs    # 房间大厅控制器 (生命周期、防抖、自动层级提升)
+├── RoomCardTemplate.uxml    # 房间卡片复用模板 (异化适配、状态徽章、加入)
+├── RoomListPreview.html     # 房间大厅纯 HTML/CSS 原型预览
 ├── DeckEditorToolkit.cs     # 牌库编辑器 (含天赋槽 UI 与天赋选择弹窗)
 ├── TalentSlotTemplate.uxml/uss # 天赋槽位模板与样式
 ├── TalentItemTemplate.uxml  # 天赋列表项模板

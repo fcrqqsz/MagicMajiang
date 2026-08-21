@@ -12,6 +12,7 @@
             <ui:Label text="Super Majiang" class="sidebar-title" />
             <ui:Button name="TabHome" text="Home" class="nav-button active-tab" />
             <ui:Button name="TabWorkshop" text="Deck Workshop" class="nav-button" />
+            <ui:Button name="TabCompendium" text="图鉴与规则" class="nav-button" />
             <ui:Button name="TabCollection" text="Collection/Shop" class="nav-button" tooltip="Coming Soon!" enable="false" style="opacity: 0.5;" />
             <ui:Button name="TabSettings" text="Settings" class="nav-button" />
         </ui:VisualElement>
@@ -41,7 +42,10 @@
                 <ui:VisualElement name="RoomAdmissionBlocker" class="room-admission-blocker" style="display: none;">
                     <ui:Label name="RoomAdmissionBlockerLabel" class="room-admission-blocker-label" />
                 </ui:VisualElement>
-                <ui:Button name="MatchmakingButton" text="创建新房间" class="action-button" />
+                <ui:VisualElement class="home-action-row">
+                    <ui:Button name="MatchmakingButton" text="创建新房间" class="action-button" />
+                    <ui:Button name="BtnViewRoomList" text="查看房间列表" class="action-button room-browser-button" />
+                </ui:VisualElement>
                 <ui:VisualElement class="room-controls">
                     <ui:TextField name="RoomIdInput" label="房间号（例如 R0001）" class="room-id-input" tooltip="输入其他玩家创建的房间号" />
                     <ui:Button name="JoinRoomButton" text="加入该房间" class="room-secondary-button" />
@@ -88,6 +92,108 @@
                 <ui:Label text="Select and build your custom mahjong deck." class="view-subtitle" />
                 <!-- UI for Gacha/Cosmetic preview will go here in the future -->
                 <ui:VisualElement name="DeckEditorContainer" />
+            </ui:VisualElement>
+
+            <!-- Compendium View -->
+            <ui:VisualElement name="ViewCompendium" class="view-container" style="display: none;">
+                <ui:VisualElement class="compendium-header">
+                    <ui:Label text="玩法图鉴与规则速查" class="view-title" />
+                    <ui:Label text="国标 81 番种速查检索、9 大天赋流派机制及 Roguelike 异化核心规则一览" class="view-subtitle" />
+                </ui:VisualElement>
+
+                <!-- Subtab Navigation Bar -->
+                <ui:VisualElement class="compendium-subtab-bar">
+                    <ui:Button name="SubtabBtnMcr" text="国标 81 番种速查" class="compendium-subtab-btn compendium-subtab-active" />
+                    <ui:Button name="SubtabBtnTalent" text="天赋与流派图鉴" class="compendium-subtab-btn" />
+                    <ui:Button name="SubtabBtnRules" text="核心机制与对战规则" class="compendium-subtab-btn" />
+                </ui:VisualElement>
+
+                <!-- Subview 1: MCR 81 Fan -->
+                <ui:VisualElement name="CompendiumMcrView" class="compendium-subview">
+                    <ui:VisualElement class="compendium-toolbar">
+                        <ui:VisualElement class="compendium-filter-group">
+                            <ui:Button name="FanFilterAll" text="全部 (81)" class="compendium-filter-btn compendium-filter-active" />
+                            <ui:Button name="FanFilterTop" text="顶级大番 (48~88番)" class="compendium-filter-btn" />
+                            <ui:Button name="FanFilterHigh" text="高番种 (16~32番)" class="compendium-filter-btn" />
+                            <ui:Button name="FanFilterMid" text="中番种 (6~12番)" class="compendium-filter-btn" />
+                            <ui:Button name="FanFilterLow" text="小番种 (1~4番)" class="compendium-filter-btn" />
+                        </ui:VisualElement>
+                        <ui:TextField name="FanSearchInput" label="搜索" placeholder-text="输入番种名称或描述..." class="compendium-search-field" />
+                    </ui:VisualElement>
+                    <ui:VisualElement class="compendium-stats-bar">
+                        <ui:Label name="FanCountLabel" text="显示 81 个番种" class="compendium-stats-text" />
+                        <ui:Label text="国标起胡门槛：8 番" class="compendium-stats-hint" />
+                    </ui:VisualElement>
+                    <ui:ScrollView name="FanCardScrollView" class="compendium-scroll-view" />
+                </ui:VisualElement>
+
+                <!-- Subview 2: Talent Compendium -->
+                <ui:VisualElement name="CompendiumTalentView" class="compendium-subview" style="display: none;">
+                    <ui:VisualElement class="compendium-toolbar">
+                        <ui:VisualElement class="compendium-filter-group">
+                            <ui:Button name="TalentFilterAll" text="全部天赋 (9)" class="compendium-filter-btn compendium-filter-active" />
+                            <ui:Button name="TalentFilterMajor" text="大天赋 (Major)" class="compendium-filter-btn" />
+                            <ui:Button name="TalentFilterMedium" text="中天赋 (Medium)" class="compendium-filter-btn" />
+                            <ui:Button name="TalentFilterMinor" text="小天赋 (Minor)" class="compendium-filter-btn" />
+                            <ui:Button name="TalentFilterActive" text="主动充能" class="compendium-filter-btn" />
+                        </ui:VisualElement>
+                        <ui:TextField name="TalentSearchInput" label="搜索" placeholder-text="输入天赋名称或效果..." class="compendium-search-field" />
+                    </ui:VisualElement>
+                    <ui:VisualElement class="compendium-stats-bar">
+                        <ui:Label name="TalentCountLabel" text="显示 9 个天赋规则" class="compendium-stats-text" />
+                        <ui:Label text="携带构筑：6 主槽 (1大+2中+3小) + 3 备选槽" class="compendium-stats-hint" />
+                    </ui:VisualElement>
+                    <ui:ScrollView name="TalentCardScrollView" class="compendium-scroll-view" />
+                </ui:VisualElement>
+
+                <!-- Subview 3: Core Mechanics & Rules -->
+                <ui:VisualElement name="CompendiumRulesView" class="compendium-subview" style="display: none;">
+                    <ui:ScrollView name="RulesScrollView" class="compendium-scroll-view">
+                        <!-- 机制 1 -->
+                        <ui:VisualElement class="compendium-mechanic-card">
+                            <ui:VisualElement class="compendium-mechanic-header">
+                                <ui:Label text="1" class="compendium-mechanic-badge" />
+                                <ui:Label text="牌库异化值与预算体系 (Alienation System)" class="compendium-mechanic-title" />
+                            </ui:VisualElement>
+                            <ui:Label text="玩家可使用自定义的 34 张牌库进行对战。标准牌库包含 34 种牌各 1 张，异化值为 0 点。&#10;• 加减牌成本：增加或减少某张牌的数量均会产生异化值（例如加到同种牌 4 张或删除某张牌）。&#10;• 天赋成本叠加：当前激活的主天赋异化成本与牌库异化成本合并计入「总异化值」。" class="compendium-mechanic-desc" />
+                            <ui:VisualElement class="compendium-mechanic-box">
+                                <ui:Label text="服务端入场档位限制：" class="compendium-box-title" />
+                                <ui:Label text="• 低异化档 (Low): 预算上限 40 点，适合偏向传统国标的纯净体验。&#10;• 标准档 (Standard): 预算上限 80 点（推荐默认），兼顾策略自由度与战力平衡。&#10;• 高异化档 (High): 预算上限 120 点，支持强力天赋组合与极限牌库构筑。" class="compendium-box-desc" />
+                            </ui:VisualElement>
+                        </ui:VisualElement>
+
+                        <!-- 机制 2 -->
+                        <ui:VisualElement class="compendium-mechanic-card">
+                            <ui:VisualElement class="compendium-mechanic-header">
+                                <ui:Label text="2" class="compendium-mechanic-badge" />
+                                <ui:Label text="国标算分与 8 番起胡门槛" class="compendium-mechanic-title" />
+                            </ui:VisualElement>
+                            <ui:Label text="游戏遵循国标麻将规则，胡牌必须满足基础番数达到 8 番（天赋如「快人一步」可降低门槛至 6 番）。&#10;• 算番最大化：系统采用多路径拆解算法，在所有合法的拆牌方案中选取番数最高的组合。&#10;• 番数逐项归因：最终番数拆分为「基础国标番 + 天赋门槛修正 + 天赋奖励加番 - 天赋惩罚扣番」。" class="compendium-mechanic-desc" />
+                            <ui:VisualElement class="compendium-mechanic-box">
+                                <ui:Label text="积分结算规则：" class="compendium-box-title" />
+                                <ui:Label text="• 自摸胡牌：其余三家各支付 (8 + 最终番数) 点积分。&#10;• 点炮胡牌：放炮者支付 (8 + 最终番数) 点积分，另外两家各支付底分 8 点积分。&#10;• 流局结算：无人胡牌时不计分（若装配「厚积」天赋，流局时可额外获得 5 补偿分）。" class="compendium-box-desc" />
+                            </ui:VisualElement>
+                        </ui:VisualElement>
+
+                        <!-- 机制 3 -->
+                        <ui:VisualElement class="compendium-mechanic-card">
+                            <ui:VisualElement class="compendium-mechanic-header">
+                                <ui:Label text="3" class="compendium-mechanic-badge" />
+                                <ui:Label text="多局对战制与门风轮转" class="compendium-mechanic-title" />
+                            </ui:VisualElement>
+                            <ui:Label text="国标麻将无传统日麻的连庄概念，无论谁胡牌，每小局结束后东风位置均按顺时针轮转：&#10;• 单局 (Single): 1 局定胜负，适合快速试玩。&#10;• 东风局 (East Only): 共 4 小局，每位玩家各坐东家一次。&#10;• 半庄 (Half Game): 共 8 小局（东风圈 4 局 + 南风圈 4 局）。&#10;• 全庄 (Full Game): 共 16 小局（东南西北四圈各 4 局）。" class="compendium-mechanic-desc" />
+                        </ui:VisualElement>
+
+                        <!-- 机制 4 -->
+                        <ui:VisualElement class="compendium-mechanic-card">
+                            <ui:VisualElement class="compendium-mechanic-header">
+                                <ui:Label text="4" class="compendium-mechanic-badge" />
+                                <ui:Label text="中场备牌机制 (Sideboard Phase)" class="compendium-mechanic-title" />
+                            </ui:VisualElement>
+                            <ui:Label text="在多局对战（半庄或全庄）进行到第 4 小局结束时，比赛进入 45 秒的中场备牌阶段：&#10;• 玩家可根据前 4 局对手的打法风格与分数差距，从已携带的 6 主槽 + 3 备选槽中重新调配主槽天赋。&#10;• 备牌调整后总异化值不得超过房间预设档位，锁定后将在后半程比赛中持续生效。" class="compendium-mechanic-desc" />
+                        </ui:VisualElement>
+                    </ui:ScrollView>
+                </ui:VisualElement>
             </ui:VisualElement>
 
             <!-- Collection View -->

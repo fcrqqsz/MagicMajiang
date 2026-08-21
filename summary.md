@@ -8,7 +8,12 @@
 *   **核心规则**: 以国标麻将 (MCR) 为基础，支持81番种计算。
 *   **特色玩法**: Roguelike 天赋系统、自定义 34 张牌库及异化值机制。
 
-2. 最近进展 (Recent Progress, snapshot 2026-08-16)
+2. 最近进展 (Recent Progress, snapshot 2026-08-19)
+*   **大厅房间列表浏览面板 (Room Browser) 与重连抢占保护 (2026-08-19)**:
+    *   实现了独立弹窗 `RoomListPanel` (UXML/USS/CS)，支持主动拉取、手动刷新与多局模式/可用状态筛选。
+    *   房间卡片展示房主、模式、档位、席位实时人数及异化构筑适配预检（超标禁用加入并支持一键跳转工坊）。
+    *   服务端新增 `QueryRoomList` 协议，过滤已关闭房间并下发摘要；直连加入支持房号解析与大厅一键创建直达。
+    *   修复历史断线票据恢复失败时意外中断前台业务请求的问题；优化 UI Toolkit `sortingOrder`、防抖与生命周期。
 *   **天赋玩法垂直切片与联机架构完成 (2026-08-16)**:
     *   一人游玩和多人游玩统一进入在线 `Room`，由 AI 补足空席；`GameManager` 只协调权威网络投影、恢复与场景，不持有服务端、会话或天赋 runtime。
     *   协议为 v4，携带构筑 schema 为 v3。服务端验证 34 张牌库、6 主槽 + 3 备选槽及 Low 40 / Standard 80 / High 120 档位；预算只计牌库与当前激活主天赋，精确值仅本家可见。
@@ -84,4 +89,25 @@
 *   **DoTween 对象销毁报错 (Target or field is missing/null)**:
     *   *症状*: 当 AI 极速连击（如瞬间打牌后被瞬间吃牌），导致刚执行动画的牌被立即 `Destroy` 时，DOTween 尝试访问已销毁的 Transform。
     *   *解法*: 对所有针对动态生成/销毁的 GameObject 进行的 DoTween 动画（如 `DOLocalMove`），必须链式调用 `.SetLink(gameObject)`，强制绑定动画生命周期与 GameObject。
+*   **历史断线恢复阻断前台操作 (Stale Reconnect Hijack)**:
+    *   *症状*: 客户端存有旧局断线票据时，登录大厅后点击“查看房间列表”，突然弹出红色 `RoomNotFound` 报错且无法获取列表。
+    *   *原因*: 握手成功后客户端优先尝试恢复旧房间，被服务端拒绝后作为致命错误直接关闭连接，丢弃了排队的 `QueryRoomList`。
+    *   *解法*: 在 `HandleTerminalReconnectFailure` 中检查是否存在玩家前台新排队指令（`_pendingRoomCommandAfterHello`），若存在则静默清空失效票据，复用已认证连接直接派发新指令，不阻断前台交互。
+*   **UI Toolkit 独立弹窗 `sortingOrder` 层级遮挡**:
+    *   *症状*: 独立 UIDocument 弹窗设为 Flex 但在全屏主大厅上完全不可见。
+    *   *原因*: 多个 UIDocument 默认 `sortingOrder` 均为 0，后绘制的大厅全屏深色背景遮挡了弹窗。
+    *   *解法*: 弹窗 Controller 在 `Awake` 和 `Open` 中显式强制设置 `document.sortingOrder = 50`。
+*   **UI Toolkit USS `cursor` 属性警告**:
+    *   *症状*: 控制台每帧报 `Runtime cursors other than the default cursor need to be defined using a texture`。
+    *   *原因*: USS 样式声明了 Web 端的 `cursor: link`，UI Toolkit 运行时缺少 Texture2D 资源。
+    *   *解法*: 彻底从 USS 中移除非默认 `cursor` 属性。
+*   **TextCore 字体不支持 Emoji 导致方框乱码**:
+    *   *症状*: 按钮文本 `📋`、`🔄`、`👑`、`✓` 等显示为方框“豆腐块”。
+    *   *解法*: 在未配置复合 Fallback 字体前，UI Toolkit 的文本一律使用纯文本或标准中文字符。
+*   **UI 事件重复累加与网络请求防抖**:
+    *   *症状*: 多次打开弹窗后点击事件重复触发，连击“加入房间”发送重复网络包。
+    *   *解法*: 引入 `_isUIInitialized` 幂等标志，网络请求按钮增加 `_isJoining` 防抖锁并在 `Hide`/`OnDisable` 时安全注销 `schedule` 句柄。
+*   **HTML 原型转译 UXML/USS 严格子集约束**:
+    *   *原则*: 允许先写 HTML/CSS 预览文件，但 HTML/CSS 必须严格限定为 UI Toolkit 支持的子集。
+    *   *禁令*: 严禁 `cursor`、`box-shadow`/`filter`、`transform`、`display: grid/inline/block`、`z-index`、伪元素 `::before/::after`、高级选择器 `:nth-child`、相对单位 `rem/vw` 及 Unicode Emoji。所有 Flex 容器必须显式写明 `flex-direction: column` 或 `row`（UI Toolkit 默认 column）。
 

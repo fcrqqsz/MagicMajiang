@@ -515,6 +515,26 @@ namespace MahjongGame.Core.Network
             FinishSideboardIfAllLocked();
         }
 
+        public RoomSummaryMessage CreateSummary()
+        {
+            var hostSeat = _seats.FirstOrDefault(s => s != null && s.ConnectionId == HostConnectionId)
+                           ?? _seats.FirstOrDefault(s => s != null && !s.IsAi);
+            int currentHumans = _seats.Count(s => s != null && !s.IsAi);
+            bool isFull = _seats.All(s => s != null);
+
+            return new RoomSummaryMessage
+            {
+                roomId = RoomId,
+                hostDisplayName = hostSeat?.DisplayName ?? "房主",
+                gameMode = (int)GameMode,
+                alienationPreset = (int)AlienationPreset,
+                currentPlayers = Math.Max(1, currentHumans),
+                maxPlayers = 4,
+                state = (int)State,
+                isFull = isFull
+            };
+        }
+
         public RoomSeatMessage[] GetSeatSnapshot()
         {
             return Enumerable.Range(0, 4).Select(GetSeatMessage).ToArray();

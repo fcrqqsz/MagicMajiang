@@ -1,0 +1,65 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" editor-extension-mode="False">
+    <Style src="project://database/Assets/UI/RoomListPanelStyles.uss" />
+    <ui:VisualElement name="RoomListOverlay" class="room-list-overlay">
+        <ui:VisualElement name="RoomListModal" class="room-list-modal">
+            
+            <!-- Header -->
+            <ui:VisualElement class="modal-header">
+                <ui:VisualElement class="modal-title-group">
+                    <ui:Label text="房间大厅" class="modal-title" />
+                    <ui:Label text="ROOM BROWSER" class="modal-subtitle" />
+                    <ui:VisualElement class="room-count-pill">
+                        <ui:Label name="RoomCountLabel" text="开放房间: 0" class="room-count-label" />
+                    </ui:VisualElement>
+                </ui:VisualElement>
+                <ui:Button name="BtnClose" text="X" class="btn-close" />
+            </ui:VisualElement>
+
+            <!-- Current Player Loadout Strip -->
+            <ui:VisualElement class="player-loadout-strip">
+                <ui:VisualElement class="loadout-info">
+                    <ui:Label text="当前出战卡组:" class="loadout-label" />
+                    <ui:Label name="LoadoutDeckName" text="标准牌库" class="loadout-deck-name" />
+                    <ui:Label text="构筑总异化值:" class="loadout-label" />
+                    <ui:Label name="LoadoutAlienation" text="0 pt" class="loadout-alienation" />
+                </ui:VisualElement>
+                <ui:Button name="BtnLinkWorkshop" text="前往工坊调整构筑 >" class="btn-link-workshop" />
+            </ui:VisualElement>
+
+            <!-- Filter Toolbar -->
+            <ui:VisualElement class="filter-toolbar">
+                <ui:VisualElement class="filter-group">
+                    <ui:Toggle name="ToggleHideUnavailable" label="仅显示可加入房间" class="filter-toggle" />
+                    <ui:VisualElement class="filter-tags">
+                        <ui:Button name="TagModeAll" text="全部模式" class="filter-tag active" />
+                        <ui:Button name="TagModeSingle" text="单局" class="filter-tag" />
+                        <ui:Button name="TagModeEastOnly" text="东风局" class="filter-tag" />
+                        <ui:Button name="TagModeHalfGame" text="半庄" class="filter-tag" />
+                        <ui:Button name="TagModeFullGame" text="全庄" class="filter-tag" />
+                    </ui:VisualElement>
+                </ui:VisualElement>
+                <ui:Button name="BtnRefresh" text="刷新列表" class="btn-refresh" />
+            </ui:VisualElement>
+
+            <!-- Room ScrollView -->
+            <ui:ScrollView name="RoomScrollView" class="room-scroll-view" />
+
+            <!-- Empty State -->
+            <ui:VisualElement name="EmptyState" class="empty-state" style="display: none;">
+                <ui:Label text="当前暂无匹配的房间" class="empty-title" />
+                <ui:Label text="尝试调整筛选条件，或者点击下方按钮创建属于你的新房间。" class="empty-desc" />
+            </ui:VisualElement>
+
+            <!-- Footer -->
+            <ui:VisualElement class="modal-footer">
+                <ui:VisualElement class="direct-join-box">
+                    <ui:Label text="已知房号直连:" class="direct-join-label" />
+                    <ui:TextField name="DirectRoomInput" class="input-room-id" />
+                    <ui:Button name="BtnDirectJoin" text="直连加入" class="btn-direct-join" />
+                </ui:VisualElement>
+                <ui:Button name="BtnCreateShortcut" text="+ 立即创建房间" class="btn-create-shortcut" />
+            </ui:VisualElement>
+
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>

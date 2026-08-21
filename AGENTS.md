@@ -128,6 +128,10 @@ Assets/Scripts/
 Assets/UI/                   # UI Toolkit 面板
 ├── MainLobby.uxml/uss       # 大厅主界面 (含 DeckSelector 卡组切换器)
 ├── LobbyController.cs       # 大厅逻辑 (标签页切换、卡组选择、匹配入口)
+├── RoomListPanel.uxml/uss   # 房间大厅独立浏览弹窗 UIDocument
+├── RoomListController.cs    # 房间大厅控制器 (生命周期、防抖、自动层级提升)
+├── RoomCardTemplate.uxml    # 房间卡片复用模板 (异化适配、状态徽章、加入)
+├── RoomListPreview.html     # 房间大厅纯 HTML/CSS 原型预览
 ├── DeckEditorToolkit.cs     # 牌库编辑器（固定预算表盘、6+3天赋、未保存保护）
 ├── TalentSlotTemplate.uxml/uss # 天赋槽位模板与样式
 ├── TalentItemTemplate.uxml  # 天赋列表项模板
@@ -172,6 +176,35 @@ Assets/UI/                   # UI Toolkit 面板
 - 控制网络订阅和权威状态的 `MonoBehaviour` 应在面板隐藏期间继续存活，以便接收呼出消息；优先切换文档根节点的 `display`，不要为了隐藏 UI 直接停用同时承担消息订阅的 GameObject。若确需禁用 `UIDocument` 组件，必须处理视觉树重建、元素重新查询和回调重新绑定。
 - `Show`、`Hide`、取消、超时、恢复、回合切换和 `OnDestroy` 必须汇入同一套可见性与清理边界：停止 schedule/coroutine/tween，解绑临时回调，清除旧选择状态，并恢复下层面板输入。
 - 新增或提高动态 `UIDocument` 的排序后，Unity 人工验收至少覆盖三种状态：隐藏时下层 ActionPanel/3D 手牌可操作；显示时本面板按钮、目标和取消可操作；关闭后输入立即归还下层。纯 C# 测试可检查状态策略和源码约束，但不能替代跨面板实际点击验证。
+
+### UI Prototyping & HTML-to-UI Toolkit Workflow
+- **工作流原则**: 设计复杂/新界面时，推荐先编写纯 HTML/CSS 预览文件（如 `xxxPreview.html`）供快速查看布局和迭代设计；用户确认后再 1:1 转译为 `.uxml`、`.uss` 和 `.cs` 控制器。
+- **HTML/CSS 严格子集约束（严禁使用 UI Toolkit 不支持的语法）**:
+  - **严禁 USS 不支持的 CSS 属性**:
+    - ❌ `cursor`: 严禁写 `cursor: pointer/link/not-allowed`（Unity 运行时会报 `Runtime cursors need to be defined using a texture` 警告）。
+    - ❌ `box-shadow` / `drop-shadow` / `filter`: USS 不支持阴影和滤镜，必须用 `border`、背景微调或容器色块实现层级。
+    - ❌ `transform`: 严禁在基础 USS 中写 `transform: translate/rotate/scale`。
+    - ❌ `display: grid / inline / block / table`: USS 仅支持 `flex` 与 `none`。
+    - ❌ `z-index`: USS 无 `z-index`，层级严格由 DOM 节点先后顺序（后声明在上）或跨 `UIDocument` 的 `sortingOrder` 决定。
+    - ❌ 不支持的高级选择器: 严禁 `:nth-child()`, `::before`, `::after`, `:first-child`, `:last-child`。仅允许类名选择器和 `:hover`, `:active`, `:focus`, `:checked`, `:disabled`。
+    - ❌ 不支持的相对单位: 严禁 `rem`, `em`, `vh`, `vw`, `calc(...)`。仅允许 `px` 和 `%`。
+    - ❌ CSS 复合简写 (Shorthands): USS 必须完全展开属性，如 `border-left-width`, `border-top-left-radius`, `margin-left`, `padding-top`。
+  - **Flexbox 默认方向差异**:
+    - HTML 浏览器 `display: flex` 默认是 **`row`（水平）**；Unity UI Toolkit `VisualElement` 默认是 **`column`（垂直）**。
+    - HTML 原型中的所有容器**必须显式声明** `flex-direction: column` 或 `flex-direction: row`，保证转译后行为完全对称。
+  - **字符集与 Emoji 绝对禁令**:
+    - HTML 浏览器有系统彩色 Emoji 字库，但 Unity TextCore 字体（`MSYH_UITK.asset`）无 Emoji 字符集，会导致 `[□]` 乱码。
+    - HTML 原型和 UXML 中**严禁包含任何 Unicode Emoji**（如 📋, 👑, 🔄, 🀄, ●, ✓, ✕），必须全部使用纯中文或标准安全 ASCII 字符（如 `[等待中]`, `X`, `>`, `<=`）。
+  - **标签与控件映射**:
+    - `<div> / <section> / <header>` ➡️ `<ui:VisualElement>`
+    - `<span> / <p> / <label>` ➡️ `<ui:Label>`
+    - `<button>` ➡️ `<ui:Button>`
+    - `<input type="text">` ➡️ `<ui:TextField>`
+    - `<input type="checkbox">` ➡️ `<ui:Toggle>`
+    - 滚动容器 ➡️ `<ui:ScrollView>`
+  - **字体与排版属性**:
+    - USS 根节点统一引用 `-unity-font-definition: url('project://database/Assets/Font/MSYH_UITK.asset');`。
+    - 文本居中与对齐使用 `-unity-text-align: middle-center;`，加粗使用 `-unity-font-style: bold;`。
 
 ### Debugging
 - `GameManager` 中 `useDebugHand` 可在 Inspector 配置测试牌型

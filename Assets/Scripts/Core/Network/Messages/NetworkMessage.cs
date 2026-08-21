@@ -107,6 +107,28 @@ namespace MahjongGame.Core.Network.Messages
     public class LeaveRoomMessage { }
 
     [Serializable]
+    public class QueryRoomListMessage { }
+
+    [Serializable]
+    public class RoomSummaryMessage
+    {
+        public string roomId;
+        public string hostDisplayName;
+        public int gameMode;
+        public int alienationPreset;
+        public int currentPlayers;
+        public int maxPlayers;
+        public int state;
+        public bool isFull;
+    }
+
+    [Serializable]
+    public class RoomListMessage
+    {
+        public RoomSummaryMessage[] rooms;
+    }
+
+    [Serializable]
     public class HeartbeatMessage { }
 
     [Serializable]

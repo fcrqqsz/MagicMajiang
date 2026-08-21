@@ -72,6 +72,7 @@
 
 ### 2. UI 表现层: [Assets/UI](file:///d:/UnityPrj/SuperMajiang/Assets/UI/)
 *   **大厅 UI (MainLobby)**: 基于 UI Toolkit 开发的匹配、卡组构建（Deck Workshop）、系统设置页面。
+*   **房间列表浏览面板 (RoomListPanel)**: 独立 UIDocument 弹窗，支持多局模式与可用性过滤、构筑异化预算实时校验、房号直连加入与一键快速开房。
 *   **牌库编辑器 (DeckEditor)**: 可编辑 34 张牌库并配置 6 个天赋槽位。支持天赋详情悬浮框及品阶高亮弹窗。
 *   **通用悬浮牌面板 (FloatingTilePanel)**: 屏幕顶端淡入淡出面板，支持展示模式（如窥探牌山）及选择模式。
 *   **听牌提示面板 (WaitHintPanel)**: 在玩家选中手牌时实时反馈打出该牌后的听牌及最大番数。

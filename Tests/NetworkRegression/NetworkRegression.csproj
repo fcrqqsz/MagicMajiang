@@ -23,6 +23,7 @@
     <Compile Include="SideboardTests.cs" />
     <Compile Include="AiTalentPolicyTests.cs" />
     <Compile Include="AuthoritativePublicTileTransitionTests.cs" />
+    <Compile Include="CompendiumPresentationTests.cs" />
     <Compile Include="UnityEngineStubs.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\ActionValidator.cs" Link="ActionValidator.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\MahjongLogic.cs" Link="MahjongLogic.cs" />

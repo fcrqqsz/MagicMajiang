@@ -17,6 +17,7 @@ namespace MahjongGame.Core.Fan.Rules
     public class Fan_FourPureShiftedChows : FanRule
     {
         public override string Name => "一色四步高";
+        public override string Description => "由一种花色4副序数递增1或2的顺子组成的胡牌";
         public override int Priority => 80;
         public override string[] ExcludedRuleIds => new[] { "pure_shifted_chows", "pure_double_sequence" };
 
@@ -42,6 +43,7 @@ namespace MahjongGame.Core.Fan.Rules
     public class Fan_ThreeKongs : FanRule
     {
         public override string Name => "三杠";
+        public override string Description => "和牌中包含3副杠子";
         public override int Priority => 80;
         public override string[] ExcludedRuleIds => new[] { "two_concealed_kongs", "two_melded_kongs", "melded_kong", "concealed_kong" };
 
@@ -57,6 +59,7 @@ namespace MahjongGame.Core.Fan.Rules
     public class Fan_MixedTerminals : FanRule
     {
         public override string Name => "混幺九";
+        public override string Description => "由序数牌1、9及字牌的刻子和将牌组成的胡牌";
         public override int Priority => 80;
         public override string[] ExcludedRuleIds => new[] { "all_pungs", "terminal_honor_pung", "outside_hand" };
 
@@ -89,6 +92,7 @@ namespace MahjongGame.Core.Fan.Rules
     public class Fan_QuadrupleChow : FanRule
     {
         public override string Name => "一色四同顺";
+        public override string Description => "由一种花色4副序数相同的顺子组成的胡牌";
         public override int Priority => 85;
         public override string[] ExcludedRuleIds => new[] { "pure_triple_chow", "pure_double_sequence", "four_tiles" };
 
@@ -109,6 +113,7 @@ namespace MahjongGame.Core.Fan.Rules
     public class Fan_FourPureShiftedPungs : FanRule
     {
         public override string Name => "一色四节高";
+        public override string Description => "由一种花色4副序数递增1的刻子组成的胡牌";
         public override int Priority => 85;
         public override string[] ExcludedRuleIds => new[] { "three_pure_shifted_pungs", "all_pungs" };
 
@@ -183,6 +188,7 @@ namespace MahjongGame.Core.Fan.Rules
     public class Fan_LittleThreeDragons : FanRule
     {
         public override string Name => "小三元";
+        public override string Description => "由中、发、白2副刻子及1副雀头组成的胡牌";
         public override int Priority => 80;
         // 小三元计分后，不计箭刻、双箭刻
         public override string[] ExcludedRuleIds => new[] { "dragon_pung", "two_dragon_pungs" };
@@ -208,6 +214,7 @@ namespace MahjongGame.Core.Fan.Rules
     public class Fan_PureTerminalPung : FanRule
     {
         public override string Name => "清幺九";
+        public override string Description => "由序数牌1、9的刻子和将牌组成的胡牌";
         public override int Priority => 95;
         public override string[] ExcludedRuleIds => new[] { "all_pungs", "terminal_honor_pung", "double_pung", "no_honors", "all_honors" };
 
@@ -233,6 +240,7 @@ namespace MahjongGame.Core.Fan.Rules
     public class Fan_LittleFourWinds : FanRule
     {
         public override string Name => "小四喜";
+        public override string Description => "由风牌3副刻子及1副雀头组成的胡牌";
         public override int Priority => 95;
         public override string[] ExcludedRuleIds => new[] { "three_wind_pungs" };
 
@@ -257,6 +265,7 @@ namespace MahjongGame.Core.Fan.Rules
     public class Fan_PureDoubleReversible : FanRule
     {
         public override string Name => "一色双龙会";
+        public override string Description => "由一种花色的123、789各2副及5作雀头组成的胡牌";
         public override int Priority => 95;
         public override string[] ExcludedRuleIds => new[] { "pure_double_sequence", "full_flush", "all_chows", "no_honors" };
 
@@ -317,6 +326,7 @@ namespace MahjongGame.Core.Fan.Rules
     public class Fan_BigFourWinds : FanRule
     {
         public override string Name => "大四喜";
+        public override string Description => "由东、南、西、北4副刻子组成的胡牌";
         public override int Priority => 100;
         public override string[] ExcludedRuleIds => new[] { "seat_wind", "prevalent_wind", "all_pungs", "terminal_honor_pung" };
 
@@ -336,6 +346,7 @@ namespace MahjongGame.Core.Fan.Rules
     public class Fan_GreenFlush : FanRule
     {
         public override string Name => "绿一色";
+        public override string Description => "由23468条及发字组成的胡牌";
         public override int Priority => 100;
         public override string[] ExcludedRuleIds => new[] { "half_flush" };
 
@@ -362,6 +373,7 @@ namespace MahjongGame.Core.Fan.Rules
     public class Fan_NineGates : FanRule
     {
         public override string Name => "九莲宝灯";
+        public override string Description => "同种花色1112345678999门清听牌摸到同色任意牌胡牌";
         public override int Priority => 100;
         public override string[] ExcludedRuleIds => new[] { "full_flush", "fully_concealed", "concealed_hand", "terminal_honor_pung" };
 
@@ -398,6 +410,7 @@ namespace MahjongGame.Core.Fan.Rules
     public class Fan_FourKongs : FanRule
     {
         public override string Name => "四杠";
+        public override string Description => "和牌中包含4副杠子";
         public override int Priority => 100;
         public override string[] ExcludedRuleIds => new[] { "all_pungs", "single_wait", "two_concealed_kongs", "two_melded_kongs", "melded_kong", "concealed_kong" };
 
@@ -413,6 +426,7 @@ namespace MahjongGame.Core.Fan.Rules
     public class Fan_SevenShiftedPairs : FanRule
     {
         public override string Name => "连七对";
+        public override string Description => "由一种花色序数相连的7个对子组成的胡牌";
         public override int Priority => 100;
         public override string[] ExcludedRuleIds => new[] { "seven_pairs", "full_flush", "fully_concealed", "single_wait", "concealed_hand" };
 
@@ -465,6 +479,7 @@ namespace MahjongGame.Core.Fan.Rules
     public class Fan_ThirteenOrphans : FanRule
     {
         public override string Name => "十三幺";
+        public override string Description => "由19万、19条、19饼及字牌13种幺九牌组成的特殊胡牌";
         public override int Priority => 100;
         public override string[] ExcludedRuleIds => new[] { "all_types", "fully_concealed", "concealed_hand", "single_wait", "outside_hand" };
 

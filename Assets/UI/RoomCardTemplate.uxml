@@ -1,0 +1,31 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" editor-extension-mode="False">
+    <ui:VisualElement name="Root" class="room-card">
+        <ui:VisualElement class="card-left-section">
+            <ui:Label name="RoomIdBadge" text="R0001" class="room-id-badge" />
+            <ui:VisualElement class="room-host-info">
+                <ui:Label name="HostName" text="房主昵称" class="room-host-name" />
+                <ui:Label name="StateTag" text="等待加入中" class="room-state-tag waiting" />
+            </ui:VisualElement>
+        </ui:VisualElement>
+
+        <ui:VisualElement class="card-middle-section">
+            <ui:VisualElement class="meta-pill">
+                <ui:Label text="对局模式" class="meta-label" />
+                <ui:Label name="ModeValue" text="东风局" class="meta-value" />
+            </ui:VisualElement>
+            <ui:VisualElement class="meta-pill">
+                <ui:Label text="异化档位" class="meta-label" />
+                <ui:Label name="PresetValue" text="标准 80" class="meta-preset-badge preset-standard" />
+            </ui:VisualElement>
+            <ui:VisualElement class="meta-pill">
+                <ui:Label text="席位" class="meta-label" />
+                <ui:Label name="SeatsCount" text="1/4" class="meta-value" />
+            </ui:VisualElement>
+            <ui:Label name="CompatibilityTag" text="构筑适配" class="compatibility-tag ok" />
+        </ui:VisualElement>
+
+        <ui:VisualElement class="card-right-section">
+            <ui:Button name="BtnJoin" text="加入房间" class="btn-join" />
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>

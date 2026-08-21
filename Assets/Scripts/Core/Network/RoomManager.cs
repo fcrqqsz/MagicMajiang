@@ -83,6 +83,7 @@ namespace MahjongGame.Core.Network
                     case "Heartbeat": Send(endpoint, "HeartbeatAck", new HeartbeatAckMessage()); break;
                     case "Reconnect": HandleReconnect(connectionId, endpoint, MessageSerializer.DeserializePayload<ReconnectMessage>(envelope.data)); break;
                     case "Resync": HandleResync(connectionId, endpoint, MessageSerializer.DeserializePayload<ResyncMessage>(envelope.data)); break;
+                    case "QueryRoomList": HandleQueryRoomList(connectionId, endpoint); break;
                     case "CreateRoom": HandleCreateRoom(connectionId, endpoint, MessageSerializer.DeserializePayload<CreateRoomMessage>(envelope.data)); break;
                     case "JoinRoom": HandleJoinRoom(connectionId, endpoint, MessageSerializer.DeserializePayload<JoinRoomMessage>(envelope.data)); break;
                     case "Ready": HandleReady(connectionId, endpoint, MessageSerializer.DeserializePayload<ReadyMessage>(envelope.data)); break;
@@ -144,6 +145,20 @@ namespace MahjongGame.Core.Network
             }
 
             ExpireOfflineSeats(utcNow);
+        }
+
+        private void HandleQueryRoomList(string connectionId, GameEndpoint endpoint)
+        {
+            RemoveClosedRooms();
+            var summaries = _rooms.Values
+                .Where(r => r.State != RoomState.Closed)
+                .Select(r => r.CreateSummary())
+                .ToArray();
+
+            Send(endpoint, "RoomList", new RoomListMessage
+            {
+                rooms = summaries
+            });
         }
 
         private void HandleCreateRoom(string connectionId, GameEndpoint endpoint, CreateRoomMessage request)

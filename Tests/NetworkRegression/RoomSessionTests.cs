@@ -20,6 +20,7 @@ internal static class RoomSessionTests
         TestRoomReadyAndDeparture(runner);
         TestResponseAndTurnPolicies(runner);
         TestClientRoomAndScoreProjection(runner);
+        TestQueryRoomList(runner);
     }
 
     private static void TestRoomRevalidatesClonedLoadout(RegressionRunner runner)
@@ -631,6 +632,54 @@ internal static class RoomSessionTests
         runner.Check(LoginUsernamePolicy.Normalize("  Test_Player_02  ") == "Test_Player_02"
             && LoginUsernamePolicy.Normalize("   ") == "Player",
             "Lobby display names must derive from the login username.");
+    }
+
+    private static void TestQueryRoomList(RegressionRunner runner)
+    {
+        var connections = new ConnectionRegistry();
+        using var manager = new RoomManager(4, true, connections, messageCacheSize: 8);
+        var client = new GameEndpoint();
+        client.Connect("client-conn", 1);
+        client.Receive("client-conn", 1, MessageSerializer.Serialize("Hello", 0,
+            new HelloMessage { protocolVersion = NetworkProtocol.Version, username = "ListBrowser" }));
+
+        // Query when no rooms exist
+        client.Receive("client-conn", 1, MessageSerializer.Serialize("QueryRoomList", 0, new QueryRoomListMessage()));
+        var initialListEnvelope = client.SentMessages.Select(MessageSerializer.DeserializeEnvelope)
+            .Single(e => e.type == "RoomList");
+        var initialList = MessageSerializer.DeserializePayload<RoomListMessage>(initialListEnvelope.data);
+        runner.Check(initialList != null && initialList.rooms != null && initialList.rooms.Length == 0,
+            "QueryRoomList must return empty array when no rooms exist.");
+
+        // Host creates a room
+        var host = new GameEndpoint();
+        host.Connect("host-conn", 2);
+        host.Receive("host-conn", 2, MessageSerializer.Serialize("Hello", 0,
+            new HelloMessage { protocolVersion = NetworkProtocol.Version, username = "TestHost" }));
+
+        var createRequest = new CreateRoomMessage
+        {
+            gameMode = (int)GameMode.EastOnly,
+            alienationPreset = (int)AlienationPreset.Standard,
+            loadout = PlayerLoadoutCodec.CreateMessage(
+                DeckConfig.CreateStandard(), new TalentSlotConfig(), AlienationPreset.Standard)
+        };
+        host.Receive("host-conn", 2, MessageSerializer.Serialize("CreateRoom", 0, createRequest));
+
+        // Query again
+        client.Receive("client-conn", 1, MessageSerializer.Serialize("QueryRoomList", 0, new QueryRoomListMessage()));
+        var updatedListEnvelope = client.SentMessages.Select(MessageSerializer.DeserializeEnvelope)
+            .Where(e => e.type == "RoomList").Last();
+        var updatedList = MessageSerializer.DeserializePayload<RoomListMessage>(updatedListEnvelope.data);
+
+        runner.Check(updatedList != null && updatedList.rooms.Length == 1
+            && updatedList.rooms[0].hostDisplayName == "TestHost"
+            && updatedList.rooms[0].gameMode == (int)GameMode.EastOnly
+            && updatedList.rooms[0].alienationPreset == (int)AlienationPreset.Standard
+            && updatedList.rooms[0].currentPlayers == 1
+            && updatedList.rooms[0].maxPlayers == 4
+            && !updatedList.rooms[0].isFull,
+            "QueryRoomList must return room summaries with correct host, mode, preset, and player counts.");
     }
 }
 
