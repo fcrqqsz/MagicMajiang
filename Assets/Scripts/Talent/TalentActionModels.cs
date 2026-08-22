@@ -126,11 +126,18 @@ namespace MahjongGame.Talents
         public bool Accepted { get; private set; }
         public bool EffectApplied { get; private set; }
         public string ErrorCode { get; private set; }
+        public string PublicStateEventType { get; private set; }
+        public int PublicStateValue { get; private set; }
 
-        public static TalentActionResult Success(bool effectApplied) => new TalentActionResult
+        public static TalentActionResult Success(
+            bool effectApplied,
+            string publicStateEventType = null,
+            int publicStateValue = 0) => new TalentActionResult
         {
             Accepted = true,
-            EffectApplied = effectApplied
+            EffectApplied = effectApplied,
+            PublicStateEventType = publicStateEventType,
+            PublicStateValue = publicStateValue
         };
 
         public static TalentActionResult Reject(string code) => new TalentActionResult

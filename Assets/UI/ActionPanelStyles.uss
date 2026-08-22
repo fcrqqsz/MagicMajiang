@@ -48,6 +48,23 @@
     opacity: 0.55;
 }
 
+.talent-choice-prompt {
+    color: #FFF4CF;
+    font-size: 22px;
+    -unity-text-align: middle-center;
+    margin-right: 10px;
+}
+
+.talent-choice-btn {
+    min-width: 92px;
+}
+
+.talent-choice-cancel-btn {
+    min-width: 92px;
+    border-color: rgba(205, 205, 215, 0.85);
+    background-color: rgba(58, 58, 70, 0.96);
+}
+
 /* 基础按钮样式 */
 .action-btn {
     width: 100px;

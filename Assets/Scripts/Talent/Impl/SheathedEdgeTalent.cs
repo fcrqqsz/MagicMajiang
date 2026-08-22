@@ -37,7 +37,7 @@ namespace MahjongGame.Talents.Impl
                 return;
             }
 
-            output.Add(new TalentActionOption { TalentId = Id });
+            output.Add(new TalentActionOption { TalentId = Id, AiPriority = 200 });
         }
 
         public override TalentActionResult TryActivate(

@@ -34,6 +34,7 @@ namespace MahjongGame.Talents.Impl
                 output.Add(new TalentActionOption
                 {
                     TalentId = Id,
+                    AiPriority = 100,
                     TargetSeatIndex = target.OwnerSeatIndex,
                     TargetTalentId = target.TalentId,
                     TargetPublicCharge = target.CurrentCharge

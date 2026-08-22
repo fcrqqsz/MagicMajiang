@@ -171,6 +171,13 @@ namespace MahjongGame.UI
         {
             if (_talentActionContainer == null) return;
             _talentActionContainer.Clear();
+            if (!string.IsNullOrWhiteSpace(_talentState.ChoiceSelection))
+            {
+                RenderTalentChoice();
+                _talentActionContainer.style.display = DisplayStyle.Flex;
+                return;
+            }
+
             foreach (IGrouping<string, TalentActionPanelOption> group in
                      _talentState.Options.GroupBy(option => option.TalentId, StringComparer.Ordinal))
             {
@@ -188,6 +195,15 @@ namespace MahjongGame.UI
                 button.clicked += () =>
                 {
                     if (!_talentState.IsOpen || isPending) return;
+                    if (selected.Choice != null
+                        && string.IsNullOrWhiteSpace(selected.SelectedChoiceId))
+                    {
+                        _talentState = TalentActionPanelPolicy.BeginChoiceSelection(
+                            _talentState,
+                            selected.TalentId);
+                        RenderTalentActions();
+                        return;
+                    }
                     _talentSelectedCallback?.Invoke(TalentActionPanelPolicy.CloneOption(selected));
                 };
                 _talentActionContainer.Add(button);
@@ -195,6 +211,53 @@ namespace MahjongGame.UI
             _talentActionContainer.style.display = _talentState.IsOpen
                 ? DisplayStyle.Flex
                 : DisplayStyle.None;
+        }
+
+        private void RenderTalentChoice()
+        {
+            TalentActionPanelOption presentation = _talentState.Options.FirstOrDefault(option =>
+                string.Equals(
+                    option.TalentId,
+                    _talentState.ChoiceSelection,
+                    StringComparison.Ordinal)
+                && option.Option.Choice != null
+                && !option.IsPending);
+            TalentChoiceSet choice = presentation?.Option?.Choice;
+            if (choice == null)
+            {
+                _talentState = TalentActionPanelPolicy.CancelChoiceSelection(_talentState);
+                return;
+            }
+
+            var prompt = new Label(choice.PromptKey);
+            prompt.AddToClassList("talent-choice-prompt");
+            _talentActionContainer.Add(prompt);
+            foreach (TalentChoiceOption choiceOption in choice.Options)
+            {
+                string choiceId = choiceOption.ChoiceId;
+                var button = new Button { text = choiceOption.DisplayKey };
+                button.AddToClassList("talent-action-btn");
+                button.AddToClassList("talent-choice-btn");
+                button.clicked += () =>
+                {
+                    TalentActionOption selected = TalentActionPanelPolicy.SelectChoice(
+                        presentation.Option,
+                        choiceId);
+                    if (selected != null)
+                        _talentSelectedCallback?.Invoke(selected);
+                };
+                _talentActionContainer.Add(button);
+            }
+
+            var cancel = new Button { text = "取消" };
+            cancel.AddToClassList("talent-action-btn");
+            cancel.AddToClassList("talent-choice-cancel-btn");
+            cancel.clicked += () =>
+            {
+                _talentState = TalentActionPanelPolicy.CancelChoiceSelection(_talentState);
+                RenderTalentActions();
+            };
+            _talentActionContainer.Add(cancel);
         }
 
         private BaseActionAvailability ReadBaseActionAvailability() => new BaseActionAvailability

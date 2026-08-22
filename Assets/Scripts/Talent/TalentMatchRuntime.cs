@@ -464,6 +464,15 @@ namespace MahjongGame.Talents
                     EventType = "active_talent_applied",
                     Visibility = TalentEventVisibility.Public
                 });
+                if (!string.IsNullOrWhiteSpace(result.PublicStateEventType))
+                {
+                    EmitEvent(entry, new TalentRuntimeEvent
+                    {
+                        EventType = result.PublicStateEventType,
+                        Visibility = TalentEventVisibility.Public,
+                        Value = result.PublicStateValue
+                    });
+                }
             }
             return result;
         }

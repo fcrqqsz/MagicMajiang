@@ -223,6 +223,41 @@ internal static class TalentPresentationTests
             && TalentActionPanelPolicy.GetRejectionCopy("future_error") == "天赋动作未生效",
             "ordinary talent rejection codes map to short fixed local presentation text");
 
+        var suitChoice = new TalentActionOption
+        {
+            TalentId = "generic_suit_choice",
+            Choice = new TalentChoiceSet(
+                TalentChoiceKind.Suit,
+                "选择花色",
+                "man",
+                new[]
+                {
+                    new TalentChoiceOption("man", "万", (int)Suit.Man),
+                    new TalentChoiceOption("pin", "饼", (int)Suit.Pin),
+                    new TalentChoiceOption("sou", "条", (int)Suit.Sou)
+                })
+        };
+        TalentActionPanelState choiceState = TalentActionPanelPolicy.Open(
+            73,
+            new BaseActionAvailability { CanDiscard = true },
+            new[] { suitChoice });
+        TalentActionPanelState choosing = TalentActionPanelPolicy.BeginChoiceSelection(
+            choiceState,
+            "generic_suit_choice");
+        TalentActionOption chosenSuit = TalentActionPanelPolicy.SelectChoice(
+            choosing.Options.Single().Option,
+            "pin");
+        TalentActionPanelState choiceCancelled = TalentActionPanelPolicy.CancelChoiceSelection(choosing);
+        runner.Check(choosing.ChoiceSelection == "generic_suit_choice"
+                     && choosing.BaseActions.CanDiscard
+                     && chosenSuit.SelectedChoiceId == "pin"
+                     && suitChoice.SelectedChoiceId == null,
+            "generic choice selection preserves base actions and returns a copied selected option");
+        runner.Check(choiceCancelled.ChoiceSelection == null
+                     && choiceCancelled.IsOpen
+                     && choiceCancelled.Options.All(option => !option.IsPending),
+            "cancelling a generic choice returns to the authoritative talent action list");
+
         var targetSnapshot = new RoomGameSnapshot
         {
             seats = new[]

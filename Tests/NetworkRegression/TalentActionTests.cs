@@ -32,7 +32,135 @@ internal static class TalentActionTests
         SheathedEdgeArmsOnlyOnTheFirstMainDecision(runner);
         SheathedEdgeReadOnlyResolutionConsumesOnlyAfterAcceptedWin(runner);
         SheathedEdgeConsumedChargeDoesNotCarryAcrossRounds(runner);
+        SuitConvergenceChoosesAndTransformsExactlyTwoOffSuitDraws(runner);
         RoomManagerRoutesTalentActionsWithExactlyOneSeatResolution(runner);
+    }
+
+    private static void SuitConvergenceChoosesAndTransformsExactlyTwoOffSuitDraws(
+        RegressionRunner runner)
+    {
+        var config = new TalentSlotConfig();
+        config.SlotTalentIds[3] = "suit_convergence";
+        var runtime = new TalentMatchRuntime(
+            new Dictionary<int, TalentSlotConfig> { [0] = config },
+            TalentRegistry.Instance);
+        var session = new GameSession(GameMode.EastOnly);
+        var gameState = new ServerGameState(4);
+        gameState.InitHand(0, new List<TileData>
+        {
+            new TileData(Suit.Man, 1, 0) { ID = "default-man" },
+            new TileData(Suit.Pin, 2, 0) { ID = "default-pin-1" },
+            new TileData(Suit.Pin, 3, 0) { ID = "default-pin-2" },
+            new TileData(Suit.Sou, 4, 0) { ID = "default-sou-1" },
+            new TileData(Suit.Sou, 5, 0) { ID = "default-sou-2" },
+            new TileData(Suit.Wind, 1, 0) { ID = "default-east" }
+        });
+        for (int seatIndex = 1; seatIndex < 4; seatIndex++)
+            gameState.InitHand(seatIndex, new List<TileData>());
+        runtime.BeginMatch(session);
+        runtime.BeginRound(new TalentRoundContext(session));
+        runtime.ApplyWallBuilding(new TalentWallContext(session, new List<TileData>()));
+        runtime.CompleteInitialHands(new TalentInitialHandsContext(session, gameState));
+        runtime.ResolvePostShuffle(new TalentPostShuffleContext(session, new List<TileData>()));
+
+        const long DecisionId = 9201;
+        runtime.OpenMainDecision(0, DecisionId);
+        TalentActionOption option = runtime.GetAvailableActions(
+            0,
+            new TalentActionQueryContext(
+                session, 0, TalentActivationWindow.MainTurn, DecisionId)).Single();
+        TalentActionOption aiChoice = MahjongGame.Core.Agents.AiTalentDecisionPolicy
+            .ChooseActiveAction(new[] { option });
+        runner.Check(option.Choice.Kind == TalentChoiceKind.Suit
+                     && option.Choice.DefaultChoiceId == "pin"
+                     && option.Choice.Options.Select(choice => choice.ChoiceId)
+                         .SequenceEqual(new[] { "man", "pin", "sou" })
+                     && option.AiPriority == 300
+                     && aiChoice.SelectedChoiceId == "pin",
+            "归色 offers a stable suit choice and defaults to the most common starting suit with Man-Pin-Sou tie order");
+
+        TalentActionResult activated = runtime.TryActivate(
+            0,
+            new TalentActionRequest
+            {
+                TalentId = "suit_convergence",
+                DecisionId = DecisionId,
+                ChoiceId = "sou"
+            },
+            new TalentActivationContext(
+                session, 0, TalentActivationWindow.MainTurn, DecisionId));
+        TalentSnapshotEntry selectedSnapshot = runtime.GetSnapshotEntries()
+            .Single(entry => entry.OwnerSeatIndex == 0 && entry.TalentId == "suit_convergence");
+
+        TileData targetSuit = runtime.ApplyDraw(
+            new TalentDrawContext(session, 0),
+            new TileData(Suit.Sou, 7, 0) { ID = "target-suit" });
+        TileData honor = runtime.ApplyDraw(
+            new TalentDrawContext(session, 0),
+            new TileData(Suit.Dragon, 2, 0) { ID = "honor" });
+        TileData first = runtime.ApplyDraw(
+            new TalentDrawContext(session, 0),
+            new TileData(Suit.Man, 4, 0) { ID = "first-off-suit" });
+        TileData second = runtime.ApplyDraw(
+            new TalentDrawContext(session, 0),
+            new TileData(Suit.Pin, 8, 0) { ID = "second-off-suit" });
+        TileData exhausted = runtime.ApplyDraw(
+            new TalentDrawContext(session, 0),
+            new TileData(Suit.Man, 5, 0) { ID = "exhausted" });
+        TalentSnapshotEntry exhaustedSnapshot = runtime.GetSnapshotEntries()
+            .Single(entry => entry.OwnerSeatIndex == 0 && entry.TalentId == "suit_convergence");
+
+        runner.Check(activated.Accepted
+                     && selectedSnapshot.IsRevealed
+                     && selectedSnapshot.LastPublicEventType == "suit_convergence_sou"
+                     && selectedSnapshot.LastPublicValue == 2,
+            "归色 acceptance publicly records its target suit and two remaining transformations");
+        runner.Check(targetSuit.TileSuit == Suit.Sou
+                     && !targetSuit.IsModified
+                     && honor.TileSuit == Suit.Dragon
+                     && !honor.IsModified
+                     && first.TileSuit == Suit.Sou
+                     && first.Value == 4
+                     && first.IsModified
+                     && first.SpecialEffectID == "suit_convergence"
+                     && second.TileSuit == Suit.Sou
+                     && second.Value == 8
+                     && second.IsModified,
+            "归色 ignores target-suit draws and honors, then preserves values while changing the next two off-suit draws");
+        runner.Check(exhausted.TileSuit == Suit.Man
+                     && !exhausted.IsModified
+                     && exhaustedSnapshot.LastPublicEventType == "suit_convergence_sou"
+                     && exhaustedSnapshot.LastPublicValue == 0,
+            "归色 stops after two transformations and publicly reaches zero remaining");
+
+        runtime.EndRound(new TalentRoundOutcome { WinnerSeatIndex = 1 }, session);
+        BeginReadyRound(runtime, session);
+        runtime.OpenMainDecision(0, DecisionId + 1);
+        runner.Check(runtime.GetAvailableActions(
+                0,
+                new TalentActionQueryContext(
+                    session, 0, TalentActivationWindow.MainTurn, DecisionId + 1)).Count == 1,
+            "归色 clears its choice and transformation allowance at the next small round");
+
+        var reserveConfig = new TalentSlotConfig();
+        reserveConfig.ReserveTalentIds[1] = "suit_convergence";
+        var reserveRuntime = new TalentMatchRuntime(
+            new Dictionary<int, TalentSlotConfig> { [0] = reserveConfig },
+            TalentRegistry.Instance);
+        var reserveSession = new GameSession(GameMode.Single);
+        reserveRuntime.BeginMatch(reserveSession);
+        BeginReadyRound(reserveRuntime, reserveSession);
+        reserveRuntime.OpenMainDecision(0, 9301);
+        TileData reserveDraw = reserveRuntime.ApplyDraw(
+            new TalentDrawContext(reserveSession, 0),
+            new TileData(Suit.Man, 3, 0) { ID = "reserve-draw" });
+        runner.Check(reserveRuntime.GetAvailableActions(
+                         0,
+                         new TalentActionQueryContext(
+                             reserveSession, 0, TalentActivationWindow.MainTurn, 9301)).Count == 0
+                     && reserveDraw.TileSuit == Suit.Man
+                     && !reserveDraw.IsModified,
+            "an inactive reserve copy of 归色 neither offers a choice nor transforms draws");
     }
 
     private static void RoomManagerRoutesTalentActionsWithExactlyOneSeatResolution(RegressionRunner runner)
@@ -570,6 +698,7 @@ internal static class TalentActionTests
 
         runner.Check(options.Count == 1
                      && options[0].TalentId == "interception"
+                     && options[0].AiPriority == 100
                      && options[0].TargetSeatIndex == 0
                      && options[0].TargetTalentId == "sheathed_edge",
             "interception enumerates only the active revealed opposing charge target");
@@ -993,15 +1122,15 @@ internal static class TalentActionTests
 
         var firstContext = new TalentActionQueryContext(
             session, 0, TalentActivationWindow.MainTurn, decisionId: 91);
-        int availableOnFirstDecision = runtime.GetAvailableActions(0, firstContext).Count;
+        IReadOnlyList<TalentActionOption> firstOptions = runtime.GetAvailableActions(0, firstContext);
         TalentActionResult armed = runtime.TryActivate(
             0,
             new TalentActionRequest { TalentId = "sheathed_edge", DecisionId = 91 },
             new TalentActivationContext(
                 session, 0, TalentActivationWindow.MainTurn, decisionId: 91));
 
-        runner.Check(availableOnFirstDecision == 1,
-            "three layers can arm on the first main decision of the round");
+        runner.Check(firstOptions.Count == 1 && firstOptions[0].AiPriority == 200,
+            "three layers advertise a rule-authored finisher priority on the first main decision");
         runner.Check(armed.Accepted
                      && runtime.GetPublicCounter(0, "sheathed_edge", "edge") == 0,
             "arming spends all three layers immediately");

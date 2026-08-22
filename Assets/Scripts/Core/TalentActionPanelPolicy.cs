@@ -32,6 +32,7 @@ namespace MahjongGame.Core
         public IReadOnlyList<TalentActionPanelOption> Options { get; set; }
             = Array.Empty<TalentActionPanelOption>();
         public string TargetSelection { get; set; }
+        public string ChoiceSelection { get; set; }
     }
 
     public sealed class TalentActionTargetPresentation
@@ -80,6 +81,30 @@ namespace MahjongGame.Core
                     option.IsPending = true;
             }
             next.TargetSelection = null;
+            next.ChoiceSelection = null;
+            return next;
+        }
+
+        public static TalentActionPanelState BeginChoiceSelection(
+            TalentActionPanelState state,
+            string talentId)
+        {
+            TalentActionPanelState next = CloneState(state);
+            if (next.IsOpen && next.Options.Any(option =>
+                    string.Equals(option.Option.TalentId, talentId, StringComparison.Ordinal)
+                    && option.Option.Choice != null
+                    && !option.IsPending))
+            {
+                next.TargetSelection = null;
+                next.ChoiceSelection = talentId;
+            }
+            return next;
+        }
+
+        public static TalentActionPanelState CancelChoiceSelection(TalentActionPanelState state)
+        {
+            TalentActionPanelState next = CloneState(state);
+            next.ChoiceSelection = null;
             return next;
         }
 
@@ -93,6 +118,7 @@ namespace MahjongGame.Core
                     && !option.IsPending))
             {
                 next.TargetSelection = talentId;
+                next.ChoiceSelection = null;
             }
             return next;
         }
@@ -212,7 +238,8 @@ namespace MahjongGame.Core
                         IsPending = option.IsPending
                     })
                     .ToArray(),
-                TargetSelection = state.TargetSelection
+                TargetSelection = state.TargetSelection,
+                ChoiceSelection = state.ChoiceSelection
             };
         }
 

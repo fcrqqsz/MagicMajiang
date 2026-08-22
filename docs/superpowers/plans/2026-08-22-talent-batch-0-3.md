@@ -140,31 +140,31 @@ Commit `feat: add transactional starting-hand talents`.
 - Produces: generic policy state for beginning/canceling a choice and a rule-authored suit choice for `suit_convergence`.
 - Consumes: existing `TalentChoiceSet`, `TalentActionPanelPolicy.SelectChoice`, authoritative action transactions, `OnDraw`, runtime public events.
 
-- [ ] **Step 1: Write generic choice-policy RED tests**
+- [x] **Step 1: Write generic choice-policy RED tests**
 
 Prove opening a choice preserves base actions, valid selection returns a cloned option with `SelectedChoiceId`, cancel restores the action list, rejection clears pending choice state, and recovery clears stale choice state.
 
-- [ ] **Step 2: Verify RED and implement the pure policy**
+- [x] **Step 2: Verify RED and implement the pure policy**
 
 Add generic choice-selection state without inspecting talent ids or choice display text.
 
-- [ ] **Step 3: Implement the ActionPanel renderer**
+- [x] **Step 3: Implement the ActionPanel renderer**
 
 When a selected option has an unresolved `Choice`, render its prompt/options as dynamic buttons plus cancel inside the existing talent container. Submit only after `SelectChoice` succeeds. Route clear, timeout, rejection, recovery, and destruction through existing cleanup.
 
-- [ ] **Step 4: Write 归色 RED tests**
+- [x] **Step 4: Write 归色 RED tests**
 
 Prove the first main decision offers 万/饼/条 with a default based on starting-hand suit counts and Man/Pin/Sou tie order. After acceptance, the next two suited draws outside the target suit preserve value and change suit; target suit and honors do not consume; further draws stay unchanged; state resets next round; inactive reserve neither chooses nor transforms.
 
-- [ ] **Step 5: Add public-state and recovery RED tests**
+- [x] **Step 5: Add public-state and recovery RED tests**
 
 Prove selection reveals target suit with remaining 2, each actual transform publishes the remaining count, snapshots recover target/remaining without private leakage, and an inactive revealed history cannot be activated.
 
-- [ ] **Step 6: Implement 归色 and verify GREEN**
+- [x] **Step 6: Implement 归色 and verify GREEN**
 
 Register `suit_convergence` as Small, cost 8, `ActionValidation + OnDraw`, round state, main-turn activation, flexible sideboard. Set a high expiring-action `AiPriority`; store target suit and remaining count in round state; emit stable per-suit public event types with remaining as the public value.
 
-- [ ] **Step 7: Run focused tests and commit**
+- [x] **Step 7: Run focused tests and commit**
 
 Commit `feat: add generic suit choice and convergence talent`.
 
