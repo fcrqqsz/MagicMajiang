@@ -127,6 +127,9 @@ WebSocketClient
     *   `SuitConvergenceTalent.cs`: 归色——首个主回合选择万/饼/条，之后前两张非目标花色数牌摸牌转为目标花色。
     *   `ChromaticCompositionTalent.cs`: 异彩成章——合法胡牌含至少 4 张异化实体牌时，每张 +3 番，最多计算 8 张。
     *   `SheathedEdgeTalent.cs`: 藏锋——至少 1 层可发动，消耗全部锋，本局下次合法胡牌每层 +12 番。
+    *   `GatherMomentumTalent.cs`: 乘势——吃碰杠积攒跨局公开势，主回合每局一次消耗全部势，本局合法胡牌每层 +8 post-legal 番。
+    *   `FadingColorTalent.cs`: 褪色——每局首次打出异化牌获得公开墨，主回合每回合一次消耗 1 墨削减对手公开充能。
+    *   `RedirectForceTalent.cs`: 化劲——每局首次阻挡公开充能削减，并将该次控制转化为本局合法胡牌 +4 post-legal 番。
 
 #### 天赋定义规范
 

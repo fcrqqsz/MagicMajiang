@@ -95,6 +95,11 @@
     *   [x] ActionPanel 支持通用类型化选择；归色在首个主回合选择花色，并把之后前两张非目标花色数牌转为目标花色。
     *   [x] 异彩成章按唯一实体牌 ID 统计合法胡牌中的异化牌，4 张起每张提供 +3 post-legal 番，最多计算 8 张，不降低起胡门槛。
     *   [x] 未新增遥测布局；纯 C# 聚焦回归、完整 `NetworkRegression` 与真实 `GameServerTelemetryRegression` 通过。
+*   [x] **第二批新玩法天赋 4–6 (乘势、褪色、化劲) (2026-08-22)**:
+    *   [x] **乘势 (`gather_momentum`)**: 大品阶、成本 26、跨小局保留。每次吃碰杠动作提交积攒 1 层【势】（最多 3 层）；摸牌出牌阶段可主动消耗全部【势】强化（每小局限 1 次），合法胡牌每消耗 1 层结算额外 +8 post-legal 番。完整实现 `IPublicChargeTalent`。
+    *   [x] **褪色 (`fading_color`)**: 小品阶、成本 8、跨小局保留。每小局本家首次提交打出异化牌积攒 1 点【墨】（最多 2 点，墨满时仍消耗本局充能机会）；摸牌出牌阶段可主动消耗 1 点【墨】削减指定对手 1 点公开充能并准确同步剩余墨点。实现 `IPublicChargeTalent` 与 `IPublicChargeControlTalent`。
+    *   [x] **化劲 (`redirect_force`)**: 中品阶、成本 12、小局重置。优先级 10（高于定心 0），每小局首次受到削减公开充能效果时优先触发化劲格挡并强化本小局胡牌 +4 post-legal 番；实现 `IPublicChargeDefenseTalent`。
+    *   [x] 纯 C# TDD 完整覆盖充能边界、墨满机会消耗、控制削减、多层防御优先级链条、起胡门槛保持与跨小局备牌恢复。完整 `NetworkRegression` 与 `GameServerTelemetryRegression` 通过。
 
 ## 联机框架
 
@@ -128,3 +133,8 @@
     *   [x] `RoomGameSnapshot` / `ClientGameState` 恢复本家天赋、公开对手信息、可用主动动作、备牌锁定和最终番明细，且不串席泄露私有状态。
     *   [x] `SimpleAIClient` 使用合法 6+3 构筑，按公开权威信息使用主动天赋并完成中场备牌，不读取隐藏对手状态。
     *   [x] 联机、天赋、备牌、算番、重连和真实 `GameServer` 纯 C# 回归通过；Unity UI、输入、字体、音效及卡组编辑器人工验收通过。
+*   [x] **新玩法天赋 4–6：乘势、褪色、化劲 (2026-08-22)**:
+    *   [x] 乘势 (`gather_momentum`): 跨小局蓄力（上限 3），吃碰明暗加杠入账时充能（被抢胡加杠不充能），主动强化当局合法胡牌每层 +8 番；实现 `IPublicChargeTalent`。
+    *   [x] 褪色 (`fading_color`): 保持 `HiddenUntilPublicEffect` 隐蔽策略；跨小局积墨（上限 2），每局首次提交打出异化牌（含超时自动出牌）充能，主动消耗 1 墨定向削减对手公开充能，被防御阻挡不退款；实现 `IPublicChargeTalent` 与 `IPublicChargeControlTalent`。
+    *   [x] 化劲 (`redirect_force`): 小局重置；以 Priority 10 优先于定心 (0) 拦截公开充能削减，格挡后强化当局合法胡牌 +4 番；实现 `IPublicChargeDefenseTalent`。
+    *   [x] 网络快照反序列化与 `ClientGameState` 投影全面验证本家/他家隐私隔离与断线恢复；`NetworkRegression` 与 `GameServerTelemetryRegression` 自动化套件 100% 通过。
