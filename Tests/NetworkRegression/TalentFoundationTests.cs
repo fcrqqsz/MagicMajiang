@@ -29,6 +29,7 @@ internal static class TalentFoundationTests
         RuntimeEventsRespectVisibilityWithoutDestructiveReads(runner);
         PostShufflePeekIsPrivateAndUsesShuffledOrder(runner);
         GameStartPeekCapturesNextFourPhysicalTilesAfterInitialDeal(runner);
+        TravelLightTransformsOnlyStartingSuitedEdges(runner);
         DrawAndDiscardPipelinesKeepStablePriorityOrder(runner);
         ScoringOptionsAreFreshForEveryEvaluation(runner);
         ScoringEvaluationCannotMutateAuthoritativeStateOrEmit(runner);
@@ -531,6 +532,7 @@ internal static class TalentFoundationTests
                 ID = $"physical-{index:D2}"
             }));
         var dealtTiles = new List<TileData>();
+        var setupOrder = new List<string>();
 
         GameRoundSetupSequence.BuildShuffleDealAndCapturePeek(
             buildWall: () => wall.BuildWall(new List<DeckConfig>()),
@@ -539,20 +541,30 @@ internal static class TalentFoundationTests
             shuffleWall: wall.ShuffleWall,
             dealStartingHands: () =>
             {
+                setupOrder.Add("deal");
                 for (int index = 0; index < 52; index++)
                     dealtTiles.Add(wall.DrawTile());
             },
-            completeInitialHands: () => CompleteEmptyInitialHands(runtime, session),
-            capturePeek: () => runtime.ResolvePostShuffle(
-                new TalentPostShuffleContext(session, wall.GetWallTiles())));
+            completeInitialHands: () =>
+            {
+                setupOrder.Add("complete");
+                CompleteEmptyInitialHands(runtime, session);
+            },
+            publishStartingHands: () => setupOrder.Add("publish"),
+            capturePeek: () =>
+            {
+                setupOrder.Add("peek");
+                runtime.ResolvePostShuffle(new TalentPostShuffleContext(session, wall.GetWallTiles()));
+            });
 
         string[] peekIds = runtime.GetPrivatePeekTiles(0).Select(tile => tile.ID).ToArray();
         runner.Check(peekIds.SequenceEqual(new[]
             {
                 "physical-52", "physical-53", "physical-54", "physical-55"
             })
+            && setupOrder.SequenceEqual(new[] { "deal", "complete", "publish", "peek" })
             && !peekIds.Intersect(dealtTiles.Select(tile => tile.ID)).Any(),
-            "GameServer setup captures exactly the next four undealt physical tiles for Peek");
+            "GameServer setup publishes transaction-complete hands before capturing the next four physical Peek tiles");
     }
 
     private static void DrawAndDiscardPipelinesKeepStablePriorityOrder(RegressionRunner runner)
@@ -904,6 +916,73 @@ internal static class TalentFoundationTests
         runtime.ApplyWallBuilding(new TalentWallContext(session, roundWall));
         CompleteEmptyInitialHands(runtime, session);
         runtime.ResolvePostShuffle(new TalentPostShuffleContext(session, roundWall));
+    }
+
+    private static void TravelLightTransformsOnlyStartingSuitedEdges(RegressionRunner runner)
+    {
+        var config = new TalentSlotConfig();
+        config.SlotTalentIds[1] = "travel_light";
+        var runtime = CreateRuntimeFromConfig(config);
+        var session = new GameSession(GameMode.EastOnly);
+        var gameState = new ServerGameState(4);
+        gameState.InitHand(0, new List<TileData>
+        {
+            new TileData(Suit.Man, 1, 0) { ID = "man-1" },
+            new TileData(Suit.Pin, 9, 0) { ID = "pin-9" },
+            new TileData(Suit.Sou, 5, 0) { ID = "sou-5" },
+            new TileData(Suit.Wind, 1, 0) { ID = "east" },
+            new TileData(Suit.Dragon, 3, 0) { ID = "white" }
+        });
+        for (int seatIndex = 1; seatIndex < 4; seatIndex++)
+            gameState.InitHand(seatIndex, new List<TileData>());
+
+        runtime.BeginMatch(session);
+        runtime.BeginRound(new TalentRoundContext(session));
+        runtime.ApplyWallBuilding(new TalentWallContext(session, new List<TileData>()));
+        runtime.CompleteInitialHands(new TalentInitialHandsContext(session, gameState));
+        runtime.ResolvePostShuffle(new TalentPostShuffleContext(session, new List<TileData>()));
+
+        Dictionary<string, TileData> hand = gameState.GetHand(0).ToDictionary(tile => tile.ID);
+        TileData laterDraw = new TileData(Suit.Man, 9, 0) { ID = "later-draw" };
+        TileData unchangedDraw = runtime.ApplyDraw(new TalentDrawContext(session, 0), laterDraw);
+        bool noPublicCount = Enumerable.Range(0, 4)
+            .All(seatIndex => runtime.DrainEventsForSeat(seatIndex).Count == 0);
+        runner.Check(hand["man-1"].Value == 2
+                     && hand["man-1"].IsModified
+                     && hand["man-1"].SpecialEffectID == "travel_light"
+                     && hand["pin-9"].Value == 8
+                     && hand["pin-9"].IsModified,
+            "轻装上阵 changes every suited starting 1 inward to 2 and 9 inward to 8");
+        runner.Check(hand["sou-5"].Value == 5
+                     && !hand["sou-5"].IsModified
+                     && hand["east"].Value == 1
+                     && !hand["east"].IsModified
+                     && hand["white"].Value == 3
+                     && !hand["white"].IsModified
+                     && unchangedDraw.Value == 9
+                     && !unchangedDraw.IsModified,
+            "轻装上阵 leaves inner tiles, honors, and every later draw unchanged");
+        runner.Check(noPublicCount,
+            "轻装上阵 does not publish the number of transformed starting tiles");
+
+        var reserveConfig = new TalentSlotConfig();
+        reserveConfig.ReserveTalentIds[0] = "travel_light";
+        TalentMatchRuntime reserveRuntime = CreateRuntimeFromConfig(reserveConfig);
+        var reserveSession = new GameSession(GameMode.Single);
+        var reserveState = new ServerGameState(4);
+        reserveState.InitHand(0, new List<TileData>
+        {
+            new TileData(Suit.Sou, 1, 0) { ID = "reserve-edge" }
+        });
+        for (int seatIndex = 1; seatIndex < 4; seatIndex++)
+            reserveState.InitHand(seatIndex, new List<TileData>());
+        reserveRuntime.BeginMatch(reserveSession);
+        reserveRuntime.BeginRound(new TalentRoundContext(reserveSession));
+        reserveRuntime.ApplyWallBuilding(new TalentWallContext(reserveSession, new List<TileData>()));
+        reserveRuntime.CompleteInitialHands(new TalentInitialHandsContext(reserveSession, reserveState));
+        runner.Check(reserveState.GetHand(0).Single().Value == 1
+                     && !reserveState.GetHand(0).Single().IsModified,
+            "an inactive reserve copy of 轻装上阵 does not transform the starting hand");
     }
 
     private static void CompleteEmptyInitialHands(

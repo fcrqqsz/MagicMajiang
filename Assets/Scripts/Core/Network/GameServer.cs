@@ -200,6 +200,7 @@ namespace MahjongGame.Core.Network
                     dealStartingHands: DealStartingHands,
                     completeInitialHands: () => _talentRuntime.CompleteInitialHands(
                         new TalentInitialHandsContext(_session, _gameState, _deckConfigs)),
+                    publishStartingHands: PublishStartingHands,
                     capturePeek: () => _talentRuntime.ResolvePostShuffle(new TalentPostShuffleContext(
                         _session,
                         _wallService.GetWallTiles())));
@@ -304,9 +305,14 @@ namespace MahjongGame.Core.Network
                     }
                 }
 
-                client.OnGameStart(startingHand);
                 _gameState.InitHand(ci, startingHand);
             }
+        }
+
+        private void PublishStartingHands()
+        {
+            for (int seatIndex = 0; seatIndex < _clients.Count; seatIndex++)
+                _clients[seatIndex].OnGameStart(_gameState.GetHand(seatIndex));
         }
 
         /// <summary>

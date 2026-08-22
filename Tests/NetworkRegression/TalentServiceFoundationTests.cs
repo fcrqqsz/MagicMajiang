@@ -15,6 +15,75 @@ internal static class TalentServiceFoundationTests
         GenericChoicesRejectForgedIdsBeforeRuleMutation(runner);
         GenericChoicesRoundTripThroughPrivateProtocolAndAiDefault(runner);
         InitialHandHookOwnsImmutablePrivateFactsAndStrictLifecycle(runner);
+        InitialHandMutationsAreStagedAndAtomicallyCommitted(runner);
+    }
+
+    private static void InitialHandMutationsAreStagedAndAtomicallyCommitted(
+        RegressionRunner runner)
+    {
+        InitialHandMutationObserverTalent.Reset();
+        var stagedConfig = new TalentSlotConfig();
+        stagedConfig.SlotTalentIds[3] = "network_test_initial_hand_transformer";
+        stagedConfig.SlotTalentIds[4] = "network_test_initial_hand_mutation_observer";
+        var stagedRuntime = new TalentMatchRuntime(
+            new Dictionary<int, TalentSlotConfig> { [0] = stagedConfig },
+            TalentRegistry.Instance);
+        var session = new GameSession(GameMode.Single);
+        var stagedState = new ServerGameState(4);
+        stagedState.InitHand(0, new List<TileData>
+        {
+            Tile(Suit.Man, 1, ownerId: 0, id: "staged-edge"),
+            Tile(Suit.Pin, 5, ownerId: 0, id: "staged-inner")
+        });
+        for (int seatIndex = 1; seatIndex < 4; seatIndex++)
+            stagedState.InitHand(seatIndex, new List<TileData>());
+
+        stagedRuntime.BeginMatch(session);
+        stagedRuntime.BeginRound(new TalentRoundContext(session));
+        stagedRuntime.ApplyWallBuilding(new TalentWallContext(session, new List<TileData>()));
+        stagedRuntime.CompleteInitialHands(new TalentInitialHandsContext(session, stagedState));
+
+        TileData transformed = stagedState.GetHand(0).Single(tile => tile.ID == "staged-edge");
+        runner.Check(transformed.TileSuit == Suit.Man
+                     && transformed.Value == 2
+                     && transformed.OriginalOwnerID == 0
+                     && transformed.IsModified
+                     && transformed.SpecialEffectID == "network_test_initial_hand_transformer",
+            "initial-hand mutation preserves physical identity and ownership while marking its source talent");
+        runner.Check(InitialHandMutationObserverTalent.ObservedValue == 2,
+            "later initial-hand rules observe the staged result of earlier rules");
+
+        var atomicConfig0 = new TalentSlotConfig();
+        atomicConfig0.SlotTalentIds[3] = "network_test_initial_hand_atomic_failure";
+        var atomicConfig1 = new TalentSlotConfig();
+        atomicConfig1.SlotTalentIds[3] = "network_test_initial_hand_atomic_failure";
+        var atomicRuntime = new TalentMatchRuntime(
+            new Dictionary<int, TalentSlotConfig> { [0] = atomicConfig0, [1] = atomicConfig1 },
+            TalentRegistry.Instance);
+        var atomicSession = new GameSession(GameMode.Single);
+        var atomicState = new ServerGameState(4);
+        atomicState.InitHand(0, new List<TileData>
+        {
+            Tile(Suit.Man, 1, ownerId: 0, id: "atomic-seat-0")
+        });
+        atomicState.InitHand(1, new List<TileData>
+        {
+            Tile(Suit.Pin, 9, ownerId: 1, id: "atomic-seat-1")
+        });
+        atomicState.InitHand(2, new List<TileData>());
+        atomicState.InitHand(3, new List<TileData>());
+        atomicRuntime.BeginMatch(atomicSession);
+        atomicRuntime.BeginRound(new TalentRoundContext(atomicSession));
+        atomicRuntime.ApplyWallBuilding(new TalentWallContext(atomicSession, new List<TileData>()));
+
+        bool rejected = ThrowsInvalidOperation(() => atomicRuntime.CompleteInitialHands(
+            new TalentInitialHandsContext(atomicSession, atomicState)));
+        runner.Check(rejected
+                     && atomicState.GetHand(0).Single().Value == 1
+                     && !atomicState.GetHand(0).Single().IsModified
+                     && atomicState.GetHand(1).Single().Value == 9
+                     && !atomicState.GetHand(1).Single().IsModified,
+            "one invalid owner-local mutation aborts the complete initial-hand transaction without partial authority writes");
     }
 
     private static void InitialHandHookOwnsImmutablePrivateFactsAndStrictLifecycle(
@@ -573,4 +642,43 @@ internal sealed class InitialHandObserverTalent : TalentRule
     }
 
     public static void Reset() => ByOwner.Clear();
+}
+
+[TalentRule("network_test_initial_hand_transformer", "Initial Hand Transformer", "test",
+    TalentTier.Small, 0, TalentPhase.InitialHandCompleted)]
+internal sealed class InitialHandTransformerTalent : TalentRule
+{
+    public override TalentScope Scope => TalentScope.Global;
+    public override int Priority => 10;
+
+    public override void OnInitialHandCompleted(TalentInitialHandContext context) =>
+        context.TryTransformTile("staged-edge", Suit.Man, 2);
+}
+
+[TalentRule("network_test_initial_hand_mutation_observer", "Initial Hand Mutation Observer", "test",
+    TalentTier.Small, 0, TalentPhase.InitialHandCompleted)]
+internal sealed class InitialHandMutationObserverTalent : TalentRule
+{
+    public override TalentScope Scope => TalentScope.Global;
+    public static int ObservedValue { get; private set; }
+
+    public override void OnInitialHandCompleted(TalentInitialHandContext context) =>
+        ObservedValue = context.Facts.Tiles.Single(tile => tile.Id == "staged-edge").Value;
+
+    public static void Reset() => ObservedValue = 0;
+}
+
+[TalentRule("network_test_initial_hand_atomic_failure", "Initial Hand Atomic Failure", "test",
+    TalentTier.Small, 0, TalentPhase.InitialHandCompleted)]
+internal sealed class InitialHandAtomicFailureTalent : TalentRule
+{
+    public override TalentScope Scope => TalentScope.Global;
+
+    public override void OnInitialHandCompleted(TalentInitialHandContext context)
+    {
+        if (OwnerSeatIndex == 0)
+            context.TryTransformTile("atomic-seat-0", Suit.Man, 2);
+        else
+            context.TryTransformTile("missing-physical-id", Suit.Pin, 8);
+    }
 }

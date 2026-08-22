@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using MahjongGame.Core;
 using MahjongGame.Core.Network;
@@ -321,7 +322,11 @@ namespace MahjongGame.Talents
     /// </summary>
     public sealed class TalentInitialHandsContext : TalentContext
     {
-        private readonly IReadOnlyDictionary<int, TalentInitialHandFacts> _factsBySeat;
+        private readonly GameSession _sourceSession;
+        private readonly ServerGameState _authority;
+        private readonly Dictionary<int, List<TileData>> _stagedHandsBySeat;
+        private readonly List<Action> _stagedEvents = new List<Action>();
+        private string _invalidReason;
 
         internal TalentInitialHandsContext(
             GameSession session,
@@ -330,47 +335,124 @@ namespace MahjongGame.Talents
             : base(session, null, gameState, deckConfigs)
         {
             if (gameState == null) throw new ArgumentNullException(nameof(gameState));
-            var facts = new Dictionary<int, TalentInitialHandFacts>();
+            _sourceSession = session;
+            _authority = gameState;
+            _stagedHandsBySeat = new Dictionary<int, List<TileData>>();
             for (int seatIndex = 0; seatIndex < gameState.PlayerCount; seatIndex++)
-            {
-                facts[seatIndex] = new TalentInitialHandFacts(
-                    session,
-                    seatIndex,
-                    gameState.GetHand(seatIndex));
-            }
-            _factsBySeat = new ReadOnlyDictionary<int, TalentInitialHandFacts>(facts);
+                _stagedHandsBySeat[seatIndex] = gameState.GetHand(seatIndex);
         }
 
         internal TalentInitialHandContext BindInitialHand(
             int ownerSeatIndex,
+            string talentId,
             TalentRuntimeState state,
             Action<TalentRuntimeEvent> eventSink)
         {
-            if (!_factsBySeat.TryGetValue(ownerSeatIndex, out TalentInitialHandFacts facts))
+            if (!_stagedHandsBySeat.TryGetValue(ownerSeatIndex, out List<TileData> stagedHand))
                 throw new InvalidOperationException($"Initial hand for seat {ownerSeatIndex} is unavailable.");
+            TalentInitialHandFacts facts = new TalentInitialHandFacts(
+                _sourceSession,
+                ownerSeatIndex,
+                stagedHand);
             var context = new TalentInitialHandContext(
                 Session,
                 GameState,
                 DeckSnapshots,
-                facts);
-            context.ConfigureEntry(ownerSeatIndex, state, eventSink);
+                facts,
+                (physicalTileId, suit, value) => TryTransformTile(
+                    ownerSeatIndex,
+                    talentId,
+                    physicalTileId,
+                    suit,
+                    value));
+            context.ConfigureEntry(ownerSeatIndex, state, runtimeEvent =>
+            {
+                if (runtimeEvent == null || eventSink == null) return;
+                TalentRuntimeEvent copied = runtimeEvent.Copy();
+                _stagedEvents.Add(() => eventSink(copied));
+            });
             return context;
         }
+
+        internal void Commit()
+        {
+            if (!string.IsNullOrWhiteSpace(_invalidReason))
+                throw new InvalidOperationException(_invalidReason);
+            if (!_authority.TryReplaceInitialHands(_stagedHandsBySeat, out string error))
+                throw new InvalidOperationException(error ?? "Initial-hand transaction was rejected.");
+            foreach (Action stagedEvent in _stagedEvents) stagedEvent();
+            _stagedEvents.Clear();
+        }
+
+        private bool TryTransformTile(
+            int ownerSeatIndex,
+            string talentId,
+            string physicalTileId,
+            Suit suit,
+            int value)
+        {
+            if (!IsValidTileShape(suit, value))
+                return RejectMutation($"Invalid initial-hand target shape: {suit} {value}.");
+            if (string.IsNullOrWhiteSpace(physicalTileId)
+                || string.IsNullOrWhiteSpace(talentId)
+                || !_stagedHandsBySeat.TryGetValue(ownerSeatIndex, out List<TileData> hand))
+            {
+                return RejectMutation("Initial-hand mutation requires an owner tile id and source talent.");
+            }
+
+            TileData[] matches = hand.Where(tile => tile != null
+                                                    && string.Equals(
+                                                        tile.ID,
+                                                        physicalTileId,
+                                                        StringComparison.Ordinal))
+                .ToArray();
+            if (matches.Length != 1)
+                return RejectMutation($"Initial-hand physical tile '{physicalTileId}' is unavailable or ambiguous.");
+
+            TileData tile = matches[0];
+            tile.TileSuit = suit;
+            tile.Value = value;
+            tile.IsModified = true;
+            tile.SpecialEffectID = talentId;
+            return true;
+        }
+
+        private bool RejectMutation(string reason)
+        {
+            _invalidReason ??= reason;
+            return false;
+        }
+
+        private static bool IsValidTileShape(Suit suit, int value) => suit switch
+        {
+            Suit.Man => value >= 1 && value <= 9,
+            Suit.Pin => value >= 1 && value <= 9,
+            Suit.Sou => value >= 1 && value <= 9,
+            Suit.Wind => value >= 1 && value <= 4,
+            Suit.Dragon => value >= 1 && value <= 3,
+            _ => false
+        };
     }
 
     public sealed class TalentInitialHandContext : TalentContext
     {
         public TalentInitialHandFacts Facts { get; }
+        private readonly Func<string, Suit, int, bool> _transformTile;
 
         internal TalentInitialHandContext(
             TalentSessionSnapshot session,
             TalentGameStateSnapshot gameState,
             IReadOnlyDictionary<int, TalentDeckSnapshot> deckSnapshots,
-            TalentInitialHandFacts facts)
+            TalentInitialHandFacts facts,
+            Func<string, Suit, int, bool> transformTile)
             : base(session, null, gameState, deckSnapshots)
         {
             Facts = facts ?? throw new ArgumentNullException(nameof(facts));
+            _transformTile = transformTile ?? throw new ArgumentNullException(nameof(transformTile));
         }
+
+        public bool TryTransformTile(string physicalTileId, Suit suit, int value) =>
+            _transformTile(physicalTileId, suit, value);
     }
 
     public sealed class TalentDrawContext : TalentContext

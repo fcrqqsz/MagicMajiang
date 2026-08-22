@@ -235,9 +235,11 @@ namespace MahjongGame.Talents
             {
                 entry.Rule.OnInitialHandCompleted(context.BindInitialHand(
                     entry.OwnerSeatIndex,
+                    entry.Rule.Id,
                     entry.State,
                     runtimeEvent => EmitEvent(entry, runtimeEvent)));
             }
+            context.Commit();
             _phase = RuntimePhase.InitialHandsCompleted;
         }
 

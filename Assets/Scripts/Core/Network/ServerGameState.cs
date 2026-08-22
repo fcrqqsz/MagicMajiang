@@ -30,6 +30,63 @@ namespace MahjongGame.Core.Network
             _players[playerId].River.Clear();
         }
 
+        public bool TryReplaceInitialHands(
+            IReadOnlyDictionary<int, List<TileData>> replacements,
+            out string error)
+        {
+            error = null;
+            if (replacements == null || replacements.Count != PlayerCount)
+            {
+                error = "Initial-hand replacement must contain every seat.";
+                return false;
+            }
+
+            var validated = new List<TileData>[PlayerCount];
+            for (int seatIndex = 0; seatIndex < PlayerCount; seatIndex++)
+            {
+                if (!replacements.TryGetValue(seatIndex, out List<TileData> replacement)
+                    || replacement == null
+                    || replacement.Count != _players[seatIndex].Hand.Count
+                    || replacement.Any(tile => tile == null || string.IsNullOrWhiteSpace(tile.ID)))
+                {
+                    error = $"Initial-hand replacement for seat {seatIndex} is incomplete.";
+                    return false;
+                }
+
+                Dictionary<string, TileData> originalById;
+                try
+                {
+                    originalById = _players[seatIndex].Hand.ToDictionary(
+                        tile => tile.ID,
+                        tile => tile,
+                        System.StringComparer.Ordinal);
+                }
+                catch (System.ArgumentException)
+                {
+                    error = $"Initial hand for seat {seatIndex} contains duplicate physical ids.";
+                    return false;
+                }
+
+                var replacementIds = new HashSet<string>(System.StringComparer.Ordinal);
+                foreach (TileData tile in replacement)
+                {
+                    if (!replacementIds.Add(tile.ID)
+                        || !originalById.TryGetValue(tile.ID, out TileData original)
+                        || original.OriginalOwnerID != tile.OriginalOwnerID
+                        || !IsValidTileShape(tile.TileSuit, tile.Value))
+                    {
+                        error = $"Initial-hand replacement for seat {seatIndex} changed physical identity or shape.";
+                        return false;
+                    }
+                }
+                validated[seatIndex] = replacement.Select(CloneTile).ToList();
+            }
+
+            for (int seatIndex = 0; seatIndex < PlayerCount; seatIndex++)
+                _players[seatIndex].Hand = validated[seatIndex];
+            return true;
+        }
+
         public void AddTile(int playerId, TileData tile)
         {
             _players[playerId].Hand.Add(tile);
@@ -243,6 +300,16 @@ namespace MahjongGame.Core.Network
                 return left.ID == right.ID;
             return left.TileSuit == right.TileSuit && left.Value == right.Value;
         }
+
+        private static bool IsValidTileShape(Suit suit, int value) => suit switch
+        {
+            Suit.Man => value >= 1 && value <= 9,
+            Suit.Pin => value >= 1 && value <= 9,
+            Suit.Sou => value >= 1 && value <= 9,
+            Suit.Wind => value >= 1 && value <= 4,
+            Suit.Dragon => value >= 1 && value <= 3,
+            _ => false
+        };
 
         private static TileData CloneTile(TileData tile)
         {

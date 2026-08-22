@@ -13,6 +13,7 @@ namespace MahjongGame.Core.Network
             Action shuffleWall,
             Action dealStartingHands,
             Action completeInitialHands,
+            Action publishStartingHands,
             Action capturePeek)
         {
             if (buildWall == null) throw new ArgumentNullException(nameof(buildWall));
@@ -20,6 +21,7 @@ namespace MahjongGame.Core.Network
             if (shuffleWall == null) throw new ArgumentNullException(nameof(shuffleWall));
             if (dealStartingHands == null) throw new ArgumentNullException(nameof(dealStartingHands));
             if (completeInitialHands == null) throw new ArgumentNullException(nameof(completeInitialHands));
+            if (publishStartingHands == null) throw new ArgumentNullException(nameof(publishStartingHands));
             if (capturePeek == null) throw new ArgumentNullException(nameof(capturePeek));
 
             buildWall();
@@ -27,6 +29,7 @@ namespace MahjongGame.Core.Network
             shuffleWall();
             dealStartingHands();
             completeInitialHands();
+            publishStartingHands();
             capturePeek();
         }
     }

@@ -90,35 +90,35 @@ Run the focused snapshot and AI groups, then commit `feat: make talent history a
 - Produces: owner-local `TalentInitialHandContext.TryTransformTile(...)`, staged physical-tile copies, and an atomic `ServerGameState.TryReplaceInitialHands(...)` boundary.
 - Consumes: immutable starting-hand facts, physical tile ids, `OnInitialHandCompleted`, and the setup sequence.
 
-- [ ] **Step 1: Write initial-hand transaction RED tests**
+- [x] **Step 1: Write initial-hand transaction RED tests**
 
 Prove a rule can transform only a physical tile from its owner's staged hand; identity and original owner remain unchanged; `IsModified` and `SpecialEffectID` are applied; later rules see the staged result; an invalid id or invalid suit/value aborts without changing any authoritative hand.
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 Expected: compile/test failure because the mutation request API and atomic replacement do not exist.
 
-- [ ] **Step 3: Implement the staged mutation boundary**
+- [x] **Step 3: Implement the staged mutation boundary**
 
 Clone all hands, rebuild immutable facts before each rule, restrict values to suited 1..9 or valid honors, preserve physical id/owner, stage events until validation succeeds, then atomically replace all hands. Do not expose `ServerGameState` or mutable `TileData` to rules.
 
-- [ ] **Step 4: Write GameServer publication-order RED test**
+- [x] **Step 4: Write GameServer publication-order RED test**
 
 Record client `OnGameStart` hands and assert they match the post-transaction authoritative hands, not the originally dealt hands.
 
-- [ ] **Step 5: Reorder setup and verify GREEN**
+- [x] **Step 5: Reorder setup and verify GREEN**
 
 Split dealing from publication: deal into authority, run `CompleteInitialHands`, publish final per-seat hands, then capture Peek. Keep `GameRoundSetupSequence` deterministic.
 
-- [ ] **Step 6: Write 轻装上阵 RED tests**
+- [x] **Step 6: Write 轻装上阵 RED tests**
 
 Use literal fixtures containing suited 1, 9, inner tiles, winds, and dragons. Assert only starting suited 1→2 and 9→8, all transformed tiles are modified by `travel_light`, later draws are untouched, reserves do not trigger, and no public transformed-count event is emitted.
 
-- [ ] **Step 7: Implement 轻装上阵 and verify GREEN**
+- [x] **Step 7: Implement 轻装上阵 and verify GREEN**
 
 Register `travel_light` as Medium, cost 16, phase `InitialHandCompleted`, round state, flexible sideboard, hidden until a normal public tile transition reveals its concrete modification.
 
-- [ ] **Step 8: Run focused tests and commit**
+- [x] **Step 8: Run focused tests and commit**
 
 Commit `feat: add transactional starting-hand talents`.
 
