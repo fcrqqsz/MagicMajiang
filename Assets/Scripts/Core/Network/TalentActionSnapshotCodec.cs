@@ -16,6 +16,7 @@ namespace MahjongGame.Core.Network
                 targetSeatIndex = option.TargetSeatIndex,
                 targetTalentId = option.TargetTalentId,
                 targetPublicCharge = option.TargetPublicCharge,
+                aiPriority = option.AiPriority,
                 choice = ToSnapshot(option.Choice)
             };
         }
@@ -55,6 +56,7 @@ namespace MahjongGame.Core.Network
                 TargetSeatIndex = option.targetSeatIndex,
                 TargetTalentId = option.targetTalentId,
                 TargetPublicCharge = option.targetPublicCharge,
+                AiPriority = option.aiPriority,
                 Choice = choice
             };
         }
@@ -69,6 +71,7 @@ namespace MahjongGame.Core.Network
                 targetSeatIndex = option.targetSeatIndex,
                 targetTalentId = option.targetTalentId,
                 targetPublicCharge = option.targetPublicCharge,
+                aiPriority = option.aiPriority,
                 choice = option.choice == null
                     ? null
                     : new SnapshotTalentChoiceSet

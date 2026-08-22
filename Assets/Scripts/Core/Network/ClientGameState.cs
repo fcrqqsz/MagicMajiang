@@ -598,7 +598,8 @@ namespace MahjongGame.Core.Network
                 {
                     ownerSeatIndex = message.ownerSeatIndex,
                     talentId = message.talentId,
-                    isKnown = true
+                    isKnown = true,
+                    isActive = true
                 };
                 talents.Add(known);
             }
@@ -736,6 +737,7 @@ namespace MahjongGame.Core.Network
                 ownerSeatIndex = talent.ownerSeatIndex,
                 talentId = talent.talentId,
                 isKnown = talent.isKnown,
+                isActive = talent.isActive,
                 lastPublicEventType = talent.lastPublicEventType,
                 lastPublicValue = talent.lastPublicValue
             }).ToArray();

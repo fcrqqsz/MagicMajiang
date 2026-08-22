@@ -220,6 +220,7 @@ namespace MahjongGame.Core.Network
                     ownerSeatIndex = talent.OwnerSeatIndex,
                     talentId = talent.TalentId,
                     isKnown = true,
+                    isActive = talent.IsActive,
                     lastPublicEventType = talent.LastPublicEventType,
                     lastPublicValue = talent.LastPublicValue
                 })
@@ -379,6 +380,7 @@ namespace MahjongGame.Core.Network.Messages
         public int ownerSeatIndex;
         public string talentId;
         public bool isKnown;
+        public bool isActive;
         public string lastPublicEventType;
         public int lastPublicValue;
     }
@@ -398,6 +400,7 @@ namespace MahjongGame.Core.Network.Messages
         public int targetSeatIndex = -1;
         public string targetTalentId;
         public int targetPublicCharge;
+        public int aiPriority;
         public SnapshotTalentChoiceSet choice;
     }
 

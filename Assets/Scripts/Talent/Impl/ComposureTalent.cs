@@ -6,7 +6,7 @@ namespace MahjongGame.Talents.Impl
         TalentTier.Small, 6, TalentPhase.ActionValidation,
         StateScope = TalentStateScope.Round,
         RevealPolicy = TalentRevealPolicy.HiddenUntilPublicEffect)]
-    public sealed class ComposureTalent : TalentRule
+    public sealed class ComposureTalent : TalentRule, IPublicChargeDefenseTalent
     {
         private const string ConsumedKey = "consumed";
 

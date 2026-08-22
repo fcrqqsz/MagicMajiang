@@ -154,27 +154,34 @@ internal static class TalentPresentationTests
             new[]
             {
                 new TalentActionOption { TalentId = "sheathed_edge" },
-                sourceInterception
+                sourceInterception,
+                new TalentActionOption
+                {
+                    TalentId = "interception",
+                    TargetSeatIndex = 1,
+                    TargetTalentId = "sheathed_edge",
+                    TargetPublicCharge = 9
+                }
             });
 
         sourceInterception.TargetSeatIndex = 3;
         baseActions.CanDiscard = false;
         runner.Check(state.DecisionId == 72L
             && state.BaseActions.CanDiscard
-            && state.Options.Single(option => option.TalentId == "interception").Option.TargetSeatIndex == 2
-            && state.Options.Single(option => option.TalentId == "interception").Option.TargetPublicCharge == 3,
+            && state.Options.Single(option => option.TalentId == "interception"
+                                              && option.Option.TargetSeatIndex == 2).Option.TargetPublicCharge == 3,
             "opening the talent action panel deep-copies base availability and presentation options");
 
         state = TalentActionPanelPolicy.BeginSubmit(state, "interception");
         runner.Check(state.BaseActions.CanDiscard
-            && state.Options.Single(option => option.TalentId == "interception").IsPending
+            && state.Options.Where(option => option.TalentId == "interception").All(option => option.IsPending)
             && !state.Options.Single(option => option.TalentId == "sheathed_edge").IsPending,
             "submitting one talent leaves base actions and other talent options available");
 
         state = TalentActionPanelPolicy.Resolve(
             state, 72L, "interception", accepted: false, errorCode: TalentActionErrorCodes.InvalidTarget);
         runner.Check(state.IsOpen
-            && !state.Options.Single(option => option.TalentId == "interception").IsPending
+            && state.Options.Where(option => option.TalentId == "interception").All(option => !option.IsPending)
             && state.BaseActions.CanDiscard,
             "ordinary rejection restores only the submitted talent button");
 
@@ -198,7 +205,7 @@ internal static class TalentPresentationTests
 
         TalentActionPanelState lateStale = TalentActionPanelPolicy.Resolve(
             state, 71L, "interception", accepted: false, errorCode: NetworkErrorCodes.StaleDecision);
-        runner.Check(lateStale.IsOpen && lateStale.DecisionId == 72L && lateStale.Options.Count == 2,
+        runner.Check(lateStale.IsOpen && lateStale.DecisionId == 72L && lateStale.Options.Count == 3,
             "a late stale result from an older decision cannot clear the current supplemental presentation");
 
         TalentActionPanelState selecting = TalentActionPanelPolicy.BeginTargetSelection(state, "interception");
@@ -230,6 +237,7 @@ internal static class TalentPresentationTests
                     ownerSeatIndex = 2,
                     talentId = "sheathed_edge",
                     isKnown = true,
+                    isActive = true,
                     lastPublicValue = 3
                 },
                 new SnapshotKnownTalent
@@ -237,6 +245,7 @@ internal static class TalentPresentationTests
                     ownerSeatIndex = 1,
                     talentId = "sheathed_edge",
                     isKnown = true,
+                    isActive = false,
                     lastPublicValue = 9
                 },
                 new SnapshotKnownTalent
@@ -255,7 +264,7 @@ internal static class TalentPresentationTests
             && targets[0].SeatDisplayName == "West Player"
             && targets[0].TalentDisplayName == "藏锋"
             && targets[0].PublicCharge == 3,
-            "target presentation joins only server-option-authorized seat talent and public charge data");
+            "target presentation joins only active server-option-authorized public talent data");
     }
 
     private static void RunLayeredTalentHudPolicyTests(RegressionRunner runner)
@@ -671,8 +680,8 @@ internal static class TalentPresentationTests
 
     private static void RunLoadoutPresetTests(RegressionRunner runner)
     {
-        runner.Check(NetworkProtocol.IsSupported(5) && !NetworkProtocol.IsSupported(4),
-            "protocol v5 rejects protocol v4 before room loadout admission");
+        runner.Check(NetworkProtocol.IsSupported(6) && !NetworkProtocol.IsSupported(5),
+            "protocol v6 rejects protocol v5 before room loadout admission");
 
         var legacy = new SavedDeck { Config = DeckConfig.CreateStandard(), Talents = new TalentSlotConfig() };
         legacy.Normalize();

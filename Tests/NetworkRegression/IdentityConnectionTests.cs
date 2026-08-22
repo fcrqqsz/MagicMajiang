@@ -17,12 +17,12 @@ internal static class IdentityConnectionTests
 
     private static void TestProtocolAndIdentity(RegressionRunner runner)
     {
-        runner.Check(NetworkProtocol.IsSupported(5) && !NetworkProtocol.IsSupported(4),
-            "Typed talent choice payload rollout must accept protocol v5 and reject v4.");
-        runner.Check(new HelloMessage().protocolVersion == 5
+        runner.Check(NetworkProtocol.IsSupported(6) && !NetworkProtocol.IsSupported(5),
+            "Sticky public talent history rollout must accept protocol v6 and reject v5.");
+        runner.Check(new HelloMessage().protocolVersion == 6
             && new HeartbeatAckMessage() != null
             && new PlayerLoadoutMessage() != null,
-            "Protocol v5 must expose Hello, heartbeat acknowledgement, and loadout DTOs.");
+            "Protocol v6 must expose Hello, heartbeat acknowledgement, and loadout DTOs.");
 
         string publicSeatJson = UnityEngine.JsonUtility.ToJson(new RoomSeatMessage
         {
@@ -57,8 +57,8 @@ internal static class IdentityConnectionTests
             "The development authenticator must expose the normalized identity.");
 
         var hello = ClientHelloProtocol.Create("Alice");
-        runner.Check(hello.protocolVersion == 5 && hello.username == "Alice",
-            "Client Hello must carry protocol v5 and the selected username.");
+        runner.Check(hello.protocolVersion == 6 && hello.username == "Alice",
+            "Client Hello must carry protocol v6 and the selected username.");
         runner.Check(RoomErrorPresentationPolicy.GetDisplayMessage(new RoomErrorMessage
             {
                 code = NetworkErrorCodes.IdentityInUse,

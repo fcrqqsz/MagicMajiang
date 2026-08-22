@@ -186,15 +186,16 @@ internal static class SnapshotReconnectTests
                      && owner.privateSeat.availableTalentActions.Single().targetTalentId == "sheathed_edge"
                      && owner.knownTalents.Length == 1
                      && owner.knownTalents[0].ownerSeatIndex == 1
+                     && !owner.knownTalents[0].isActive
                      && owner.knownTalents[0].lastPublicValue == 3,
-            "a main-turn reconnect snapshot restores only authoritative decision, own talent state, known reveals, and recomputed actions");
+            "a main-turn reconnect snapshot restores authoritative decisions, own state, and sticky inactive public history");
         runner.Check(!ownerJson.Contains("transientTalentSelection", StringComparison.Ordinal)
-                     && !knownJson.Contains("isActive", StringComparison.OrdinalIgnoreCase)
+                     && knownJson.Contains("\"isActive\":false", StringComparison.Ordinal)
                      && !ownerJson.Contains("\"privateValue\":91", StringComparison.Ordinal)
                      && !ownerJson.Contains("\"privateValue\":77", StringComparison.Ordinal)
                      && opponent.privateSeat.ownTalents.Single().talentId == "sheathed_edge"
                      && opponent.privateSeat.ownTalents.Single().privateValue == 91,
-            "talent snapshots never serialize picker drafts, opponent active flags, hidden talents, or opponent private values");
+            "talent snapshots serialize public activity without picker drafts, hidden talents, or opponent private values");
     }
 
     private static void TestTalentProjectionOrderingAndSeatIsolation(RegressionRunner runner)

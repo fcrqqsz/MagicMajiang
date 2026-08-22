@@ -278,8 +278,11 @@ namespace MahjongGame.Core.Network
         public int TalentActionSubmissionCount { get; private set; }
         public int LastTalentActionSeatIndex { get; private set; } = -1;
         public TalentActionMessage LastTalentActionMessage { get; private set; }
+        public System.Collections.Generic.List<string> SubmittedTalentIds { get; } = new();
         private System.Collections.Generic.IReadOnlyList<MahjongGame.Talents.TalentActionOption>
             _availableTalentActions = System.Array.Empty<MahjongGame.Talents.TalentActionOption>();
+        private System.Collections.Generic.Queue<System.Collections.Generic.IReadOnlyList<MahjongGame.Talents.TalentActionOption>>
+            _availableTalentActionSequence;
         public MahjongGame.Talents.TalentActionResult NextTalentActionResult { get; set; } =
             MahjongGame.Talents.TalentActionResult.Reject(NetworkErrorCodes.NoActiveDecision);
 
@@ -297,7 +300,10 @@ namespace MahjongGame.Core.Network
             TalentActionSubmissionCount++;
             LastTalentActionSeatIndex = seatIndex;
             LastTalentActionMessage = message;
+            SubmittedTalentIds.Add(message?.talentId);
             result = NextTalentActionResult;
+            if (_availableTalentActionSequence?.Count > 0)
+                _availableTalentActions = _availableTalentActionSequence.Dequeue();
             return result?.Accepted == true;
         }
 
@@ -326,6 +332,22 @@ namespace MahjongGame.Core.Network
             _availableTalentActions = options
                 ?? System.Array.Empty<MahjongGame.Talents.TalentActionOption>();
             NextTalentActionResult = result;
+        }
+
+        public void SetAiTalentDecisionSequenceForTests(
+            long decisionId,
+            int actingSeatIndex,
+            System.Collections.Generic.IEnumerable<System.Collections.Generic.IReadOnlyList<MahjongGame.Talents.TalentActionOption>> optionSequence,
+            MahjongGame.Talents.TalentActionResult result)
+        {
+            var sequence = new System.Collections.Generic.Queue<System.Collections.Generic.IReadOnlyList<MahjongGame.Talents.TalentActionOption>>(
+                optionSequence ?? System.Array.Empty<System.Collections.Generic.IReadOnlyList<MahjongGame.Talents.TalentActionOption>>());
+            SetAiTalentDecisionForTests(
+                decisionId,
+                actingSeatIndex,
+                sequence.Count > 0 ? sequence.Dequeue() : System.Array.Empty<MahjongGame.Talents.TalentActionOption>(),
+                result);
+            _availableTalentActionSequence = sequence;
         }
 
         public System.Collections.Generic.List<MahjongGame.Core.TileData> GetHandSnapshot(int seatIndex) => new();

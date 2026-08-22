@@ -21,6 +21,7 @@ internal static class AiTalentPolicyTests
         ActiveSubmissionUsesCurrentLongDecisionAndDoesNotLoop(runner);
         RoomFillsAiSeatsWithPresetLegalArchetypes(runner);
         SideboardRetainsLockedAndCountersPublicThreats(runner);
+        SideboardDiscoversCountersThroughCapabilities(runner);
         RoomAiThreatInputExcludesInactiveAndNonpublicOpponents(runner);
         SideboardFailureReturnsOriginalForImmediateLock(runner);
         OneHundredSeededPolicyRuntimeSequencesStayLegal(runner);
@@ -314,14 +315,14 @@ internal static class AiTalentPolicyTests
 
     private static void ActivePolicyUsesOnlyAuthoritativeOptions(RegressionRunner runner)
     {
-        TalentActionOption finisher = AiTalentDecisionPolicy.ChooseActiveAction(new[]
+        TalentActionOption priority = AiTalentDecisionPolicy.ChooseActiveAction(new[]
         {
             new TalentActionOption
             {
-                TalentId = "interception", TargetSeatIndex = 1,
-                TargetTalentId = "sheathed_edge", TargetPublicCharge = 3
+                TalentId = "arbitrary_control", AiPriority = 100,
+                TargetSeatIndex = 1, TargetTalentId = "arbitrary_charge", TargetPublicCharge = 3
             },
-            new TalentActionOption { TalentId = "sheathed_edge" }
+            new TalentActionOption { TalentId = "arbitrary_expiring", AiPriority = 300 }
         });
         TalentActionOption interception = AiTalentDecisionPolicy.ChooseActiveAction(new[]
         {
@@ -347,8 +348,8 @@ internal static class AiTalentPolicyTests
             }
         });
 
-        runner.Check(finisher?.TalentId == "sheathed_edge",
-            "AI active policy prefers an authoritative armed-finisher option");
+        runner.Check(priority?.TalentId == "arbitrary_expiring",
+            "AI active policy obeys server-authored priority without recognizing talent ids");
         runner.Check(interception?.TalentId == "interception"
                      && interception.TargetPublicCharge == 3
                      && interception.TargetSeatIndex == 1
@@ -367,6 +368,7 @@ internal static class AiTalentPolicyTests
             TargetSeatIndex = 2,
             TargetTalentId = "sheathed_edge",
             TargetPublicCharge = 3,
+            AiPriority = 222,
             Choice = new TalentChoiceSet(
                 TalentChoiceKind.Mode,
                 "talent.choice.mode",
@@ -393,6 +395,7 @@ internal static class AiTalentPolicyTests
         TalentActionOption secondRead = state.AvailableTalentActions.Single();
 
         runner.Check(secondRead.TargetPublicCharge == 3
+                     && secondRead.AiPriority == 222
                      && secondRead.TargetSeatIndex == 2
                      && secondRead.TargetTalentId == "sheathed_edge"
                      && secondRead.Choice.DefaultChoiceId == "safe"
@@ -475,6 +478,40 @@ internal static class AiTalentPolicyTests
         bool emptyAccepted = AiTalentDecisionPolicy.TrySubmitActiveAction(server, 1);
         runner.Check(!emptyAccepted && server.TalentActionSubmissionCount == 1,
             "AI performs no GameServer submission when the authoritative option set is empty");
+
+        var sequenceServer = new GameServer(new MahjongGame.Core.Services.WallService(),
+            new GameServerOptions());
+        sequenceServer.SetAiTalentDecisionSequenceForTests(
+            DecisionId + 2,
+            actingSeatIndex: 0,
+            new[]
+            {
+                new[] { new TalentActionOption { TalentId = "first", AiPriority = 300 } },
+                new[] { new TalentActionOption { TalentId = "second", AiPriority = 200 } },
+                Array.Empty<TalentActionOption>()
+            },
+            TalentActionResult.Success(effectApplied: true));
+
+        bool sequenceAccepted = AiTalentDecisionPolicy.TrySubmitActiveAction(sequenceServer, 0);
+        runner.Check(sequenceAccepted
+                     && sequenceServer.TalentActionSubmissionCount == 2
+                     && sequenceServer.SubmittedTalentIds.SequenceEqual(new[] { "first", "second" }),
+            "AI re-queries authoritative options and submits multiple distinct talents within one main decision");
+
+        var repeatedServer = new GameServer(new MahjongGame.Core.Services.WallService(),
+            new GameServerOptions());
+        repeatedServer.SetAiTalentDecisionSequenceForTests(
+            DecisionId + 3,
+            actingSeatIndex: 0,
+            new[]
+            {
+                new[] { new TalentActionOption { TalentId = "repeated", AiPriority = 10 } },
+                new[] { new TalentActionOption { TalentId = "repeated", AiPriority = 10 } }
+            },
+            TalentActionResult.Success(effectApplied: true));
+        bool repeatedAccepted = AiTalentDecisionPolicy.TrySubmitActiveAction(repeatedServer, 0);
+        runner.Check(repeatedAccepted && repeatedServer.TalentActionSubmissionCount == 1,
+            "AI stops when an accepted action is advertised again with the same authoritative fingerprint");
     }
 
     private static void RoomFillsAiSeatsWithPresetLegalArchetypes(RegressionRunner runner)
@@ -520,6 +557,7 @@ internal static class AiTalentPolicyTests
                 ownerSeatIndex = 0,
                 talentId = "sheathed_edge",
                 isKnown = true,
+                isActive = true,
                 lastPublicEventType = "edge",
                 lastPublicValue = 3
             }
@@ -545,10 +583,10 @@ internal static class AiTalentPolicyTests
         runner.Check(accepted && serverAccepted
                      && normalized.Contains("starting_capital", StringComparer.Ordinal)
                      && normalized.Contains("interception", StringComparer.Ordinal)
-                     && normalized.Contains("composure", StringComparer.Ordinal)
+                     && !normalized.Contains("composure", StringComparer.Ordinal)
                      && total <= AlienationBudgetPolicy.GetLimit(AlienationPreset.Low)
                      && normalized.Distinct(StringComparer.Ordinal).Count() == normalized.Length,
-            "AI sideboard retains locked talent and prioritizes counters to a public charged large threat");
+            "AI sideboard retains locked talent and performs one public-charge counter swap");
     }
 
     private static void SideboardFailureReturnsOriginalForImmediateLock(RegressionRunner runner)
@@ -569,6 +607,67 @@ internal static class AiTalentPolicyTests
 
         runner.Check(!accepted && selection.SequenceEqual(malformedOriginal),
             "AI sideboard failure returns the original verbatim for explicit original locking");
+    }
+
+    private static void SideboardDiscoversCountersThroughCapabilities(RegressionRunner runner)
+    {
+        TrustedPlayerLoadout carried = DecodeLoadout(
+            AlienationPreset.Standard,
+            new[] { null, null, null, "starting_capital", "peek", "draw_reward" },
+            new[]
+            {
+                "network_test_charge_control_capability",
+                "network_test_charge_defense_capability",
+                null
+            });
+        var chargeThreat = new[]
+        {
+            new SnapshotKnownTalent
+            {
+                ownerSeatIndex = 1,
+                talentId = "sheathed_edge",
+                isKnown = true,
+                isActive = true,
+                lastPublicValue = 2
+            }
+        };
+        string[] againstCharge = AiTalentDecisionPolicy.ChooseSideboard(
+            carried,
+            new[] { "starting_capital", "peek", "draw_reward" },
+            chargeThreat,
+            AlienationPreset.Standard,
+            seatIndex: 0,
+            seed: 0,
+            out bool chargeAccepted);
+
+        var controlThreat = new[]
+        {
+            new SnapshotKnownTalent
+            {
+                ownerSeatIndex = 1,
+                talentId = "interception",
+                isKnown = true,
+                isActive = true,
+                lastPublicValue = 2
+            }
+        };
+        string[] againstControl = AiTalentDecisionPolicy.ChooseSideboard(
+            carried,
+            new[] { "starting_capital", "peek", "draw_reward" },
+            controlThreat,
+            AlienationPreset.Standard,
+            seatIndex: 0,
+            seed: 0,
+            out bool controlAccepted);
+
+        runner.Check(chargeAccepted
+                     && againstCharge.Contains("network_test_charge_control_capability", StringComparer.Ordinal)
+                     && !againstCharge.Contains("network_test_charge_defense_capability", StringComparer.Ordinal),
+            "AI sideboard discovers a carried public-charge counter through its capability interface");
+        runner.Check(controlAccepted
+                     && againstControl.Contains("network_test_charge_defense_capability", StringComparer.Ordinal)
+                     && !againstControl.Contains("network_test_charge_control_capability", StringComparer.Ordinal),
+            "AI sideboard discovers a carried charge-control defense through its capability interface");
     }
 
     private static void RoomAiThreatInputExcludesInactiveAndNonpublicOpponents(RegressionRunner runner)
@@ -642,22 +741,26 @@ internal static class AiTalentPolicyTests
                      && inactiveEntry.IsRevealed
                      && inactiveEntry.LastPublicValue == 3,
             "sideboarded large talent retains its sticky revealed public charge state");
-        runner.Check(activeKnown.Length == 1
-                     && activeKnown[0].ownerSeatIndex == 2
-                     && activeKnown[0].talentId == "sheathed_edge"
+        SnapshotKnownTalent activeThreat = activeKnown.Single(talent => talent.ownerSeatIndex == 2);
+        runner.Check(activeKnown.Length == 2
+                     && activeThreat.talentId == "sheathed_edge"
+                     && activeThreat.isActive
+                     && !activeKnown.Single(talent => talent.ownerSeatIndex == 1).isActive
                      && activeAccepted
                      && promoted.Contains("interception", StringComparer.Ordinal)
-                     && promoted.Contains("composure", StringComparer.Ordinal),
-            "active revealed charged large threat promotes AI counter talents");
+                     && !promoted.Contains("composure", StringComparer.Ordinal),
+            "active revealed charged large threat promotes one AI counter while retaining inactive history");
         runner.Check(inactiveAccepted
                      && !unpromoted.Contains("interception", StringComparer.Ordinal)
                      && !unpromoted.Contains("composure", StringComparer.Ordinal),
             "sideboarded sticky public threat does not promote AI counter talents");
-        runner.Check(!known.Any(talent => talent.ownerSeatIndex == 1)
-                     && !known.Any(talent => talent.ownerSeatIndex == 2)
+        runner.Check(known.Count(talent => talent.ownerSeatIndex == 1) == 1
+                     && !known.Single(talent => talent.ownerSeatIndex == 1).isActive
+                     && known.Count(talent => talent.ownerSeatIndex == 2) == 1
+                     && !known.Single(talent => talent.ownerSeatIndex == 2).isActive
                      && !known.Any(talent => talent.ownerSeatIndex == 3)
                      && !known.Any(talent => talent.ownerSeatIndex == 0),
-            "Room AI threat input excludes self, inactive, and hidden opponents");
+            "Room preserves inactive public history while excluding self and hidden opponents");
     }
 
     private static DeckConfig CreateTwentyAlienationDeck()
@@ -702,6 +805,7 @@ internal static class AiTalentPolicyTests
                         ownerSeatIndex = (seatIndex + 1) % 4,
                         talentId = "sheathed_edge",
                         isKnown = true,
+                        isActive = true,
                         lastPublicEventType = "edge",
                         lastPublicValue = seed % 4
                     }
@@ -821,4 +925,16 @@ internal static class AiTalentPolicyTests
             throw new InvalidOperationException($"Invalid AI policy fixture: {error}");
         return loadout;
     }
+}
+
+[TalentRule("network_test_charge_control_capability", "Capability Control", "test",
+    TalentTier.Small, 0)]
+internal sealed class CapabilityControlTalent : TalentRule, IPublicChargeControlTalent
+{
+}
+
+[TalentRule("network_test_charge_defense_capability", "Capability Defense", "test",
+    TalentTier.Small, 0)]
+internal sealed class CapabilityDefenseTalent : TalentRule, IPublicChargeDefenseTalent
+{
 }

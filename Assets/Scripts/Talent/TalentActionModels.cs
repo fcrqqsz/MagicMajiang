@@ -107,6 +107,7 @@ namespace MahjongGame.Talents
         public int TargetSeatIndex { get; set; } = -1;
         public string TargetTalentId { get; set; }
         public int TargetPublicCharge { get; set; }
+        public int AiPriority { get; set; }
         public TalentChoiceSet Choice { get; set; }
         public string SelectedChoiceId { get; set; }
     }

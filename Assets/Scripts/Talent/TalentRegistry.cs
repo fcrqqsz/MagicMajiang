@@ -92,5 +92,9 @@ namespace MahjongGame.Talents
         public string GetDescription(string id) => _entries.TryGetValue(id, out var entry) ? entry.Description : "";
         public List<string> GetAllIds() => _talentTypes.Keys.ToList();
         public bool HasTalent(string id) => _talentTypes.ContainsKey(id);
+
+        public bool HasCapability<TCapability>(string id) where TCapability : class =>
+            _talentTypes.TryGetValue(id, out Type type)
+            && typeof(TCapability).IsAssignableFrom(type);
     }
 }

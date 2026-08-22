@@ -10,12 +10,14 @@ namespace MahjongGame.Core.Agents
     /// <summary>Chooses from a server-authored option set without reading private game or runtime state.</summary>
     public static class AiTalentDecisionPolicy
     {
+        private const int MaximumSupplementalActionsPerDecision = 6;
+
         public static TalentActionOption ChooseActiveAction(
             IReadOnlyList<TalentActionOption> authoritativeOptions)
         {
             TalentActionOption chosen = (authoritativeOptions ?? Array.Empty<TalentActionOption>())
                 .Where(IsWellFormed)
-                .OrderBy(GetCategory)
+                .OrderByDescending(option => option.AiPriority)
                 .ThenByDescending(option => option.TargetPublicCharge)
                 .ThenBy(option => option.TargetSeatIndex)
                 .ThenBy(option => option.TargetTalentId ?? string.Empty, StringComparer.Ordinal)
@@ -36,21 +38,40 @@ namespace MahjongGame.Core.Agents
                 return false;
             }
 
-            TalentActionOption selected = ChooseActiveAction(
-                server.GetAvailableTalentActionsSnapshot(seatIndex));
-            if (selected == null) return false;
-
-            return server.SubmitNetworkTalentAction(
-                seatIndex,
-                new TalentActionMessage
+            bool anyAccepted = false;
+            var submitted = new HashSet<string>(StringComparer.Ordinal);
+            for (int attempt = 0; attempt < MaximumSupplementalActionsPerDecision; attempt++)
+            {
+                NetworkDecisionContext currentDecision = server.ActiveDecision;
+                if (currentDecision == null
+                    || currentDecision.DecisionId != decision.DecisionId
+                    || currentDecision.Phase != NetworkDecisionPhase.MainTurn
+                    || currentDecision.ActingSeatIndex != seatIndex)
                 {
-                    decisionId = decision.DecisionId,
-                    talentId = selected.TalentId,
-                    targetSeatIndex = selected.TargetSeatIndex,
-                    targetTalentId = selected.TargetTalentId,
-                    selectedChoiceId = selected.SelectedChoiceId
-                },
-                out _);
+                    break;
+                }
+
+                TalentActionOption selected = ChooseActiveAction(
+                    server.GetAvailableTalentActionsSnapshot(seatIndex));
+                if (selected == null) break;
+                string fingerprint = GetFingerprint(selected);
+                if (!submitted.Add(fingerprint)) break;
+
+                bool accepted = server.SubmitNetworkTalentAction(
+                    seatIndex,
+                    new TalentActionMessage
+                    {
+                        decisionId = decision.DecisionId,
+                        talentId = selected.TalentId,
+                        targetSeatIndex = selected.TargetSeatIndex,
+                        targetTalentId = selected.TargetTalentId,
+                        selectedChoiceId = selected.SelectedChoiceId
+                    },
+                    out _);
+                if (!accepted) break;
+                anyAccepted = true;
+            }
+            return anyAccepted;
         }
 
         public static string[] ChooseSideboard(
@@ -74,110 +95,101 @@ namespace MahjongGame.Core.Agents
             TalentRegistry registry = TalentRegistry.Instance;
             string[] carried = SideboardLoadoutPolicy.GetCarriedIdsInSlotOrder(
                 carriedLoadout.TalentConfig);
-            var selected = new HashSet<string>(original, StringComparer.Ordinal);
-            if (selected.Any(id => string.IsNullOrWhiteSpace(id) || !carried.Contains(id, StringComparer.Ordinal)))
+            if (original.Any(id => string.IsNullOrWhiteSpace(id)
+                                   || !carried.Contains(id, StringComparer.Ordinal)))
+                return original;
+            if (!SideboardLoadoutPolicy.TryValidate(
+                    carriedLoadout, original, preset, registry,
+                    out string[] normalizedOriginal, out _, out _))
                 return original;
 
-            foreach (string talentId in carried)
+            SnapshotKnownTalent[] activeThreats = (publicKnownOpponentTalents
+                                                    ?? Array.Empty<SnapshotKnownTalent>())
+                .Where(talent => talent != null
+                                 && talent.ownerSeatIndex != seatIndex
+                                 && talent.isKnown
+                                 && talent.isActive
+                                 && registry.HasTalent(talent.talentId))
+                .ToArray();
+            Type desiredCapability = activeThreats.Any(talent =>
+                    registry.HasCapability<IPublicChargeControlTalent>(talent.talentId))
+                ? typeof(IPublicChargeDefenseTalent)
+                : activeThreats.Any(talent => talent.lastPublicValue > 0
+                                              && registry.HasCapability<IPublicChargeTalent>(talent.talentId))
+                    ? typeof(IPublicChargeControlTalent)
+                    : null;
+            if (desiredCapability == null)
             {
-                if (registry.GetMetadata(talentId).SideboardPolicy == TalentSideboardPolicy.MainOnlyLocked)
-                    selected.Add(talentId);
+                accepted = true;
+                return normalizedOriginal;
             }
 
-            bool hasPublicChargedLargeThreat = (publicKnownOpponentTalents
-                                                 ?? Array.Empty<SnapshotKnownTalent>())
-                .Any(talent => talent != null
-                               && talent.ownerSeatIndex != seatIndex
-                               && talent.isKnown
-                               && talent.lastPublicValue > 0
-                               && registry.HasTalent(talent.talentId)
-                               && registry.GetTier(talent.talentId) == TalentTier.Large);
-            if (hasPublicChargedLargeThreat)
+            var selected = new HashSet<string>(normalizedOriginal, StringComparer.Ordinal);
+            string promoted = carried.FirstOrDefault(id => !selected.Contains(id)
+                                                           && HasCapability(registry, id, desiredCapability));
+            if (promoted == null)
             {
-                AddIfCarried(selected, carried, "interception");
-                AddIfCarried(selected, carried, "composure");
+                accepted = true;
+                return normalizedOriginal;
             }
 
-            foreach (string talentId in GetArchetypePriority(seed, seatIndex))
-                AddIfCarried(selected, carried, talentId);
-
-            while (!SideboardLoadoutPolicy.TryValidate(
-                       carriedLoadout,
-                       selected.ToArray(),
-                       preset,
-                       registry,
-                       out string[] normalized,
-                       out _,
-                       out _))
+            selected.Add(promoted);
+            if (TryValidateSelection(carriedLoadout, selected, preset, registry, out string[] promotedSelection))
             {
-                string removable = selected
-                    .Where(id => registry.HasTalent(id)
-                                 && registry.GetMetadata(id).SideboardPolicy == TalentSideboardPolicy.Flexible)
-                    .OrderBy(id => GetSideboardPriority(id, hasPublicChargedLargeThreat, seed, seatIndex))
-                    .ThenByDescending(registry.GetCost)
-                    .ThenBy(id => id, StringComparer.Ordinal)
-                    .FirstOrDefault();
-                if (removable == null) return original;
+                accepted = true;
+                return promotedSelection;
+            }
+
+            foreach (string removable in carried.Reverse().Where(id => selected.Contains(id)
+                    && !string.Equals(id, promoted, StringComparison.Ordinal)
+                    && registry.GetMetadata(id).SideboardPolicy == TalentSideboardPolicy.Flexible))
+            {
                 selected.Remove(removable);
+                if (TryValidateSelection(carriedLoadout, selected, preset, registry, out promotedSelection))
+                {
+                    accepted = true;
+                    return promotedSelection;
+                }
+                selected.Add(removable);
             }
 
-            SideboardLoadoutPolicy.TryValidate(
-                carriedLoadout,
-                selected.ToArray(),
-                preset,
-                registry,
-                out string[] acceptedSelection,
-                out _,
-                out _);
             accepted = true;
-            return acceptedSelection;
+            return normalizedOriginal;
         }
 
         private static bool IsWellFormed(TalentActionOption option) =>
             option != null && !string.IsNullOrWhiteSpace(option.TalentId);
 
-        private static int GetCategory(TalentActionOption option)
-        {
-            if (string.Equals(option.TalentId, "sheathed_edge", StringComparison.Ordinal)) return 0;
-            if (string.Equals(option.TalentId, "interception", StringComparison.Ordinal)) return 1;
-            return 2;
-        }
-
-        private static void AddIfCarried(HashSet<string> selected, string[] carried, string talentId)
-        {
-            if (carried.Contains(talentId, StringComparer.Ordinal)) selected.Add(talentId);
-        }
-
-        private static IReadOnlyList<string> GetArchetypePriority(int seed, int seatIndex)
-        {
-            string[][] priorities =
-            {
-                new[] { "sheathed_edge", "head_start", "midas_touch", "dragon_ascent", "interception", "composure", "peek", "starting_capital", "draw_reward" },
-                new[] { "interception", "composure", "sheathed_edge", "head_start", "dragon_ascent", "midas_touch", "starting_capital", "draw_reward", "peek" },
-                new[] { "peek", "starting_capital", "draw_reward", "midas_touch", "head_start", "dragon_ascent", "interception", "composure", "sheathed_edge" }
-            };
-            int index = (seed + seatIndex) % priorities.Length;
-            if (index < 0) index += priorities.Length;
-            return priorities[index];
-        }
-
-        private static int GetSideboardPriority(
+        private static bool HasCapability(
+            TalentRegistry registry,
             string talentId,
-            bool hasPublicChargedLargeThreat,
-            int seed,
-            int seatIndex)
-        {
-            if (hasPublicChargedLargeThreat
-                && (string.Equals(talentId, "interception", StringComparison.Ordinal)
-                    || string.Equals(talentId, "composure", StringComparison.Ordinal)))
-            {
-                return int.MaxValue;
-            }
+            Type capability) =>
+            capability == typeof(IPublicChargeControlTalent)
+                ? registry.HasCapability<IPublicChargeControlTalent>(talentId)
+                : capability == typeof(IPublicChargeDefenseTalent)
+                    && registry.HasCapability<IPublicChargeDefenseTalent>(talentId);
 
-            IReadOnlyList<string> priorities = GetArchetypePriority(seed, seatIndex);
-            int index = priorities.ToList().FindIndex(id => string.Equals(id, talentId, StringComparison.Ordinal));
-            return index < 0 ? int.MinValue : priorities.Count - index;
-        }
+        private static bool TryValidateSelection(
+            TrustedPlayerLoadout loadout,
+            HashSet<string> selected,
+            AlienationPreset preset,
+            TalentRegistry registry,
+            out string[] normalized) =>
+            SideboardLoadoutPolicy.TryValidate(
+                loadout,
+                selected.ToArray(),
+                preset,
+                registry,
+                out normalized,
+                out _,
+                out _);
+
+        private static string GetFingerprint(TalentActionOption option) => string.Join(
+            "|",
+            option.TalentId ?? string.Empty,
+            option.TargetSeatIndex,
+            option.TargetTalentId ?? string.Empty,
+            option.SelectedChoiceId ?? option.Choice?.DefaultChoiceId ?? string.Empty);
 
         private static TalentActionOption Clone(TalentActionOption option) => option == null
             ? null
@@ -187,6 +199,7 @@ namespace MahjongGame.Core.Agents
                 TargetSeatIndex = option.TargetSeatIndex,
                 TargetTalentId = option.TargetTalentId,
                 TargetPublicCharge = option.TargetPublicCharge,
+                AiPriority = option.AiPriority,
                 Choice = option.Choice,
                 SelectedChoiceId = option.SelectedChoiceId
                     ?? option.Choice?.DefaultChoiceId

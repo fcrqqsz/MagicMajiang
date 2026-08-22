@@ -1010,7 +1010,6 @@ namespace MahjongGame.Core.Network
         {
             return (_talentRuntime?.GetSnapshotEntries() ?? Array.Empty<TalentSnapshotEntry>())
                 .Where(entry => entry.OwnerSeatIndex != requestingSeatIndex
-                                && entry.IsActive
                                 && entry.IsRevealed
                                 && !string.IsNullOrWhiteSpace(entry.TalentId))
                 .Select(entry => new SnapshotKnownTalent
@@ -1018,6 +1017,7 @@ namespace MahjongGame.Core.Network
                     ownerSeatIndex = entry.OwnerSeatIndex,
                     talentId = entry.TalentId,
                     isKnown = true,
+                    isActive = entry.IsActive,
                     lastPublicEventType = entry.LastPublicEventType,
                     lastPublicValue = entry.LastPublicValue
                 })

@@ -8,7 +8,7 @@ namespace MahjongGame.Talents.Impl
         StateScope = TalentStateScope.Match,
         ActivationWindow = TalentActivationWindow.MainTurn,
         RevealPolicy = TalentRevealPolicy.HiddenUntilPublicEffect)]
-    public sealed class InterceptionTalent : TalentRule
+    public sealed class InterceptionTalent : TalentRule, IPublicChargeControlTalent
     {
         private const string UsesKey = "uses_remaining";
         private const string UsedDecisionKey = "used_decision";

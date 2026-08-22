@@ -41,6 +41,16 @@ namespace MahjongGame.Talents
         bool TryReduceCharge(TalentRuntimeState state, int amount);
     }
 
+    /// <summary>Marks a talent that can reduce an opponent's public charge.</summary>
+    public interface IPublicChargeControlTalent
+    {
+    }
+
+    /// <summary>Marks a talent that can defend against public-charge control.</summary>
+    public interface IPublicChargeDefenseTalent
+    {
+    }
+
     public sealed class TalentPublicChargeContext
     {
         public int OwnerSeatIndex { get; }

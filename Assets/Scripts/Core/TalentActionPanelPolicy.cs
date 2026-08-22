@@ -159,7 +159,7 @@ namespace MahjongGame.Core
                 .GroupBy(seat => seat.seatIndex)
                 .ToDictionary(group => group.Key, group => group.First());
             var known = (snapshot.knownTalents ?? Array.Empty<SnapshotKnownTalent>())
-                .Where(target => target != null && target.isKnown)
+                .Where(target => target != null && target.isKnown && target.isActive)
                 .GroupBy(target => target.ownerSeatIndex + ":" + target.talentId, StringComparer.Ordinal)
                 .ToDictionary(group => group.Key, group => group.First(), StringComparer.Ordinal);
 
@@ -236,6 +236,7 @@ namespace MahjongGame.Core
                     TargetSeatIndex = source.TargetSeatIndex,
                     TargetTalentId = source.TargetTalentId,
                     TargetPublicCharge = source.TargetPublicCharge,
+                    AiPriority = source.AiPriority,
                     Choice = source.Choice,
                     SelectedChoiceId = source.SelectedChoiceId
                 };
