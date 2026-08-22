@@ -210,21 +210,21 @@ Run focused fan and attribution tests, then commit `feat: add chromatic composit
 - Produces: verified 0–3 implementation and a standalone child-task prompt for designs 4–6.
 - Consumes: all prior task outputs.
 
-- [ ] **Step 1: Run focused regressions**
+- [x] **Step 1: Run focused regressions**
 
 Run the changed test groups and any necessary real `GameServer` regression. Fix every defect through a new failing regression first.
 
-- [ ] **Step 2: Run complete NetworkRegression**
+- [x] **Step 2: Run complete NetworkRegression**
 
 Run: `dotnet run --project Tests\NetworkRegression\NetworkRegression.csproj --no-restore`
 
 Expected: exit 0 with no failed checks.
 
-- [ ] **Step 3: Review architectural constraints**
+- [x] **Step 3: Review architectural constraints**
 
 Search production code to confirm no concrete new talent ids appear outside rule classes, registry-derived tests/fixtures, loadout presets, or player-facing metadata. Confirm other-seat private hands/choices remain absent from snapshots, no telemetry code changed, and no `.meta`/generated csproj changed.
 
-- [ ] **Step 4: Update durable project docs and commit**
+- [x] **Step 4: Update durable project docs and commit**
 
 Record only completed behavior and the remaining 4–6 design handoff. Commit `docs: record first new talent batch progress` if durable docs actually need changes.
 

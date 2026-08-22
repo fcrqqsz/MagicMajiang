@@ -25,7 +25,7 @@
 - 服务端链路：`ServerBootstrap -> WebSocketService -> ConnectionRegistry -> RoomManager -> Room -> GameServer`
 - `ConnectionRegistry` 分离物理 WebSocket、连接代次、开发期身份和逻辑席位；旧 endpoint 的迟到回调必须被代次校验丢弃
 - `RoomManager` 管理房间生命周期，`Room` 持有四席构筑、`GameSession`、跨小局复用的 `TalentMatchRuntime`、`GameServer`、席位消息流及断线托管状态
-- 协议版本为 v5，携带构筑 schema 为 v3；连接必须先完成 `Hello`，开发期以规范化 username 生成稳定 `playerId`
+- 协议版本为 v6，携带构筑 schema 为 v3；连接必须先完成 `Hello`，开发期以规范化 username 生成稳定 `playerId`
 - 每个真人席位使用独立、连续递增的 `SeatMessageStream`；公共消息也按席序列化，私有手牌、牌库、天赋和窥探结果不得串席
 - `RoomGameSnapshot` 只向本家暴露完整暗手牌；客户端使用纯 C# `ClientGameState` 原子应用快照和有序消息
 - 所有网络动作携带 `decisionId`；服务端拒绝过期、重复、错误阶段、错误席位和 AI 控制期间的人类动作
@@ -51,7 +51,7 @@
 - 覆盖牌山构建、摸牌、出牌、动作校验和算番钩子；`OnDraw`/`OnDiscard` 返回修改后的 `TileData`，形成管道链式调用
 - 携带构筑为 6 个主槽（大×1 + 中×2 + 小×3）及 3 个备选槽；主槽可向下兼容装配
 - 异化值档位为 Low 40 / Standard 80 / High 120。服务端重建并验证构筑：总成本 = 牌库异化值 + 当前激活主天赋成本，未激活的三个备选不计成本；精确总值仅本家可见
-- 当前九个天赋均由规则类实现：点金手、窥探、如龙、厚积、快人一步、初始资金、定心、截流、藏锋
+- 当前十二个天赋均由规则类实现：点金手、窥探、如龙、厚积、快人一步、初始资金、定心、截流、藏锋、轻装上阵、归色、异彩成章
 - 主动天赋使用服务端权威 `decisionId` 和目标投影；负面效果先经过目标席防御管道
 - 半庄/全庄第 4 小局后进入一次中场备牌，45 秒内从携带的 6+3 天赋中重新锁定生效集合；AI、断线和超时由服务端提交合法方案
 - 胡牌番数拆为基础番、天赋门槛/奖励/惩罚和最终番，最终值及逐项归因随权威结果与恢复快照下发
