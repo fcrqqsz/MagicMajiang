@@ -15,6 +15,8 @@ internal static class TalentResultAttributionTests
         NegativeClampIsAttributedToItsSourceEntries(runner);
         RuntimeSequenceControlsOrderSensitiveMarginals(runner);
         CandidateEvaluationDoesNotMutateAuthoritativeStateOrEmitEvents(runner);
+        ChromaticCompositionCountsUniqueModifiedPhysicalTiles(runner);
+        ChromaticCompositionAttributesDetachedPostLegalBonus(runner);
         LiveWinCarriesAnIndependentBreakdown(runner);
         FourSeatRecoveryPublishesTheSameDeepCopiedBreakdown(runner);
         DuplicateAndGapDoNotDuplicateOrPartiallyApplyBreakdown(runner);
@@ -27,6 +29,151 @@ internal static class TalentResultAttributionTests
         LocalPresentationStateReceivesLiveAndRecoveryBreakdowns(runner);
         LocalResultPresentationBridgeCarriesLiveAndRecoveryBreakdowns(runner);
     }
+
+    private static void ChromaticCompositionCountsUniqueModifiedPhysicalTiles(
+        RegressionRunner runner)
+    {
+        (int Count, int ExpectedBonus)[] boundaries =
+        {
+            (0, 0), (3, 0), (4, 12), (5, 15), (8, 24), (9, 24)
+        };
+        bool boundariesMatch = true;
+        foreach ((int count, int expectedBonus) in boundaries)
+        {
+            TalentMatchRuntime runtime = CreateReadyRuntime(
+                new[] { "chromatic_composition" }, out GameSession session);
+            List<TileData> concealed = Enumerable.Range(0, count)
+                .Select(index => ModifiedPhysicalTile($"chromatic-{count}-{index}"))
+                .ToList();
+            TileData winning = count > 0
+                ? ModifiedPhysicalTile($"chromatic-{count}-0")
+                : new TileData(Suit.Man, 5, 0) { ID = "chromatic-unmodified-win" };
+            TalentWinFacts facts = TalentWinFacts.Create(
+                session,
+                winnerSeatIndex: 0,
+                discarderSeatIndex: 1,
+                concealed,
+                new List<Meld>(),
+                winning,
+                isSelfDraw: false,
+                isRobKong: false,
+                isKongReplacement: false);
+            TalentFanResolution resolution = runtime.ResolvePostLegalFan(
+                new TalentWinContext(session, 0, facts),
+                eligibilityFan: 8);
+            boundariesMatch &= resolution.PostLegalBonusFan == expectedBonus
+                               && resolution.EligibilityFan == 8
+                               && resolution.FinalFan == 8 + expectedBonus;
+        }
+
+        runner.Check(boundariesMatch,
+            "异彩成章 starts at four unique modified physical tiles, grants three fan each, and caps at eight");
+
+        TalentMatchRuntime meldRuntime = CreateReadyRuntime(
+            new[] { "chromatic_composition" }, out GameSession meldSession);
+        TileData concealedA = ModifiedPhysicalTile("chromatic-concealed-a");
+        TileData concealedB = ModifiedPhysicalTile("chromatic-concealed-b");
+        var meld = new Meld(
+            MeldType.Pon,
+            new List<TileData>
+            {
+                ModifiedPhysicalTile("chromatic-meld-a"),
+                ModifiedPhysicalTile("chromatic-meld-b"),
+                new TileData(Suit.Man, 5, 0) { ID = "chromatic-meld-unmodified" }
+            },
+            sourceId: 1);
+        TalentWinFacts meldFacts = TalentWinFacts.Create(
+            meldSession,
+            winnerSeatIndex: 0,
+            discarderSeatIndex: 1,
+            new[] { concealedA, concealedB },
+            new List<Meld> { meld },
+            ModifiedPhysicalTile("chromatic-concealed-a"),
+            isSelfDraw: false,
+            isRobKong: false,
+            isKongReplacement: false);
+        TalentFanResolution meldResolution = meldRuntime.ResolvePostLegalFan(
+            new TalentWinContext(meldSession, 0, meldFacts),
+            eligibilityFan: 8);
+        runner.Check(meldResolution.PostLegalBonusFan == 12,
+            "异彩成章 counts modified meld tiles, counts equal faces with distinct ids, and deduplicates the winning physical tile");
+
+        TalentMatchRuntime belowGateRuntime = CreateReadyRuntime(
+            new[] { "chromatic_composition" }, out GameSession belowGateSession);
+        TalentWinFacts belowGateFacts = TalentWinFacts.Create(
+            belowGateSession,
+            0,
+            1,
+            Enumerable.Range(0, 4).Select(index => ModifiedPhysicalTile($"below-gate-{index}")),
+            new List<Meld>(),
+            ModifiedPhysicalTile("below-gate-0"),
+            false,
+            false,
+            false);
+        TalentFanResolution belowGate = belowGateRuntime.ResolvePostLegalFan(
+            new TalentWinContext(belowGateSession, 0, belowGateFacts),
+            eligibilityFan: 6);
+        runner.Check(belowGate.EligibilityFan == 6
+                     && belowGate.PostLegalBonusFan == 12
+                     && belowGate.FinalFan == 18,
+            "异彩成章 leaves a below-threshold eligibility fan unchanged and applies only after legality");
+    }
+
+    private static void ChromaticCompositionAttributesDetachedPostLegalBonus(
+        RegressionRunner runner)
+    {
+        TalentMatchRuntime runtime = CreateReadyRuntime(
+            new[] { "chromatic_composition" }, out GameSession session);
+        runtime.DrainEventsForSeat(0);
+        List<TileData> modified = Enumerable.Range(0, 8)
+            .Select(index => ModifiedPhysicalTile($"attribution-chromatic-{index}"))
+            .ToList();
+        TalentWinFacts facts = TalentWinFacts.Create(
+            session,
+            winnerSeatIndex: 0,
+            discarderSeatIndex: 1,
+            modified,
+            new List<Meld>(),
+            ModifiedPhysicalTile("attribution-chromatic-0"),
+            isSelfDraw: false,
+            isRobKong: false,
+            isKongReplacement: false);
+        var context = new TalentAcceptedWinAttributionContext(
+            session,
+            winnerSeatIndex: 0,
+            alreadyAcceptedFinalFan: 32,
+            facts,
+            _ => new FanEvaluation
+            {
+                HasWinningShape = true,
+                Fan = 8,
+                FanDetails = new List<string>()
+            });
+
+        TalentFanResolution first = runtime.ResolveAcceptedWinFan(context);
+        TalentFanResolution second = runtime.ResolveAcceptedWinFan(context);
+        bool candidatesStayedQuiet = runtime.DrainEventsForSeat(0).Count == 0;
+        runtime.ConfirmAcceptedWin(new TalentWinContext(session, 0, facts));
+        bool acceptanceStayedQuiet = runtime.DrainEventsForSeat(0).Count == 0;
+
+        runner.Check(first.BaseFan == 8
+                     && first.FinalFan == 32
+                     && first.Contributions.Count == 1
+                     && first.Contributions[0].TalentId == "chromatic_composition"
+                     && first.Contributions[0].Category == TalentFanContributionCategory.PostLegal
+                     && first.Contributions[0].FanDelta == 24
+                     && second.FinalFan == first.FinalFan,
+            "异彩成章 contributes one stable post-legal attribution row to an accepted win");
+        runner.Check(candidatesStayedQuiet && acceptanceStayedQuiet,
+            "异彩成章 candidate, counterfactual, and accepted-win hooks do not mutate state or emit duplicate events");
+    }
+
+    private static TileData ModifiedPhysicalTile(string id) => new TileData(Suit.Man, 5, 0)
+    {
+        ID = id,
+        IsModified = true,
+        SpecialEffectID = "any_modification_source"
+    };
 
     private static void CloneFiltersNullContributionRows(RegressionRunner runner)
     {

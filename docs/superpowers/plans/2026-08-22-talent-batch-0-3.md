@@ -180,23 +180,23 @@ Commit `feat: add generic suit choice and convergence talent`.
 - Produces: `chromatic_composition` post-legal fan contribution.
 - Consumes: immutable `TalentWinFacts`, detached runtime state, existing attribution pipeline.
 
-- [ ] **Step 1: Write fan-boundary RED tests**
+- [x] **Step 1: Write fan-boundary RED tests**
 
 Use hand-authored physical ids across concealed tiles, melds, and winning tile. Assert 0 bonus at 0–3 unique modified tiles, +12 at 4, +15 at 5, and +24 at 8 or more. Assert one physical tile appearing as both concealed/winning data counts once, while distinct copies with equal suit/value count separately.
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 Expected: registry cannot find `chromatic_composition` or returns no contribution.
 
-- [ ] **Step 3: Implement the rule**
+- [x] **Step 3: Implement the rule**
 
-Register Large, cost 26, `Scoring`, match state, public at match start, flexible sideboard. Count unique non-empty physical ids with `IsModified`; use a stable fallback key only for malformed empty-id facts so one fact object cannot be counted twice. Return `count >= 4 ? min(count, 8) * 3 : 0` from `GetPostLegalFanBonus`; do not lower eligibility.
+Register Large, cost 26, `Scoring`, match state, public at match start, flexible sideboard. Count unique non-empty physical ids with `IsModified`; malformed facts without a physical id are ignored so they cannot inflate the bonus. Return `count >= 4 ? min(count, 8) * 3 : 0` from `GetPostLegalFanBonus`; do not lower eligibility.
 
-- [ ] **Step 4: Write attribution/detachment RED tests**
+- [x] **Step 4: Write attribution/detachment RED tests**
 
 Prove a six-fan base hand remains illegal despite the bonus, a legal accepted win receives one post-legal contribution, repeated candidate and counterfactual evaluations are deterministic, and authoritative state/event history does not change before final acceptance.
 
-- [ ] **Step 5: Verify GREEN and commit**
+- [x] **Step 5: Verify GREEN and commit**
 
 Run focused fan and attribution tests, then commit `feat: add chromatic composition talent`.
 
