@@ -41,6 +41,9 @@ internal static class SnapshotReconnectTests
         TestRobKongDecisionPhase(runner);
         TestRobKongDeclarationProjection(runner);
         TestRobKongRemoteNotification(runner);
+        TestGatherMomentumCrossRoundAndSideboard(runner);
+        TestFadingColorCrossRoundAndSideboard(runner);
+        TestRedirectForceRoundScopeAndSideboard(runner);
     }
 
     private static void TestCompletedSessionRoundProgressRecovery(RegressionRunner runner)
@@ -1759,6 +1762,264 @@ internal static class SnapshotReconnectTests
             seatIndex = index,
             tiles = Array.Empty<SimpleTileData>()
         }).ToArray();
+
+    private static RoomGameSnapshotSource CreateSnapshotSourceWithTalents(
+        TalentMatchRuntime runtime, GameSession session, string roomId = "test-room")
+    {
+        var source = CreateEmptySnapshotSource(roomId, RoomState.InRound);
+        source.Session = session;
+        source.Talents = (runtime?.GetSnapshotEntries() ?? Array.Empty<TalentSnapshotEntry>())
+            .Select(entry => new RoomSnapshotTalentSource
+            {
+                OwnerSeatIndex = entry.OwnerSeatIndex,
+                TalentId = entry.TalentId,
+                IsActive = entry.IsActive,
+                IsRevealed = entry.IsRevealed,
+                PrivateValue = entry.PrivateValue,
+                LastPublicEventType = entry.LastPublicEventType,
+                LastPublicValue = entry.LastPublicValue
+            })
+            .ToArray();
+        return source;
+    }
+
+    private static ClientGameState BuildAndApplySnapshot(
+        TalentMatchRuntime runtime, GameSession session, int requestingSeatIndex, string roomId = "test-room")
+    {
+        RoomGameSnapshotSource source = CreateSnapshotSourceWithTalents(runtime, session, roomId);
+        RoomGameSnapshot snapshot = RoomGameSnapshotBuilder.Build(source, requestingSeatIndex);
+        string json = UnityEngine.JsonUtility.ToJson(snapshot);
+        RoomGameSnapshot restored = UnityEngine.JsonUtility.FromJson<RoomGameSnapshot>(json);
+        var clientState = new ClientGameState();
+        clientState.ApplySnapshot(restored, requestingSeatIndex);
+        return clientState;
+    }
+
+    private static void TestGatherMomentumCrossRoundAndSideboard(RegressionRunner runner)
+    {
+        var config = new TalentSlotConfig();
+        config.SlotTalentIds[0] = "gather_momentum";
+        config.ReserveTalentIds[0] = "midas_touch";
+        var runtime = new TalentMatchRuntime(
+            new Dictionary<int, TalentSlotConfig> { [0] = config },
+            TalentRegistry.Instance);
+        var session = new GameSession(GameMode.EastOnly);
+        runtime.BeginMatch(session);
+        runtime.BeginRound(new TalentRoundContext(session));
+        runtime.ApplyWallBuilding(new TalentWallContext(session, new List<TileData>()));
+        runtime.CompleteInitialHands(new TalentInitialHandsContext(session, new ServerGameState(4)));
+        runtime.ResolvePostShuffle(new TalentPostShuffleContext(session, new List<TileData>()));
+
+        // Gain 2 momentum in round 1
+        runtime.CommitAction(TalentActionCommittedFacts.Create(
+            decisionId: 501, actorSeatIndex: 0, sourceSeatIndex: 1, ClientActionType.Chi,
+            new TileData(Suit.Man, 2, 1), new[] { 1, 3 }, false, null));
+        runtime.CommitAction(TalentActionCommittedFacts.Create(
+            decisionId: 502, actorSeatIndex: 0, sourceSeatIndex: 2, ClientActionType.Pon,
+            new TileData(Suit.Pin, 3, 2), null, false, null));
+
+        // End round 1 without win (e.g. seat 1 wins)
+        runtime.EndRound(new TalentRoundOutcome { WinnerSeatIndex = 1 }, session);
+        runtime.BeginRound(new TalentRoundContext(session));
+        runtime.ApplyWallBuilding(new TalentWallContext(session, new List<TileData>()));
+        runtime.CompleteInitialHands(new TalentInitialHandsContext(session, new ServerGameState(4)));
+        runtime.ResolvePostShuffle(new TalentPostShuffleContext(session, new List<TileData>()));
+
+        var client0 = BuildAndApplySnapshot(runtime, session, 0);
+        var client1 = BuildAndApplySnapshot(runtime, session, 1);
+
+        var ownGatherRound2 = client0.Snapshot.privateSeat?.ownTalents?.FirstOrDefault(t => t.talentId == "gather_momentum");
+        var knownGatherRound2 = client1.Snapshot.knownTalents?.FirstOrDefault(t => t.talentId == "gather_momentum" && t.ownerSeatIndex == 0);
+
+        // Swap out to reserve (sideboard)
+        runtime.ReplaceActiveSet(0, new[] { "midas_touch" });
+        var client0Inactive = BuildAndApplySnapshot(runtime, session, 0);
+        var client1Inactive = BuildAndApplySnapshot(runtime, session, 1);
+        var ownGatherInactive = client0Inactive.Snapshot.privateSeat?.ownTalents?.FirstOrDefault(t => t.talentId == "gather_momentum");
+        var knownGatherInactive = client1Inactive.Snapshot.knownTalents?.FirstOrDefault(t => t.talentId == "gather_momentum" && t.ownerSeatIndex == 0);
+
+        // Commit meld while inactive -> momentum should not change
+        runtime.CommitAction(TalentActionCommittedFacts.Create(
+            decisionId: 503, actorSeatIndex: 0, sourceSeatIndex: 1, ClientActionType.MingGan,
+            new TileData(Suit.Sou, 4, 1), null, false, null));
+        int inactiveMomentum = runtime.GetPublicCounter(0, "gather_momentum", "momentum");
+
+        // Swap back in
+        runtime.ReplaceActiveSet(0, new[] { "gather_momentum" });
+        var client0Restored = BuildAndApplySnapshot(runtime, session, 0);
+        var client1Restored = BuildAndApplySnapshot(runtime, session, 1);
+        var ownGatherRestored = client0Restored.Snapshot.privateSeat?.ownTalents?.FirstOrDefault(t => t.talentId == "gather_momentum");
+        var knownGatherRestored = client1Restored.Snapshot.knownTalents?.FirstOrDefault(t => t.talentId == "gather_momentum" && t.ownerSeatIndex == 0);
+
+        runner.Check(ownGatherRound2 != null && ownGatherRound2.isActive && ownGatherRound2.privateValue == 2
+                     && knownGatherRound2 != null && knownGatherRound2.isActive && knownGatherRound2.lastPublicValue == 2,
+            "network snapshot roundtrip restores round 2 gather momentum in both owner and opponent client state");
+        runner.Check(ownGatherInactive != null && !ownGatherInactive.isActive && ownGatherInactive.privateValue == 2
+                     && knownGatherInactive != null && !knownGatherInactive.isActive && knownGatherInactive.lastPublicValue == 2
+                     && inactiveMomentum == 2,
+            "network snapshot roundtrip restores inactive gather momentum with preserved private value and sticky public history");
+        runner.Check(ownGatherRestored != null && ownGatherRestored.isActive && ownGatherRestored.privateValue == 2
+                     && knownGatherRestored != null && knownGatherRestored.isActive && knownGatherRestored.lastPublicValue == 2,
+            "network snapshot roundtrip restores active gather momentum after sideboard reinclusion");
+    }
+
+    private static void TestFadingColorCrossRoundAndSideboard(RegressionRunner runner)
+    {
+        var config = new TalentSlotConfig();
+        config.SlotTalentIds[3] = "fading_color";
+        config.ReserveTalentIds[0] = "midas_touch";
+        var runtime = new TalentMatchRuntime(
+            new Dictionary<int, TalentSlotConfig> { [0] = config },
+            TalentRegistry.Instance);
+        var session = new GameSession(GameMode.EastOnly);
+        runtime.BeginMatch(session);
+        runtime.BeginRound(new TalentRoundContext(session));
+        runtime.ApplyWallBuilding(new TalentWallContext(session, new List<TileData>()));
+        runtime.CompleteInitialHands(new TalentInitialHandsContext(session, new ServerGameState(4)));
+        runtime.ResolvePostShuffle(new TalentPostShuffleContext(session, new List<TileData>()));
+
+        // Gain 1 ink in round 1 via modified discard
+        runtime.CommitAction(TalentActionCommittedFacts.Create(
+            decisionId: 501, actorSeatIndex: 0, sourceSeatIndex: 0, ClientActionType.Discard,
+            new TileData(Suit.Man, 1, 0) { IsModified = true }, null, false, null));
+
+        // End round 1 without win
+        runtime.EndRound(new TalentRoundOutcome { WinnerSeatIndex = 1 }, session);
+        runtime.BeginRound(new TalentRoundContext(session));
+        runtime.ApplyWallBuilding(new TalentWallContext(session, new List<TileData>()));
+        runtime.CompleteInitialHands(new TalentInitialHandsContext(session, new ServerGameState(4)));
+        runtime.ResolvePostShuffle(new TalentPostShuffleContext(session, new List<TileData>()));
+
+        var client0 = BuildAndApplySnapshot(runtime, session, 0);
+        var client1 = BuildAndApplySnapshot(runtime, session, 1);
+        var runtimeFadingRound2 = runtime.GetSnapshotEntries()
+            .FirstOrDefault(entry => entry.OwnerSeatIndex == 0 && entry.TalentId == "fading_color");
+        var ownFadingRound2 = client0.Snapshot.privateSeat?.ownTalents?.FirstOrDefault(t => t.talentId == "fading_color");
+        var knownFadingRound2 = client1.Snapshot.knownTalents?.FirstOrDefault(t => t.talentId == "fading_color" && t.ownerSeatIndex == 0);
+
+        // Swap out to reserve (sideboard)
+        runtime.ReplaceActiveSet(0, new[] { "midas_touch" });
+        var client0Inactive = BuildAndApplySnapshot(runtime, session, 0);
+        var client1Inactive = BuildAndApplySnapshot(runtime, session, 1);
+        var ownFadingInactive = client0Inactive.Snapshot.privateSeat?.ownTalents?.FirstOrDefault(t => t.talentId == "fading_color");
+        var knownFadingInactive = client1Inactive.Snapshot.knownTalents?.FirstOrDefault(t => t.talentId == "fading_color" && t.ownerSeatIndex == 0);
+
+        // Commit modified discard while inactive -> ink should not change
+        runtime.CommitAction(TalentActionCommittedFacts.Create(
+            decisionId: 502, actorSeatIndex: 0, sourceSeatIndex: 0, ClientActionType.Discard,
+            new TileData(Suit.Man, 2, 0) { IsModified = true }, null, false, null));
+        int inactiveInk = runtime.GetPrivateCounter(0, "fading_color", "ink");
+
+        // Swap back in
+        runtime.ReplaceActiveSet(0, new[] { "fading_color" });
+        var client0Restored = BuildAndApplySnapshot(runtime, session, 0);
+        var client1Restored = BuildAndApplySnapshot(runtime, session, 1);
+        var ownFadingRestored = client0Restored.Snapshot.privateSeat?.ownTalents?.FirstOrDefault(t => t.talentId == "fading_color");
+        var knownFadingRestored = client1Restored.Snapshot.knownTalents?.FirstOrDefault(t => t.talentId == "fading_color" && t.ownerSeatIndex == 0);
+
+        runner.Check(ownFadingRound2 != null && ownFadingRound2.isActive && ownFadingRound2.privateValue == 1,
+            "network snapshot roundtrip preserves fading color ink for its owner");
+        runner.Check(runtimeFadingRound2 != null && runtimeFadingRound2.IsRevealed,
+            "fading color runtime reveals its first ink gain before snapshot projection");
+        runner.Check(runtimeFadingRound2 != null && runtimeFadingRound2.LastPublicValue == 1,
+            "fading color runtime publishes its first ink value before snapshot projection");
+        runner.Check(knownFadingRound2 != null && knownFadingRound2.isActive
+                     && knownFadingRound2.lastPublicValue == 1,
+            "network snapshot roundtrip reveals fading color to opponents after its first public ink gain");
+        runner.Check(ownFadingInactive != null && !ownFadingInactive.isActive
+                     && ownFadingInactive.privateValue == 1 && inactiveInk == 1,
+            "network snapshot roundtrip retains inactive fading color ink for its owner");
+        runner.Check(knownFadingInactive != null && !knownFadingInactive.isActive
+                     && knownFadingInactive.lastPublicValue == 1,
+            "network snapshot roundtrip retains inactive fading color as sticky public history");
+        runner.Check(ownFadingRestored != null && ownFadingRestored.isActive
+                     && ownFadingRestored.privateValue == 1,
+            "network snapshot roundtrip restores active fading color ink for its owner");
+        runner.Check(knownFadingRestored != null && knownFadingRestored.isActive
+                     && knownFadingRestored.lastPublicValue == 1,
+            "network snapshot roundtrip restores active revealed fading color for opponents");
+    }
+
+    private static void TestRedirectForceRoundScopeAndSideboard(RegressionRunner runner)
+    {
+        var config0 = new TalentSlotConfig();
+        config0.SlotTalentIds[0] = "sheathed_edge";
+        config0.SlotTalentIds[1] = "redirect_force";
+        config0.ReserveTalentIds[0] = "midas_touch";
+        var config1 = new TalentSlotConfig();
+        config1.SlotTalentIds[3] = "interception";
+        var runtime = new TalentMatchRuntime(
+            new Dictionary<int, TalentSlotConfig> { [0] = config0, [1] = config1 },
+            TalentRegistry.Instance);
+        var session = new GameSession(GameMode.EastOnly);
+        runtime.BeginMatch(session);
+
+        // Round 1 -> seat 0 gains 1 edge
+        runtime.BeginRound(new TalentRoundContext(session));
+        runtime.ApplyWallBuilding(new TalentWallContext(session, new List<TileData>()));
+        runtime.CompleteInitialHands(new TalentInitialHandsContext(session, new ServerGameState(4)));
+        runtime.ResolvePostShuffle(new TalentPostShuffleContext(session, new List<TileData>()));
+        runtime.EndRound(new TalentRoundOutcome { WinnerSeatIndex = 2 }, session);
+
+        // Round 2 -> redirect_force is ready (private value 1)
+        runtime.BeginRound(new TalentRoundContext(session));
+        runtime.ApplyWallBuilding(new TalentWallContext(session, new List<TileData>()));
+        runtime.CompleteInitialHands(new TalentInitialHandsContext(session, new ServerGameState(4)));
+        runtime.ResolvePostShuffle(new TalentPostShuffleContext(session, new List<TileData>()));
+
+        var client0Before = BuildAndApplySnapshot(runtime, session, 0);
+        var client1Before = BuildAndApplySnapshot(runtime, session, 1);
+        var ownRedirectBefore = client0Before.Snapshot.privateSeat?.ownTalents?.FirstOrDefault(t => t.talentId == "redirect_force");
+        var knownRedirectBefore = client1Before.Snapshot.knownTalents?.FirstOrDefault(t => t.talentId == "redirect_force" && t.ownerSeatIndex == 0);
+
+        // Block occurs in round 2
+        runtime.OpenMainDecision(1, decisionId: 501);
+        runtime.TryActivate(1, new TalentActionRequest
+        {
+            TalentId = "interception",
+            DecisionId = 501,
+            TargetSeatIndex = 0,
+            TargetTalentId = "sheathed_edge"
+        }, new TalentActivationContext(session, 1, TalentActivationWindow.MainTurn, decisionId: 501));
+
+        var client0After = BuildAndApplySnapshot(runtime, session, 0);
+        var client1After = BuildAndApplySnapshot(runtime, session, 1);
+        var ownRedirectAfter = client0After.Snapshot.privateSeat?.ownTalents?.FirstOrDefault(t => t.talentId == "redirect_force");
+        var knownRedirectAfter = client1After.Snapshot.knownTalents?.FirstOrDefault(t => t.talentId == "redirect_force" && t.ownerSeatIndex == 0);
+
+        // End round 2, begin round 3 -> Round scope resets!
+        runtime.EndRound(new TalentRoundOutcome { WinnerSeatIndex = 2 }, session);
+        runtime.BeginRound(new TalentRoundContext(session));
+        runtime.ApplyWallBuilding(new TalentWallContext(session, new List<TileData>()));
+        runtime.CompleteInitialHands(new TalentInitialHandsContext(session, new ServerGameState(4)));
+        runtime.ResolvePostShuffle(new TalentPostShuffleContext(session, new List<TileData>()));
+
+        var client0Round3 = BuildAndApplySnapshot(runtime, session, 0);
+        var ownRedirectRound3 = client0Round3.Snapshot.privateSeat?.ownTalents?.FirstOrDefault(t => t.talentId == "redirect_force");
+
+        // Sideboard out to reserve
+        runtime.ReplaceActiveSet(0, new[] { "sheathed_edge", "midas_touch" });
+        var client0Inactive = BuildAndApplySnapshot(runtime, session, 0);
+        var ownRedirectInactive = client0Inactive.Snapshot.privateSeat?.ownTalents?.FirstOrDefault(t => t.talentId == "redirect_force");
+
+        // Sideboard back in
+        runtime.ReplaceActiveSet(0, new[] { "sheathed_edge", "redirect_force" });
+        var client0Restored = BuildAndApplySnapshot(runtime, session, 0);
+        var ownRedirectRestored = client0Restored.Snapshot.privateSeat?.ownTalents?.FirstOrDefault(t => t.talentId == "redirect_force");
+
+        runner.Check(ownRedirectBefore != null && ownRedirectBefore.isActive && ownRedirectBefore.privateValue == 1
+                     && knownRedirectBefore == null,
+            "network snapshot roundtrip keeps redirect force hidden before public block");
+        runner.Check(ownRedirectAfter != null && ownRedirectAfter.isActive && ownRedirectAfter.privateValue == 0
+                     && knownRedirectAfter != null && knownRedirectAfter.lastPublicEventType == "blocked_negative_effect",
+            "network snapshot roundtrip reveals redirect force after public block with consumed defense");
+        runner.Check(ownRedirectRound3 != null && ownRedirectRound3.isActive && ownRedirectRound3.privateValue == 1,
+            "network snapshot roundtrip resets redirect force defense in new round");
+        runner.Check(ownRedirectInactive != null && !ownRedirectInactive.isActive && ownRedirectInactive.privateValue == 0,
+            "network snapshot roundtrip reports 0 private value for inactive redirect force");
+        runner.Check(ownRedirectRestored != null && ownRedirectRestored.isActive && ownRedirectRestored.privateValue == 1,
+            "network snapshot roundtrip restores active redirect force with ready defense");
+    }
 
     private static SimpleTileData Tile(Suit suit, int value, int ownerId) =>
         new(new TileData(suit, value, ownerId));

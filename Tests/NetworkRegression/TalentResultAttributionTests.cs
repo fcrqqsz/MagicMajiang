@@ -28,6 +28,8 @@ internal static class TalentResultAttributionTests
         CloneFiltersNullContributionRows(runner);
         LocalPresentationStateReceivesLiveAndRecoveryBreakdowns(runner);
         LocalResultPresentationBridgeCarriesLiveAndRecoveryBreakdowns(runner);
+        GatherMomentumDoesNotLowerEligibilityGateAndAttributesPostLegalBonus(runner);
+        RedirectForceDoesNotLowerEligibilityGateAndAttributesPostLegalBonus(runner);
     }
 
     private static void ChromaticCompositionCountsUniqueModifiedPhysicalTiles(
@@ -806,6 +808,178 @@ internal static class TalentResultAttributionTests
             $"base evaluation returns the actual fan below the eight-fan eligibility gate (fan={raw.Fan})");
         runner.Check(!legal,
             "the public legality method still enforces the eight-fan gate");
+    }
+
+    private static void GatherMomentumDoesNotLowerEligibilityGateAndAttributesPostLegalBonus(
+        RegressionRunner runner)
+    {
+        var config = new TalentSlotConfig();
+        config.SlotTalentIds[0] = "gather_momentum";
+        var runtime = new TalentMatchRuntime(
+            new Dictionary<int, TalentSlotConfig> { [0] = config },
+            TalentRegistry.Instance);
+        var session = new GameSession(GameMode.EastOnly);
+        runtime.BeginMatch(session);
+        BeginReadyRound(runtime, session);
+
+        // Charge 2 momentum
+        runtime.CommitAction(TalentActionCommittedFacts.Create(
+            decisionId: 401, actorSeatIndex: 0, sourceSeatIndex: 1, ClientActionType.Chi,
+            new TileData(Suit.Man, 2, 1), new[] { 1, 3 }, false, null));
+        runtime.CommitAction(TalentActionCommittedFacts.Create(
+            decisionId: 402, actorSeatIndex: 0, sourceSeatIndex: 2, ClientActionType.Pon,
+            new TileData(Suit.Pin, 3, 2), null, false, null));
+
+        // Arm 2 momentum
+        runtime.OpenMainDecision(0, 403);
+        runtime.TryActivate(0,
+            new TalentActionRequest { TalentId = "gather_momentum", DecisionId = 403 },
+            new TalentActivationContext(session, 0, TalentActivationWindow.MainTurn, decisionId: 403));
+        runtime.DrainEventsForSeat(0);
+
+        // 1. Candidate scoring with 6-fan base: eligibilityFan is 6, bonus is 16, final is 22.
+        TalentWinFacts winFacts = TalentTestFacts.Win(session, 0);
+        TalentFanResolution sixFanCandidate = runtime.ResolvePostLegalFan(
+            new TalentWinContext(session, 0, winFacts), eligibilityFan: 6);
+        bool candidateDidNotEmit = runtime.DrainEventsForSeat(0)
+            .All(e => e.EventType != "armed_consumed");
+
+        // 2. Candidate scoring with 8-fan base: eligibilityFan 8, bonus 16, final 24.
+        TalentFanResolution eightFanCandidate = runtime.ResolvePostLegalFan(
+            new TalentWinContext(session, 0, winFacts), eligibilityFan: 8);
+
+        // 3. Accepted win confirmation & attribution row check
+        TalentFanResolution acceptedAttribution = runtime.ResolveAcceptedWinFan(
+            new TalentAcceptedWinAttributionContext(
+                session,
+                0,
+                alreadyAcceptedFinalFan: 24,
+                facts: winFacts,
+                _ => new FanEvaluation
+                {
+                    HasWinningShape = true,
+                    Fan = 8,
+                    FanDetails = new List<string>()
+                }));
+        var gatherRow = acceptedAttribution.Contributions.FirstOrDefault(c => c.TalentId == "gather_momentum");
+
+        runtime.ConfirmAcceptedWin(new TalentWinContext(session, 0, winFacts));
+        int consumedCount1 = runtime.DrainEventsForSeat(0)
+            .Count(e => e.EventType == "armed_consumed");
+        runtime.ConfirmAcceptedWin(new TalentWinContext(session, 0, winFacts));
+        int consumedCount2 = runtime.DrainEventsForSeat(0)
+            .Count(e => e.EventType == "armed_consumed");
+
+        runner.Check(sixFanCandidate.EligibilityFan == 6
+                     && sixFanCandidate.PostLegalBonusFan == 16
+                     && sixFanCandidate.FinalFan == 22
+                     && candidateDidNotEmit,
+            "gather momentum provides +8 per consumed layer but does not lower eligibility threshold");
+        runner.Check(eightFanCandidate.EligibilityFan == 8
+                     && eightFanCandidate.PostLegalBonusFan == 16
+                     && eightFanCandidate.FinalFan == 24,
+            "gather momentum awards +16 post-legal bonus on 2 consumed layers for legal win");
+        runner.Check(gatherRow != null
+                     && gatherRow.Category == TalentFanContributionCategory.PostLegal
+                     && gatherRow.FanDelta == 16,
+            "gather momentum generates a specific post-legal attribution row with +16 delta");
+        runner.Check(consumedCount1 == 1 && consumedCount2 == 0,
+            "gather momentum commits armed_consumed exactly once upon accepted win confirmation");
+    }
+
+    private static void RedirectForceDoesNotLowerEligibilityGateAndAttributesPostLegalBonus(RegressionRunner runner)
+    {
+        var config0 = new TalentSlotConfig();
+        config0.SlotTalentIds[0] = "sheathed_edge";
+        config0.SlotTalentIds[1] = "redirect_force";
+        var config1 = new TalentSlotConfig();
+        config1.SlotTalentIds[3] = "interception";
+        var runtime = new TalentMatchRuntime(
+            new Dictionary<int, TalentSlotConfig> { [0] = config0, [1] = config1 },
+            TalentRegistry.Instance);
+        var session = new GameSession(GameMode.EastOnly);
+        runtime.BeginMatch(session);
+
+        // Round 1: No block occurs
+        runtime.BeginRound(new TalentRoundContext(session));
+        runtime.ApplyWallBuilding(new TalentWallContext(session, new List<TileData>()));
+        runtime.CompleteInitialHands(new TalentInitialHandsContext(session, new ServerGameState(4)));
+        runtime.ResolvePostShuffle(new TalentPostShuffleContext(session, new List<TileData>()));
+
+        TalentWinFacts winFacts1 = TalentTestFacts.Win(session, 0);
+        TalentFanResolution unblockRes = runtime.ResolvePostLegalFan(
+            new TalentWinContext(session, 0, winFacts1), eligibilityFan: 6);
+
+        // End round 1 without win -> seat 0 gains 1 edge
+        runtime.EndRound(new TalentRoundOutcome { WinnerSeatIndex = 2 }, session);
+
+        // Round 2: Block occurs
+        runtime.BeginRound(new TalentRoundContext(session));
+        runtime.ApplyWallBuilding(new TalentWallContext(session, new List<TileData>()));
+        runtime.CompleteInitialHands(new TalentInitialHandsContext(session, new ServerGameState(4)));
+        runtime.ResolvePostShuffle(new TalentPostShuffleContext(session, new List<TileData>()));
+
+        // Seat 1 intercepts seat 0's edge -> blocked by redirect_force
+        runtime.OpenMainDecision(1, decisionId: 501);
+        runtime.TryActivate(1, new TalentActionRequest
+        {
+            TalentId = "interception",
+            DecisionId = 501,
+            TargetSeatIndex = 0,
+            TargetTalentId = "sheathed_edge"
+        }, new TalentActivationContext(session, 1, TalentActivationWindow.MainTurn, decisionId: 501));
+        runtime.DrainEventsForSeat(0);
+
+        // 1. Candidate scoring with 6-fan base: eligibilityFan 6, bonus 4, final 10
+        TalentWinFacts winFacts2 = TalentTestFacts.Win(session, 0);
+        TalentFanResolution sixFanCandidate = runtime.ResolvePostLegalFan(
+            new TalentWinContext(session, 0, winFacts2), eligibilityFan: 6);
+        bool candidateDidNotEmit = runtime.DrainEventsForSeat(0)
+            .All(e => e.EventType != "armed_consumed");
+
+        // 2. Candidate scoring with 8-fan base: eligibilityFan 8, bonus 4, final 12
+        TalentFanResolution eightFanCandidate = runtime.ResolvePostLegalFan(
+            new TalentWinContext(session, 0, winFacts2), eligibilityFan: 8);
+
+        // 3. Accepted win confirmation & attribution row check
+        TalentFanResolution acceptedAttribution = runtime.ResolveAcceptedWinFan(
+            new TalentAcceptedWinAttributionContext(
+                session,
+                0,
+                alreadyAcceptedFinalFan: 12,
+                facts: winFacts2,
+                _ => new FanEvaluation
+                {
+                    HasWinningShape = true,
+                    Fan = 8,
+                    FanDetails = new List<string>()
+                }));
+        var redirectRow = acceptedAttribution.Contributions.FirstOrDefault(c => c.TalentId == "redirect_force");
+
+        runtime.ConfirmAcceptedWin(new TalentWinContext(session, 0, winFacts2));
+        int consumedCount1 = runtime.DrainEventsForSeat(0)
+            .Count(e => e.EventType == "armed_consumed");
+        runtime.ConfirmAcceptedWin(new TalentWinContext(session, 0, winFacts2));
+        int consumedCount2 = runtime.DrainEventsForSeat(0)
+            .Count(e => e.EventType == "armed_consumed");
+
+        runner.Check(unblockRes.EligibilityFan == 6 && unblockRes.PostLegalBonusFan == 0 && unblockRes.FinalFan == 6,
+            "redirect force without block provides 0 post-legal bonus");
+        runner.Check(sixFanCandidate.EligibilityFan == 6
+                     && sixFanCandidate.PostLegalBonusFan == 4
+                     && sixFanCandidate.FinalFan == 10
+                     && candidateDidNotEmit,
+            "redirect force when armed provides +4 bonus without lowering eligibility threshold");
+        runner.Check(eightFanCandidate.EligibilityFan == 8
+                     && eightFanCandidate.PostLegalBonusFan == 4
+                     && eightFanCandidate.FinalFan == 12,
+            "redirect force awards +4 post-legal bonus on legal win");
+        runner.Check(redirectRow != null
+                     && redirectRow.Category == TalentFanContributionCategory.PostLegal
+                     && redirectRow.FanDelta == 4,
+            "redirect force generates a specific post-legal attribution row with +4 delta");
+        runner.Check(consumedCount1 == 1 && consumedCount2 == 0,
+            "redirect force commits armed_consumed exactly once upon accepted win confirmation");
     }
 
     private static Meld Pung(Suit suit, int value) => new Meld(

@@ -15,6 +15,8 @@ Check(typeof(GameServer).Assembly == System.Reflection.Assembly.GetExecutingAsse
 await RealGameServerCountsOnlyMainLoopDrawAndEmitsAcceptedWinOnce(failures);
 await ThrowingSinkCannotInterruptRealGameServerCompletion(failures);
 await RealGameServerMarksAndScoresEveryCommittedKongReplacementDraw(failures);
+await RealGameServerAutoTimeoutDiscardModifiedTileChargesFadingColor(failures);
+await RealGameServerRobKongDoesNotChargeGatherMomentumUntilKongActuallyResolves(failures);
 JsonLineSinkWritesEscapedCompactUtf8Records(failures);
 JsonLineFactoryFallsBackToNullWhenCreationFails(failures);
 
@@ -348,6 +350,127 @@ static void Check(bool condition, string message, List<string> failures)
     if (!condition) failures.Add(message);
 }
 
+static async Task RealGameServerAutoTimeoutDiscardModifiedTileChargesFadingColor(List<string> failures)
+{
+    var loadouts = Enumerable.Range(0, 4)
+        .ToDictionary(index => index, _ => new TalentSlotConfig());
+    loadouts[0].SlotTalentIds[3] = "fading_color";
+    var runtime = new TalentMatchRuntime(loadouts, TalentRegistry.Instance);
+    var session = new GameSession(GameMode.Single);
+    runtime.BeginMatch(session);
+
+    // Initial hand for seat 0 with 13 standard tiles
+    var debugHand = new List<TileData>();
+    for (int i = 1; i <= 9; i++) debugHand.Add(new TileData(Suit.Man, i, 0));
+    for (int i = 1; i <= 4; i++) debugHand.Add(new TileData(Suit.Wind, i, 0));
+
+    // First drawn tile is a modified tile!
+    var wall = new ScriptedDrawWallService(new TileData(Suit.Sou, 1, 0) { IsModified = true });
+    var server = new GameServer(wall, runtime, new GameServerOptions
+    {
+        ActionTimeoutMs = 100,
+        ResponseTimeoutMs = 100,
+        UseDebugHand = true,
+        DebugHand = debugHand
+    });
+
+    var discardObserved = new TaskCompletionSource<TileData>(TaskCreationOptions.RunContinuationsAsynchronously);
+    var clients = Enumerable.Range(0, 4)
+        .Select(index => (IPlayerClient)new TimeoutDiscardClient(index, server, onDiscarded: tile =>
+        {
+            if (index == 1) discardObserved.TrySetResult(tile);
+        }))
+        .ToList();
+    var configs = Enumerable.Range(0, 4).Select(_ => DeckConfig.CreateStandard()).ToList();
+
+    server.StartGame(clients, configs, session);
+    TileData discarded = await discardObserved.Task.WaitAsync(TimeSpan.FromSeconds(5));
+    server.StopGame();
+
+    int ink = runtime.GetPrivateCounter(0, "fading_color", "ink");
+    var snapshotEntries = runtime.GetSnapshotEntries().Where(e => e.OwnerSeatIndex == 0).ToArray();
+    var fadingEntry = snapshotEntries.FirstOrDefault(e => e.TalentId == "fading_color");
+    Check(discarded != null && discarded.IsModified && ink == 1 && fadingEntry != null && fadingEntry.PrivateValue == 1 && fadingEntry.IsRevealed,
+        $"real GameServer auto timeout discard of modified tile must charge fading_color ink to 1 and reveal its public counter (discarded={discarded}, actual={ink})",
+        failures);
+}
+
+static async Task RealGameServerRobKongDoesNotChargeGatherMomentumUntilKongActuallyResolves(List<string> failures)
+{
+    // Part 1: JiaGang is robbed -> does NOT charge momentum
+    {
+        var loadouts = Enumerable.Range(0, 4)
+            .ToDictionary(index => index, _ => new TalentSlotConfig());
+        loadouts[0].SlotTalentIds[0] = "gather_momentum";
+        var runtime = new TalentMatchRuntime(loadouts, TalentRegistry.Instance);
+        var session = new GameSession(GameMode.Single);
+        runtime.BeginMatch(session);
+
+        var finished = new TaskCompletionSource<GameRoundCompletion>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var wall = new ScriptedDrawWallService(
+            KongFixtures.Tile(Suit.Man, 9, 0),
+            KongFixtures.Tile(Suit.Dragon, 1, 0));
+        var server = new GameServer(wall, runtime, new GameServerOptions
+        {
+            ActionTimeoutMs = 1000,
+            ResponseTimeoutMs = 1000,
+            UseDebugHand = true,
+            DebugHand = Enumerable.Range(0, 13).Select(_ => KongFixtures.Tile(Suit.Pin, 1, 0)).ToList()
+        });
+        server.OnRoundFinished += completion => finished.TrySetResult(completion);
+
+        var clients = Enumerable.Range(0, 4)
+            .Select(index => (IPlayerClient)new RobKongTestClient(index, server, shouldRob: true))
+            .ToList();
+        var configs = Enumerable.Range(0, 4).Select(_ => DeckConfig.CreateStandard()).ToList();
+
+        server.StartGame(clients, configs, session);
+        GameRoundCompletion completion = await finished.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        server.StopGame();
+
+        int momentum = runtime.GetPublicCounter(0, "gather_momentum", "momentum");
+        Check(completion.Kind == GameRoundCompletionKind.Win && momentum == 0,
+            $"real GameServer robbed added kong must not charge gather_momentum (completion={completion.Kind}, momentum={momentum})",
+            failures);
+    }
+
+    // Part 2: JiaGang resolves without rob -> DOES charge momentum
+    {
+        var loadouts = Enumerable.Range(0, 4)
+            .ToDictionary(index => index, _ => new TalentSlotConfig());
+        loadouts[0].SlotTalentIds[0] = "gather_momentum";
+        var runtime = new TalentMatchRuntime(loadouts, TalentRegistry.Instance);
+        var session = new GameSession(GameMode.Single);
+        runtime.BeginMatch(session);
+
+        var replacementObserved = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var wall = new ScriptedDrawWallService(
+            KongFixtures.Tile(Suit.Man, 9, 0),
+            KongFixtures.Tile(Suit.Dragon, 1, 0));
+        var server = new GameServer(wall, runtime, new GameServerOptions
+        {
+            ActionTimeoutMs = 1000,
+            ResponseTimeoutMs = 1000,
+            UseDebugHand = true,
+            DebugHand = Enumerable.Range(0, 13).Select(_ => KongFixtures.Tile(Suit.Pin, 1, 0)).ToList()
+        });
+
+        var clients = Enumerable.Range(0, 4)
+            .Select(index => (IPlayerClient)new RobKongTestClient(index, server, shouldRob: false, onReplacementDraw: () => replacementObserved.TrySetResult(true)))
+            .ToList();
+        var configs = Enumerable.Range(0, 4).Select(_ => DeckConfig.CreateStandard()).ToList();
+
+        server.StartGame(clients, configs, session);
+        bool replacementDrew = await replacementObserved.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        server.StopGame();
+
+        int momentum = runtime.GetPublicCounter(0, "gather_momentum", "momentum");
+        Check(replacementDrew && momentum == 1,
+            $"real GameServer resolved added kong must charge gather_momentum to 1 (replacementDrew={replacementDrew}, momentum={momentum})",
+            failures);
+    }
+}
+
 sealed class DeterministicWallService : IWallService
 {
     private readonly TileData _winningTile;
@@ -587,4 +710,152 @@ sealed class ThrowingSink : ITalentTelemetrySink
 {
     public void Record(TalentTelemetryRecord record) =>
         throw new InvalidOperationException("expected telemetry sink failure");
+}
+
+sealed class TimeoutDiscardClient : IPlayerClient
+{
+    private readonly GameServer _server;
+    private readonly Action<TileData> _onDiscarded;
+
+    public TimeoutDiscardClient(int playerId, GameServer server, Action<TileData> onDiscarded)
+    {
+        PlayerId = playerId;
+        _server = server;
+        _onDiscarded = onDiscarded;
+    }
+
+    public int PlayerId { get; }
+    public CancellationToken TurnCancellationToken { get; set; }
+    public void OnGameStart(List<TileData> startingHand) { }
+    public void OnTileDrawn(TileData drawnTile, bool isKongReplacementDraw) { }
+    public void OnPlayerDrawn(int playerId) { }
+    public void OnTurnWithoutDraw() { }
+    public void OnWallCountChanged(int remainingCount) { }
+    public void OnOtherPlayerDiscarded(int playerId, TileData discardedTile)
+    {
+        if (playerId == 0)
+        {
+            _onDiscarded?.Invoke(discardedTile);
+        }
+        NetworkDecisionContext decision = _server.ActiveDecision;
+        if (decision != null && decision.Phase == NetworkDecisionPhase.Response)
+        {
+            _server.SubmitNetworkAction(PlayerId, decision.DecisionId, ClientAction.Skip(PlayerId), out _);
+        }
+    }
+    public void OnAddedKongDeclared(int playerId, TileData targetTile) { }
+    public void OnActionResolved(int playerId, ClientActionType actionType, TileData targetTile, int[] chiCombinations = null) { }
+    public void OnDrawGame() { }
+    public void OnPlayerWin(int playerId, int totalFan, List<string> fanDetails, bool isSelfDraw,
+        WinKind winKind, int loserId, WinningHandSnapshot winningHand,
+        TalentFanBreakdownMessage talentFanBreakdown) { }
+    public void OnRoundStart(int roundNumber, WindDirection prevalentWind, WindDirection seatWind, int dealerIndex) { }
+    public void OnSessionEnd(int[] finalScores) { }
+    public void OnTimeout(TileData autoDiscardedTile) { }
+    public void OnTalentInfo(ScoringOptions scoringOptions) { }
+    public void OnPeekWallTiles(List<TileData> topTiles) { }
+}
+
+sealed class RobKongTestClient : IPlayerClient
+{
+    private readonly GameServer _server;
+    private readonly bool _shouldRob;
+    private readonly Action _onReplacementDraw;
+    private int _ownDrawCount;
+
+    public RobKongTestClient(int playerId, GameServer server, bool shouldRob, Action onReplacementDraw = null)
+    {
+        PlayerId = playerId;
+        _server = server;
+        _shouldRob = shouldRob;
+        _onReplacementDraw = onReplacementDraw;
+    }
+
+    public int PlayerId { get; }
+    public CancellationToken TurnCancellationToken { get; set; }
+    public void OnGameStart(List<TileData> startingHand) { }
+
+    public void OnTileDrawn(TileData drawnTile, bool isKongReplacementDraw)
+    {
+        _ownDrawCount++;
+        ServerGameState state = (ServerGameState)typeof(GameServer)
+            .GetField("_gameState", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+            .GetValue(_server);
+
+        if (PlayerId == 0 && _ownDrawCount == 1)
+        {
+            TileData target = KongFixtures.Tile(Suit.Man, 9, 0);
+            state.InitHand(0, Enumerable.Range(0, 2)
+                .Select(_ => KongFixtures.Tile(Suit.Man, 9, 0))
+                .Concat(KongFixtures.CreateReadyTenTiles(0))
+                .ToList());
+            state.ApplyMeld(0, ClientActionType.Pon, target, null);
+            state.AddTile(0, target);
+
+            if (_shouldRob)
+            {
+                // Set up Seat 1 for Thirteen Orphans waiting on 9万
+                state.InitHand(1, new List<TileData>
+                {
+                    new(Suit.Man, 1, 1),
+                    new(Suit.Pin, 1, 1), new(Suit.Pin, 9, 1),
+                    new(Suit.Sou, 1, 1), new(Suit.Sou, 9, 1),
+                    new(Suit.Wind, 1, 1), new(Suit.Wind, 2, 1),
+                    new(Suit.Wind, 3, 1), new(Suit.Wind, 4, 1),
+                    new(Suit.Dragon, 1, 1), new(Suit.Dragon, 2, 1), new(Suit.Dragon, 3, 1),
+                    new(Suit.Dragon, 1, 1)
+                });
+            }
+
+            NetworkDecisionContext decision = _server.ActiveDecision;
+            _server.SubmitNetworkAction(0, decision.DecisionId,
+                new ClientAction(0, ClientActionType.JiaGang, target), out _);
+        }
+        else if (isKongReplacementDraw)
+        {
+            _onReplacementDraw?.Invoke();
+            NetworkDecisionContext decision = _server.ActiveDecision;
+            _server.SubmitNetworkAction(PlayerId, decision.DecisionId,
+                ClientAction.Discard(PlayerId, drawnTile), out _);
+        }
+    }
+
+    public void OnPlayerDrawn(int playerId) { }
+    public void OnTurnWithoutDraw() { }
+    public void OnWallCountChanged(int remainingCount) { }
+    public void OnOtherPlayerDiscarded(int playerId, TileData discardedTile)
+    {
+        NetworkDecisionContext decision = _server.ActiveDecision;
+        if (decision != null && decision.Phase == NetworkDecisionPhase.Response)
+        {
+            _server.SubmitNetworkAction(PlayerId, decision.DecisionId, ClientAction.Skip(PlayerId), out _);
+        }
+    }
+
+    public void OnAddedKongDeclared(int playerId, TileData targetTile)
+    {
+        if (PlayerId == playerId) return;
+        NetworkDecisionContext decision = _server.ActiveDecision;
+        if (_shouldRob && PlayerId == 1)
+        {
+            _server.SubmitNetworkAction(PlayerId, decision.DecisionId,
+                new ClientAction(PlayerId, ClientActionType.Hu, targetTile), out _);
+        }
+        else
+        {
+            _server.SubmitNetworkAction(PlayerId, decision.DecisionId,
+                ClientAction.Skip(PlayerId), out _);
+        }
+    }
+
+    public void OnActionResolved(int playerId, ClientActionType actionType, TileData targetTile, int[] chiCombinations = null) { }
+    public void OnDrawGame() { }
+    public void OnPlayerWin(int playerId, int totalFan, List<string> fanDetails, bool isSelfDraw,
+        WinKind winKind, int loserId, WinningHandSnapshot winningHand,
+        TalentFanBreakdownMessage talentFanBreakdown) { }
+    public void OnRoundStart(int roundNumber, WindDirection prevalentWind, WindDirection seatWind, int dealerIndex) { }
+    public void OnSessionEnd(int[] finalScores) { }
+    public void OnTimeout(TileData autoDiscardedTile) { }
+    public void OnTalentInfo(ScoringOptions scoringOptions) { }
+    public void OnPeekWallTiles(List<TileData> topTiles) { }
 }

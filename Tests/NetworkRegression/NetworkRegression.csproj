@@ -148,6 +148,9 @@
     <Compile Include="..\..\Assets\Scripts\Talent\Impl\TravelLightTalent.cs" Link="TravelLightTalent.cs" />
     <Compile Include="..\..\Assets\Scripts\Talent\Impl\SuitConvergenceTalent.cs" Link="SuitConvergenceTalent.cs" />
     <Compile Include="..\..\Assets\Scripts\Talent\Impl\ChromaticCompositionTalent.cs" Link="ChromaticCompositionTalent.cs" />
+    <Compile Include="..\..\Assets\Scripts\Talent\Impl\GatherMomentumTalent.cs" Link="GatherMomentumTalent.cs" />
+    <Compile Include="..\..\Assets\Scripts\Talent\Impl\FadingColorTalent.cs" Link="FadingColorTalent.cs" />
+    <Compile Include="..\..\Assets\Scripts\Talent\Impl\RedirectForceTalent.cs" Link="RedirectForceTalent.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\Data\SavedDeck.cs" Link="SavedDeck.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\Data\PlayerProfile.cs" Link="PlayerProfile.cs" />
   </ItemGroup>

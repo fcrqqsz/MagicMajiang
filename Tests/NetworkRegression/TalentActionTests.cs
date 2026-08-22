@@ -33,6 +33,18 @@ internal static class TalentActionTests
         SheathedEdgeReadOnlyResolutionConsumesOnlyAfterAcceptedWin(runner);
         SheathedEdgeConsumedChargeDoesNotCarryAcrossRounds(runner);
         SuitConvergenceChoosesAndTransformsExactlyTwoOffSuitDraws(runner);
+        GatherMomentumChargesOnCommittedMeldsAndCapsAtThree(runner);
+        GatherMomentumArmsAndSpendsAllLayersInMainTurn(runner);
+        GatherMomentumSupportsPublicChargeControl(runner);
+        FadingColorChargesOnFirstModifiedDiscardPerRoundAndCapsAtTwo(runner);
+        FadingColorFullInkExhaustsRoundOpportunityEvenIfInkIsSpentLater(runner);
+        FadingColorSpendsInkToReduceTargetChargeAndReturnsRemainingInk(runner);
+        FadingColorImplementsPublicChargeTalentAndCanBeControlled(runner);
+        FadingColorInvalidTargetDoesNotSpendInk(runner);
+        FadingColorBlockedByComposureOrRedirectForceSpendsInkWithoutRefund(runner);
+        FadingColorActivePublicEventAndSnapshotFinalValueIsOne(runner);
+        RedirectForceBlocksPublicChargeReductionAndArmsBonus(runner);
+        RedirectForceAndComposureDefenseOrder(runner);
         RoomManagerRoutesTalentActionsWithExactlyOneSeatResolution(runner);
     }
 
@@ -1319,12 +1331,752 @@ internal static class TalentActionTests
             TalentNegativeEffectTypes.ReducePublicChargeLayer);
     }
 
+    private static void GatherMomentumChargesOnCommittedMeldsAndCapsAtThree(RegressionRunner runner)
+    {
+        var config = new TalentSlotConfig();
+        config.SlotTalentIds[0] = "gather_momentum";
+        var runtime = new TalentMatchRuntime(
+            new Dictionary<int, TalentSlotConfig> { [0] = config },
+            TalentRegistry.Instance);
+        var session = new GameSession(GameMode.EastOnly);
+        runtime.BeginMatch(session);
+        BeginReadyRound(runtime, session);
+
+        // 1. Chi commits -> +1
+        runtime.CommitAction(TalentActionCommittedFacts.Create(
+            decisionId: 101, actorSeatIndex: 0, sourceSeatIndex: 1, ClientActionType.Chi,
+            new TileData(Suit.Man, 2, 1), new[] { 1, 3 }, false, null));
+        int afterChi = runtime.GetPublicCounter(0, "gather_momentum", "momentum");
+
+        // 2. Discard does not charge
+        runtime.CommitAction(TalentActionCommittedFacts.Create(
+            decisionId: 102, actorSeatIndex: 0, sourceSeatIndex: null, ClientActionType.Discard,
+            new TileData(Suit.Man, 9, 0), null, false, null));
+        int afterDiscard = runtime.GetPublicCounter(0, "gather_momentum", "momentum");
+
+        // 3. Other player's meld does not charge seat 0
+        runtime.CommitAction(TalentActionCommittedFacts.Create(
+            decisionId: 103, actorSeatIndex: 1, sourceSeatIndex: 2, ClientActionType.Pon,
+            new TileData(Suit.Pin, 5, 2), null, false, null));
+        int afterOther = runtime.GetPublicCounter(0, "gather_momentum", "momentum");
+
+        // 4. Duplicate decision does not charge
+        runtime.CommitAction(TalentActionCommittedFacts.Create(
+            decisionId: 101, actorSeatIndex: 0, sourceSeatIndex: 1, ClientActionType.Chi,
+            new TileData(Suit.Man, 2, 1), new[] { 1, 3 }, false, null));
+        int afterDuplicate = runtime.GetPublicCounter(0, "gather_momentum", "momentum");
+
+        // 5. Pon + JiaGang (added kong) on same tile counts as 2 actions
+        runtime.CommitAction(TalentActionCommittedFacts.Create(
+            decisionId: 104, actorSeatIndex: 0, sourceSeatIndex: 1, ClientActionType.Pon,
+            new TileData(Suit.Sou, 3, 1), null, false, null));
+        int afterPon = runtime.GetPublicCounter(0, "gather_momentum", "momentum");
+
+        runtime.CommitAction(TalentActionCommittedFacts.Create(
+            decisionId: 105, actorSeatIndex: 0, sourceSeatIndex: null, ClientActionType.JiaGang,
+            new TileData(Suit.Sou, 3, 0), null, false, null));
+        int afterJiaGang = runtime.GetPublicCounter(0, "gather_momentum", "momentum");
+
+        // 6. 4th meld caps at 3
+        runtime.CommitAction(TalentActionCommittedFacts.Create(
+            decisionId: 106, actorSeatIndex: 0, sourceSeatIndex: null, ClientActionType.AnGan,
+            new TileData(Suit.Wind, 1, 0), null, false, null));
+        int afterAnGan = runtime.GetPublicCounter(0, "gather_momentum", "momentum");
+
+        runner.Check(afterChi == 1
+                     && afterDiscard == 1
+                     && afterOther == 1
+                     && afterDuplicate == 1
+                     && afterPon == 2
+                     && afterJiaGang == 3
+                     && afterAnGan == 3,
+            "gather momentum charges on chi, pon, jiagang, angan, caps at 3, and ignores non-meld, duplicate and other-seat actions");
+    }
+
+    private static void GatherMomentumArmsAndSpendsAllLayersInMainTurn(RegressionRunner runner)
+    {
+        var config = new TalentSlotConfig();
+        config.SlotTalentIds[0] = "gather_momentum";
+        var runtime = new TalentMatchRuntime(
+            new Dictionary<int, TalentSlotConfig> { [0] = config },
+            TalentRegistry.Instance);
+        var session = new GameSession(GameMode.EastOnly);
+        runtime.BeginMatch(session);
+        BeginReadyRound(runtime, session);
+
+        // Cannot arm with 0 layers
+        runtime.OpenMainDecision(0, decisionId: 201);
+        var zeroContext = new TalentActionQueryContext(session, 0, TalentActivationWindow.MainTurn, decisionId: 201);
+        var zeroOptions = runtime.GetAvailableActions(0, zeroContext);
+        TalentActionResult zeroArmed = runtime.TryActivate(0,
+            new TalentActionRequest { TalentId = "gather_momentum", DecisionId = 201 },
+            new TalentActivationContext(session, 0, TalentActivationWindow.MainTurn, decisionId: 201));
+
+        // Charge 2 layers via 2 melds
+        runtime.CommitAction(TalentActionCommittedFacts.Create(
+            decisionId: 202, actorSeatIndex: 0, sourceSeatIndex: 1, ClientActionType.Chi,
+            new TileData(Suit.Man, 2, 1), new[] { 1, 3 }, false, null));
+        runtime.CommitAction(TalentActionCommittedFacts.Create(
+            decisionId: 203, actorSeatIndex: 0, sourceSeatIndex: 2, ClientActionType.MingGan,
+            new TileData(Suit.Pin, 4, 2), null, false, null));
+
+        runtime.OpenMainDecision(0, decisionId: 204);
+        var queryContext = new TalentActionQueryContext(session, 0, TalentActivationWindow.MainTurn, decisionId: 204);
+        var options = runtime.GetAvailableActions(0, queryContext);
+        TalentActionResult armed = runtime.TryActivate(0,
+            new TalentActionRequest { TalentId = "gather_momentum", DecisionId = 204 },
+            new TalentActivationContext(session, 0, TalentActivationWindow.MainTurn, decisionId: 204));
+        int momentumAfterArm = runtime.GetPublicCounter(0, "gather_momentum", "momentum");
+
+        // Try arming second time in same round
+        runtime.CommitAction(TalentActionCommittedFacts.Create(
+            decisionId: 205, actorSeatIndex: 0, sourceSeatIndex: 3, ClientActionType.Chi,
+            new TileData(Suit.Sou, 5, 3), new[] { 4, 6 }, false, null));
+        runtime.OpenMainDecision(0, decisionId: 206);
+        var secondQueryContext = new TalentActionQueryContext(session, 0, TalentActivationWindow.MainTurn, decisionId: 206);
+        var secondOptions = runtime.GetAvailableActions(0, secondQueryContext);
+        TalentActionResult secondArmed = runtime.TryActivate(0,
+            new TalentActionRequest { TalentId = "gather_momentum", DecisionId = 206 },
+            new TalentActivationContext(session, 0, TalentActivationWindow.MainTurn, decisionId: 206));
+
+        runner.Check(zeroOptions.Count == 0 && !zeroArmed.Accepted,
+            "gather momentum cannot arm with 0 momentum layers");
+        runner.Check(options.Count == 1 && options[0].AiPriority == 200,
+            "gather momentum advertises main-turn option with priority 200");
+        runner.Check(armed.Accepted && momentumAfterArm == 0,
+            "gather momentum spends all layers immediately upon arming");
+        runner.Check(secondOptions.Count == 0 && !secondArmed.Accepted,
+            "gather momentum cannot arm more than once per round even if recharged");
+    }
+
+    private static void GatherMomentumSupportsPublicChargeControl(RegressionRunner runner)
+    {
+        var targetConfig = new TalentSlotConfig();
+        targetConfig.SlotTalentIds[0] = "gather_momentum";
+        var controlConfig = new TalentSlotConfig();
+        controlConfig.SlotTalentIds[0] = "interception";
+        var runtime = new TalentMatchRuntime(
+            new Dictionary<int, TalentSlotConfig>
+            {
+                [0] = targetConfig,
+                [1] = controlConfig
+            },
+            TalentRegistry.Instance);
+        var session = new GameSession(GameMode.EastOnly);
+        runtime.BeginMatch(session);
+        BeginReadyRound(runtime, session);
+
+        // Charge 2 momentum on seat 0
+        runtime.CommitAction(TalentActionCommittedFacts.Create(
+            decisionId: 301, actorSeatIndex: 0, sourceSeatIndex: 1, ClientActionType.Chi,
+            new TileData(Suit.Man, 2, 1), new[] { 1, 3 }, false, null));
+        runtime.CommitAction(TalentActionCommittedFacts.Create(
+            decisionId: 302, actorSeatIndex: 0, sourceSeatIndex: 2, ClientActionType.Pon,
+            new TileData(Suit.Pin, 3, 2), null, false, null));
+
+        int initial = runtime.GetPublicCounter(0, "gather_momentum", "momentum");
+
+        // Seat 1 uses Interception on seat 0 gather_momentum
+        runtime.OpenMainDecision(1, decisionId: 303);
+        TalentActionResult firstIntercept = runtime.TryActivate(1,
+            new TalentActionRequest
+            {
+                TalentId = "interception",
+                DecisionId = 303,
+                TargetSeatIndex = 0,
+                TargetTalentId = "gather_momentum"
+            },
+            new TalentActivationContext(session, 1, TalentActivationWindow.MainTurn, decisionId: 303));
+        int afterFirst = runtime.GetPublicCounter(0, "gather_momentum", "momentum");
+
+        // Second interception
+        runtime.OpenMainDecision(1, decisionId: 304);
+        TalentActionResult secondIntercept = runtime.TryActivate(1,
+            new TalentActionRequest
+            {
+                TalentId = "interception",
+                DecisionId = 304,
+                TargetSeatIndex = 0,
+                TargetTalentId = "gather_momentum"
+            },
+            new TalentActivationContext(session, 1, TalentActivationWindow.MainTurn, decisionId: 304));
+        int afterSecond = runtime.GetPublicCounter(0, "gather_momentum", "momentum");
+
+        // Third interception when momentum is 0 -> target should not be eligible
+        runtime.OpenMainDecision(1, decisionId: 305);
+        var query = new TalentActionQueryContext(session, 1, TalentActivationWindow.MainTurn, decisionId: 305);
+        var options = runtime.GetAvailableActions(1, query);
+
+        runner.Check(initial == 2
+                     && firstIntercept.Accepted && afterFirst == 1
+                     && secondIntercept.Accepted && afterSecond == 0,
+            "gather momentum implements IPublicChargeTalent and reduces by 1 per control effect down to 0");
+        runner.Check(options.Count == 0,
+            "gather momentum with 0 charge is no longer an eligible public charge target");
+    }
+
+    private static void FadingColorChargesOnFirstModifiedDiscardPerRoundAndCapsAtTwo(RegressionRunner runner)
+    {
+        var config = new TalentSlotConfig();
+        config.SlotTalentIds[3] = "fading_color";
+        var runtime = new TalentMatchRuntime(
+            new Dictionary<int, TalentSlotConfig> { [0] = config },
+            TalentRegistry.Instance);
+        var session = new GameSession(GameMode.EastOnly);
+        runtime.BeginMatch(session);
+
+        // Round 1
+        BeginReadyRound(runtime, session);
+
+        // Non-modified discard -> 0 ink
+        runtime.CommitAction(TalentActionCommittedFacts.Create(
+            decisionId: 101, actorSeatIndex: 0, sourceSeatIndex: 0, ClientActionType.Discard,
+            new TileData(Suit.Man, 1, 0) { IsModified = false }, null, false, null));
+        int inkAfterNormal = runtime.GetPrivateCounter(0, "fading_color", "ink");
+
+        // First modified discard -> 1 ink
+        runtime.CommitAction(TalentActionCommittedFacts.Create(
+            decisionId: 102, actorSeatIndex: 0, sourceSeatIndex: 0, ClientActionType.Discard,
+            new TileData(Suit.Man, 2, 0) { IsModified = true }, null, false, null));
+        int inkAfterFirstModified = runtime.GetPrivateCounter(0, "fading_color", "ink");
+
+        // Second modified discard in same round -> still 1 ink
+        runtime.CommitAction(TalentActionCommittedFacts.Create(
+            decisionId: 103, actorSeatIndex: 0, sourceSeatIndex: 0, ClientActionType.Discard,
+            new TileData(Suit.Man, 3, 0) { IsModified = true }, null, false, null));
+        int inkAfterSecondModified = runtime.GetPrivateCounter(0, "fading_color", "ink");
+
+        // Round 2
+        runtime.EndRound(new TalentRoundOutcome { WinnerSeatIndex = 1 }, session);
+        BeginReadyRound(runtime, session);
+
+        // First modified discard in round 2 -> 2 ink
+        runtime.CommitAction(TalentActionCommittedFacts.Create(
+            decisionId: 201, actorSeatIndex: 0, sourceSeatIndex: 0, ClientActionType.Discard,
+            new TileData(Suit.Man, 4, 0) { IsModified = true }, null, false, null));
+        int inkRound2 = runtime.GetPrivateCounter(0, "fading_color", "ink");
+
+        // Round 3
+        runtime.EndRound(new TalentRoundOutcome { WinnerSeatIndex = 1 }, session);
+        BeginReadyRound(runtime, session);
+
+        // First modified discard in round 3 -> capped at 2
+        runtime.CommitAction(TalentActionCommittedFacts.Create(
+            decisionId: 301, actorSeatIndex: 0, sourceSeatIndex: 0, ClientActionType.Discard,
+            new TileData(Suit.Man, 5, 0) { IsModified = true }, null, false, null));
+        int inkRound3 = runtime.GetPrivateCounter(0, "fading_color", "ink");
+
+        runner.Check(inkAfterNormal == 0
+                     && inkAfterFirstModified == 1
+                     && inkAfterSecondModified == 1
+                     && inkRound2 == 2
+                     && inkRound3 == 2,
+            "fading color charges 1 ink on first modified discard per round, cross-round up to 2");
+    }
+
+    private static void FadingColorFullInkExhaustsRoundOpportunityEvenIfInkIsSpentLater(RegressionRunner runner)
+    {
+        var config0 = new TalentSlotConfig();
+        config0.SlotTalentIds[3] = "fading_color";
+        var config1 = new TalentSlotConfig();
+        config1.SlotTalentIds[0] = "sheathed_edge";
+        var runtime = new TalentMatchRuntime(
+            new Dictionary<int, TalentSlotConfig> { [0] = config0, [1] = config1 },
+            TalentRegistry.Instance);
+        var session = new GameSession(GameMode.EastOnly);
+        runtime.BeginMatch(session);
+
+        // Round 1 -> gain 1 ink for seat 0, seat 1 gains 1 edge
+        BeginReadyRound(runtime, session);
+        runtime.CommitAction(TalentActionCommittedFacts.Create(
+            decisionId: 101, actorSeatIndex: 0, sourceSeatIndex: 0, ClientActionType.Discard,
+            new TileData(Suit.Man, 1, 0) { IsModified = true }, null, false, null));
+        runtime.EndRound(new TalentRoundOutcome { WinnerSeatIndex = 2 }, session);
+
+        // Round 2 -> gain 2nd ink for seat 0, seat 1 gains 2nd edge
+        BeginReadyRound(runtime, session);
+        runtime.CommitAction(TalentActionCommittedFacts.Create(
+            decisionId: 201, actorSeatIndex: 0, sourceSeatIndex: 0, ClientActionType.Discard,
+            new TileData(Suit.Man, 2, 0) { IsModified = true }, null, false, null));
+        runtime.EndRound(new TalentRoundOutcome { WinnerSeatIndex = 2 }, session);
+
+        // Round 3 -> starts with 2 ink (full)
+        BeginReadyRound(runtime, session);
+        int startingInk = runtime.GetPrivateCounter(0, "fading_color", "ink");
+
+        // Turn 1: Commit modified discard while full (2 ink) -> should consume round opportunity even though ink is full
+        runtime.CommitAction(TalentActionCommittedFacts.Create(
+            decisionId: 301, actorSeatIndex: 0, sourceSeatIndex: 0, ClientActionType.Discard,
+            new TileData(Suit.Man, 3, 0) { IsModified = true }, null, false, null));
+        int inkAfterDiscardFull = runtime.GetPrivateCounter(0, "fading_color", "ink");
+
+        // Turn 2: Spend 1 ink via active ability -> ink drops to 1 and reveals fading_color
+        runtime.OpenMainDecision(0, decisionId: 302);
+        var result = runtime.TryActivate(0, new TalentActionRequest
+        {
+            TalentId = "fading_color",
+            DecisionId = 302,
+            TargetSeatIndex = 1,
+            TargetTalentId = "sheathed_edge"
+        }, new TalentActivationContext(session, 0, TalentActivationWindow.MainTurn, decisionId: 302));
+        int inkAfterSpend = runtime.GetPublicCounter(0, "fading_color", "ink");
+
+        // Turn 3: Commit another modified discard in same round -> MUST NOT re-charge ink (must stay 1)
+        runtime.CommitAction(TalentActionCommittedFacts.Create(
+            decisionId: 303, actorSeatIndex: 0, sourceSeatIndex: 0, ClientActionType.Discard,
+            new TileData(Suit.Man, 4, 0) { IsModified = true }, null, false, null));
+        int inkAfterSecondDiscard = runtime.GetPublicCounter(0, "fading_color", "ink");
+
+        runner.Check(startingInk == 2
+                     && inkAfterDiscardFull == 2
+                     && result.Accepted && result.EffectApplied && inkAfterSpend == 1
+                     && inkAfterSecondDiscard == 1,
+            "fading color exhausts round charge opportunity on first modified discard even when full");
+    }
+
+    private static void FadingColorSpendsInkToReduceTargetChargeAndReturnsRemainingInk(RegressionRunner runner)
+    {
+        var config0 = new TalentSlotConfig();
+        config0.SlotTalentIds[3] = "fading_color";
+        var config1 = new TalentSlotConfig();
+        config1.SlotTalentIds[0] = "gather_momentum";
+        var runtime = new TalentMatchRuntime(
+            new Dictionary<int, TalentSlotConfig> { [0] = config0, [1] = config1 },
+            TalentRegistry.Instance);
+        var session = new GameSession(GameMode.EastOnly);
+        runtime.BeginMatch(session);
+
+        // Charge seat 0 to 2 ink across 2 rounds
+        BeginReadyRound(runtime, session);
+        runtime.CommitAction(TalentActionCommittedFacts.Create(
+            decisionId: 101, actorSeatIndex: 0, sourceSeatIndex: 0, ClientActionType.Discard,
+            new TileData(Suit.Man, 1, 0) { IsModified = true }, null, false, null));
+        // Seat 1 gets 2 momentum in round 1
+        runtime.CommitAction(TalentActionCommittedFacts.Create(
+            decisionId: 102, actorSeatIndex: 1, sourceSeatIndex: 2, ClientActionType.Pon,
+            new TileData(Suit.Pin, 2, 2), null, false, null));
+        runtime.CommitAction(TalentActionCommittedFacts.Create(
+            decisionId: 103, actorSeatIndex: 1, sourceSeatIndex: 2, ClientActionType.Chi,
+            new TileData(Suit.Pin, 3, 2), new[] { 2, 4 }, false, null));
+        runtime.EndRound(new TalentRoundOutcome { WinnerSeatIndex = 2 }, session);
+
+        BeginReadyRound(runtime, session);
+        runtime.CommitAction(TalentActionCommittedFacts.Create(
+            decisionId: 201, actorSeatIndex: 0, sourceSeatIndex: 0, ClientActionType.Discard,
+            new TileData(Suit.Man, 2, 0) { IsModified = true }, null, false, null));
+
+        // Seat 0 now has 2 ink (private), Seat 1 has 2 momentum (public)
+        int seat0Ink = runtime.GetPrivateCounter(0, "fading_color", "ink");
+        int seat1Momentum = runtime.GetPublicCounter(1, "gather_momentum", "momentum");
+
+        // Seat 0 activates fading color targeting seat 1
+        runtime.OpenMainDecision(0, decisionId: 202);
+        var query = new TalentActionQueryContext(session, 0, TalentActivationWindow.MainTurn, decisionId: 202);
+        var options = runtime.GetAvailableActions(0, query);
+        var targetOption = options.FirstOrDefault(o => o.TalentId == "fading_color" && o.TargetSeatIndex == 1);
+
+        var firstActivation = runtime.TryActivate(0, new TalentActionRequest
+        {
+            TalentId = "fading_color",
+            DecisionId = 202,
+            TargetSeatIndex = 1,
+            TargetTalentId = "gather_momentum"
+        }, new TalentActivationContext(session, 0, TalentActivationWindow.MainTurn, decisionId: 202));
+
+        int seat0InkAfter1 = runtime.GetPublicCounter(0, "fading_color", "ink");
+        int seat1MomentumAfter1 = runtime.GetPublicCounter(1, "gather_momentum", "momentum");
+
+        // A second activation in the same main decision is rejected without another spend.
+        var repeatedSameTurn = runtime.TryActivate(0, new TalentActionRequest
+        {
+            TalentId = "fading_color",
+            DecisionId = 202,
+            TargetSeatIndex = 1,
+            TargetTalentId = "gather_momentum"
+        }, new TalentActivationContext(session, 0, TalentActivationWindow.MainTurn, decisionId: 202));
+        int seat0InkAfterRepeated = runtime.GetPublicCounter(0, "fading_color", "ink");
+        int seat1MomentumAfterRepeated = runtime.GetPublicCounter(1, "gather_momentum", "momentum");
+
+        // Second activation spends last ink (1 -> 0)
+        runtime.OpenMainDecision(0, decisionId: 203);
+        var secondActivation = runtime.TryActivate(0, new TalentActionRequest
+        {
+            TalentId = "fading_color",
+            DecisionId = 203,
+            TargetSeatIndex = 1,
+            TargetTalentId = "gather_momentum"
+        }, new TalentActivationContext(session, 0, TalentActivationWindow.MainTurn, decisionId: 203));
+
+        int seat0InkAfter2 = runtime.GetPublicCounter(0, "fading_color", "ink");
+        int seat1MomentumAfter2 = runtime.GetPublicCounter(1, "gather_momentum", "momentum");
+
+        // Third activation with 0 ink fails
+        runtime.OpenMainDecision(0, decisionId: 204);
+        var thirdActivation = runtime.TryActivate(0, new TalentActionRequest
+        {
+            TalentId = "fading_color",
+            DecisionId = 204,
+            TargetSeatIndex = 1,
+            TargetTalentId = "gather_momentum"
+        }, new TalentActivationContext(session, 0, TalentActivationWindow.MainTurn, decisionId: 204));
+
+        runner.Check(seat0Ink == 2 && seat1Momentum == 2
+                     && targetOption != null && targetOption.TargetPublicCharge == 2,
+            "fading color exposes positive public charge targets");
+        runner.Check(firstActivation.Accepted && firstActivation.EffectApplied
+                     && seat0InkAfter1 == 1 && seat1MomentumAfter1 == 1,
+            "fading color spends 1 ink to reduce target charge by 1 and updates public counters");
+        runner.Check(!repeatedSameTurn.Accepted
+                     && repeatedSameTurn.ErrorCode == TalentActionErrorCodes.AlreadyUsedThisTurn
+                     && seat0InkAfterRepeated == 1 && seat1MomentumAfterRepeated == 1,
+            "fading color can activate only once in the same main-turn decision without extra spending");
+        runner.Check(secondActivation.Accepted && secondActivation.EffectApplied
+                     && seat0InkAfter2 == 0 && seat1MomentumAfter2 == 0,
+            "fading color spends final ink down to 0 and reduces target charge to 0");
+        runner.Check(!thirdActivation.Accepted,
+            "fading color rejects activation when ink is 0");
+    }
+
+    private static void FadingColorImplementsPublicChargeTalentAndCanBeControlled(RegressionRunner runner)
+    {
+        var config0 = new TalentSlotConfig();
+        config0.SlotTalentIds[3] = "fading_color";
+        var config1 = new TalentSlotConfig();
+        config1.SlotTalentIds[0] = "gather_momentum";
+        config1.SlotTalentIds[3] = "interception";
+        var runtime = new TalentMatchRuntime(
+            new Dictionary<int, TalentSlotConfig> { [0] = config0, [1] = config1 },
+            TalentRegistry.Instance);
+        var session = new GameSession(GameMode.EastOnly);
+        runtime.BeginMatch(session);
+
+        // Charge seat 0 to 2 ink across 2 rounds
+        BeginReadyRound(runtime, session);
+        runtime.CommitAction(TalentActionCommittedFacts.Create(
+            decisionId: 101, actorSeatIndex: 0, sourceSeatIndex: 0, ClientActionType.Discard,
+            new TileData(Suit.Man, 1, 0) { IsModified = true }, null, false, null));
+        // Seat 1 gets 1 momentum in round 1
+        runtime.CommitAction(TalentActionCommittedFacts.Create(
+            decisionId: 102, actorSeatIndex: 1, sourceSeatIndex: 2, ClientActionType.Pon,
+            new TileData(Suit.Pin, 2, 2), null, false, null));
+        runtime.EndRound(new TalentRoundOutcome { WinnerSeatIndex = 2 }, session);
+
+        BeginReadyRound(runtime, session);
+        runtime.CommitAction(TalentActionCommittedFacts.Create(
+            decisionId: 201, actorSeatIndex: 0, sourceSeatIndex: 0, ClientActionType.Discard,
+            new TileData(Suit.Man, 2, 0) { IsModified = true }, null, false, null));
+
+        // Seat 0 activates fading color once (2 ink -> 1 ink), revealing fading_color!
+        runtime.OpenMainDecision(0, decisionId: 202);
+        var selfActivation = runtime.TryActivate(0, new TalentActionRequest
+        {
+            TalentId = "fading_color",
+            DecisionId = 202,
+            TargetSeatIndex = 1,
+            TargetTalentId = "gather_momentum"
+        }, new TalentActivationContext(session, 0, TalentActivationWindow.MainTurn, decisionId: 202));
+
+        int inkAfterSelf = runtime.GetPublicCounter(0, "fading_color", "ink");
+
+        // Now seat 1 intercepts seat 0's fading_color (1 ink -> 0 ink)
+        runtime.OpenMainDecision(1, decisionId: 203);
+        var intercept = runtime.TryActivate(1, new TalentActionRequest
+        {
+            TalentId = "interception",
+            DecisionId = 203,
+            TargetSeatIndex = 0,
+            TargetTalentId = "fading_color"
+        }, new TalentActivationContext(session, 1, TalentActivationWindow.MainTurn, decisionId: 203));
+        int inkAfterIntercept = runtime.GetPublicCounter(0, "fading_color", "ink");
+
+        runner.Check(selfActivation.Accepted && selfActivation.EffectApplied && inkAfterSelf == 1
+                     && intercept.Accepted && intercept.EffectApplied && inkAfterIntercept == 0,
+            "fading color is revealed after activation and can be controlled by interception down to 0");
+    }
+
+    private static void RedirectForceBlocksPublicChargeReductionAndArmsBonus(RegressionRunner runner)
+    {
+        var config0 = new TalentSlotConfig();
+        config0.SlotTalentIds[0] = "sheathed_edge";
+        config0.SlotTalentIds[1] = "redirect_force";
+        var config1 = new TalentSlotConfig();
+        config1.SlotTalentIds[3] = "interception";
+        var runtime = new TalentMatchRuntime(
+            new Dictionary<int, TalentSlotConfig> { [0] = config0, [1] = config1 },
+            TalentRegistry.Instance);
+        var session = new GameSession(GameMode.EastOnly);
+        runtime.BeginMatch(session);
+
+        // Round 1 -> seat 0 gains 1 edge
+        BeginReadyRound(runtime, session);
+        runtime.EndRound(new TalentRoundOutcome { WinnerSeatIndex = 2 }, session);
+
+        // Round 2
+        BeginReadyRound(runtime, session);
+        int edgeBefore = runtime.GetPublicCounter(0, "sheathed_edge", "edge");
+
+        // Seat 1 tries to intercept seat 0's edge -> blocked by redirect_force
+        runtime.OpenMainDecision(1, decisionId: 201);
+        var intercept = runtime.TryActivate(1, new TalentActionRequest
+        {
+            TalentId = "interception",
+            DecisionId = 201,
+            TargetSeatIndex = 0,
+            TargetTalentId = "sheathed_edge"
+        }, new TalentActivationContext(session, 1, TalentActivationWindow.MainTurn, decisionId: 201));
+
+        int edgeAfter = runtime.GetPublicCounter(0, "sheathed_edge", "edge");
+        var snapshotEntries = runtime.GetSnapshotEntries().Where(e => e.OwnerSeatIndex == 0).ToArray();
+        var redirectEntry = snapshotEntries.FirstOrDefault(e => e.TalentId == "redirect_force");
+
+        runner.Check(edgeBefore == 1
+                     && intercept.Accepted && !intercept.EffectApplied
+                     && edgeAfter == 1
+                     && redirectEntry != null && redirectEntry.PrivateValue == 0,
+            "redirect force blocks first charge reduction targeting owner and consumes its defense");
+    }
+
+    private static void RedirectForceAndComposureDefenseOrder(RegressionRunner runner)
+    {
+        var config0 = new TalentSlotConfig();
+        config0.SlotTalentIds[0] = "sheathed_edge";
+        config0.SlotTalentIds[1] = "redirect_force";
+        config0.SlotTalentIds[3] = "composure";
+        var config1 = new TalentSlotConfig();
+        config1.SlotTalentIds[3] = "interception";
+        var runtime = new TalentMatchRuntime(
+            new Dictionary<int, TalentSlotConfig> { [0] = config0, [1] = config1 },
+            TalentRegistry.Instance);
+        var session = new GameSession(GameMode.EastOnly);
+        runtime.BeginMatch(session);
+
+        // Build 2 edge over 2 rounds
+        BeginReadyRound(runtime, session);
+        runtime.EndRound(new TalentRoundOutcome { WinnerSeatIndex = 2 }, session);
+        BeginReadyRound(runtime, session);
+        runtime.EndRound(new TalentRoundOutcome { WinnerSeatIndex = 2 }, session);
+
+        // Round 3 -> 2 edge
+        BeginReadyRound(runtime, session);
+        int initialEdge = runtime.GetPublicCounter(0, "sheathed_edge", "edge");
+
+        // 1st Interception: Should be blocked by redirect_force (Priority 10 > 0)
+        runtime.OpenMainDecision(1, decisionId: 301);
+        var first = runtime.TryActivate(1, new TalentActionRequest
+        {
+            TalentId = "interception",
+            DecisionId = 301,
+            TargetSeatIndex = 0,
+            TargetTalentId = "sheathed_edge"
+        }, new TalentActivationContext(session, 1, TalentActivationWindow.MainTurn, decisionId: 301));
+        int edgeAfterFirst = runtime.GetPublicCounter(0, "sheathed_edge", "edge");
+
+        var snap1 = runtime.GetSnapshotEntries().Where(e => e.OwnerSeatIndex == 0).ToDictionary(e => e.TalentId);
+        int redirectVal1 = snap1["redirect_force"].PrivateValue;
+        int composureVal1 = snap1["composure"].PrivateValue;
+
+        // 2nd Interception: Should be blocked by composure (Priority 0)
+        runtime.OpenMainDecision(1, decisionId: 302);
+        var second = runtime.TryActivate(1, new TalentActionRequest
+        {
+            TalentId = "interception",
+            DecisionId = 302,
+            TargetSeatIndex = 0,
+            TargetTalentId = "sheathed_edge"
+        }, new TalentActivationContext(session, 1, TalentActivationWindow.MainTurn, decisionId: 302));
+        int edgeAfterSecond = runtime.GetPublicCounter(0, "sheathed_edge", "edge");
+
+        var snap2 = runtime.GetSnapshotEntries().Where(e => e.OwnerSeatIndex == 0).ToDictionary(e => e.TalentId);
+        int redirectVal2 = snap2["redirect_force"].PrivateValue;
+        int composureVal2 = snap2["composure"].PrivateValue;
+
+        // 3rd Interception: Both defenses consumed -> successfully applies! Edge reduces 2 -> 1
+        runtime.OpenMainDecision(1, decisionId: 303);
+        var third = runtime.TryActivate(1, new TalentActionRequest
+        {
+            TalentId = "interception",
+            DecisionId = 303,
+            TargetSeatIndex = 0,
+            TargetTalentId = "sheathed_edge"
+        }, new TalentActivationContext(session, 1, TalentActivationWindow.MainTurn, decisionId: 303));
+        int edgeAfterThird = runtime.GetPublicCounter(0, "sheathed_edge", "edge");
+
+        runner.Check(initialEdge == 2
+                     && first.Accepted && !first.EffectApplied && edgeAfterFirst == 2
+                     && redirectVal1 == 0 && composureVal1 == 1,
+            "1st defense: redirect force with Priority 10 blocks first, leaving composure ready");
+        runner.Check(second.Accepted && !second.EffectApplied && edgeAfterSecond == 2
+                     && redirectVal2 == 0 && composureVal2 == 0,
+            "2nd defense: composure with Priority 0 blocks second when redirect force is consumed");
+        runner.Check(third.Accepted && third.EffectApplied && edgeAfterThird == 1,
+            "3rd attempt: all defenses consumed, charge reduction is applied");
+    }
+
+    private static void FadingColorInvalidTargetDoesNotSpendInk(RegressionRunner runner)
+    {
+        var config0 = new TalentSlotConfig();
+        config0.SlotTalentIds[3] = "fading_color";
+        var config1 = new TalentSlotConfig();
+        config1.SlotTalentIds[0] = "midas_touch";
+        var runtime = new TalentMatchRuntime(
+            new Dictionary<int, TalentSlotConfig> { [0] = config0, [1] = config1 },
+            TalentRegistry.Instance);
+        var session = new GameSession(GameMode.EastOnly);
+        runtime.BeginMatch(session);
+
+        // Round 1: gain 1 ink
+        BeginReadyRound(runtime, session);
+        runtime.CommitAction(TalentActionCommittedFacts.Create(
+            decisionId: 101, actorSeatIndex: 0, sourceSeatIndex: 0, ClientActionType.Discard,
+            new TileData(Suit.Man, 1, 0) { IsModified = true }, null, false, null));
+        runtime.EndRound(new TalentRoundOutcome { WinnerSeatIndex = 2 }, session);
+
+        // Round 2: gain 2nd ink -> ink is 2
+        BeginReadyRound(runtime, session);
+        runtime.CommitAction(TalentActionCommittedFacts.Create(
+            decisionId: 201, actorSeatIndex: 0, sourceSeatIndex: 0, ClientActionType.Discard,
+            new TileData(Suit.Man, 2, 0) { IsModified = true }, null, false, null));
+
+        int inkBefore = runtime.GetPrivateCounter(0, "fading_color", "ink");
+
+        // Target seat 1 midas_touch which is NOT an IPublicChargeTalent / not exposed target
+        runtime.OpenMainDecision(0, decisionId: 202);
+        var activation = runtime.TryActivate(0, new TalentActionRequest
+        {
+            TalentId = "fading_color",
+            DecisionId = 202,
+            TargetSeatIndex = 1,
+            TargetTalentId = "midas_touch"
+        }, new TalentActivationContext(session, 0, TalentActivationWindow.MainTurn, decisionId: 202));
+
+        int inkAfter = runtime.GetPrivateCounter(0, "fading_color", "ink");
+
+        runner.Check(!activation.Accepted && activation.ErrorCode == TalentActionErrorCodes.InvalidTarget
+                     && inkBefore == 2 && inkAfter == 2,
+            "fading color rejects invalid target without spending ink");
+    }
+
+    private static void FadingColorBlockedByComposureOrRedirectForceSpendsInkWithoutRefund(RegressionRunner runner)
+    {
+        CheckFadingColorBlockedByDefenseSpendsInkWithoutRefund(
+            runner,
+            "redirect_force",
+            defenseSlotIndex: 1);
+        CheckFadingColorBlockedByDefenseSpendsInkWithoutRefund(
+            runner,
+            "composure",
+            defenseSlotIndex: 3);
+    }
+
+    private static void CheckFadingColorBlockedByDefenseSpendsInkWithoutRefund(
+        RegressionRunner runner,
+        string defenseTalentId,
+        int defenseSlotIndex)
+    {
+        var config0 = new TalentSlotConfig();
+        config0.SlotTalentIds[3] = "fading_color";
+        var config1 = new TalentSlotConfig();
+        config1.SlotTalentIds[0] = "gather_momentum";
+        config1.SlotTalentIds[defenseSlotIndex] = defenseTalentId;
+        var runtime = new TalentMatchRuntime(
+            new Dictionary<int, TalentSlotConfig> { [0] = config0, [1] = config1 },
+            TalentRegistry.Instance);
+        var session = new GameSession(GameMode.EastOnly);
+        runtime.BeginMatch(session);
+
+        // Round 1: seat 0 charges 1 ink, seat 1 charges 1 momentum
+        BeginReadyRound(runtime, session);
+        runtime.CommitAction(TalentActionCommittedFacts.Create(
+            decisionId: 101, actorSeatIndex: 0, sourceSeatIndex: 0, ClientActionType.Discard,
+            new TileData(Suit.Man, 1, 0) { IsModified = true }, null, false, null));
+        runtime.CommitAction(TalentActionCommittedFacts.Create(
+            decisionId: 102, actorSeatIndex: 1, sourceSeatIndex: 2, ClientActionType.Pon,
+            new TileData(Suit.Pin, 1, 2), null, false, null));
+        runtime.EndRound(new TalentRoundOutcome { WinnerSeatIndex = 2 }, session);
+
+        // Round 2: seat 0 charges 2nd ink -> ink = 2
+        BeginReadyRound(runtime, session);
+        runtime.CommitAction(TalentActionCommittedFacts.Create(
+            decisionId: 201, actorSeatIndex: 0, sourceSeatIndex: 0, ClientActionType.Discard,
+            new TileData(Suit.Man, 2, 0) { IsModified = true }, null, false, null));
+
+        int seat0InkBefore = runtime.GetPrivateCounter(0, "fading_color", "ink");
+        int seat1MomentumBefore = runtime.GetPublicCounter(1, "gather_momentum", "momentum");
+
+        // Seat 0 targets seat 1's momentum -> blocked by redirect_force
+        runtime.OpenMainDecision(0, decisionId: 202);
+        var activation = runtime.TryActivate(0, new TalentActionRequest
+        {
+            TalentId = "fading_color",
+            DecisionId = 202,
+            TargetSeatIndex = 1,
+            TargetTalentId = "gather_momentum"
+        }, new TalentActivationContext(session, 0, TalentActivationWindow.MainTurn, decisionId: 202));
+
+        int seat0InkAfter = runtime.GetPublicCounter(0, "fading_color", "ink");
+        int seat1MomentumAfter = runtime.GetPublicCounter(1, "gather_momentum", "momentum");
+
+        runner.Check(seat0InkBefore == 2 && seat1MomentumBefore == 1
+                     && activation.Accepted && !activation.EffectApplied
+                     && seat0InkAfter == 1 && seat1MomentumAfter == 1,
+            $"fading color blocked by {defenseTalentId} still consumes ink without refund and leaves target charge intact");
+    }
+
+    private static void FadingColorActivePublicEventAndSnapshotFinalValueIsOne(RegressionRunner runner)
+    {
+        var config0 = new TalentSlotConfig();
+        config0.SlotTalentIds[3] = "fading_color";
+        var config1 = new TalentSlotConfig();
+        config1.SlotTalentIds[0] = "gather_momentum";
+        var runtime = new TalentMatchRuntime(
+            new Dictionary<int, TalentSlotConfig> { [0] = config0, [1] = config1 },
+            TalentRegistry.Instance);
+        var session = new GameSession(GameMode.EastOnly);
+        runtime.BeginMatch(session);
+
+        // Round 1: seat 0 gets 1 ink, seat 1 gets 1 momentum
+        BeginReadyRound(runtime, session);
+        runtime.CommitAction(TalentActionCommittedFacts.Create(
+            decisionId: 101, actorSeatIndex: 0, sourceSeatIndex: 0, ClientActionType.Discard,
+            new TileData(Suit.Man, 1, 0) { IsModified = true }, null, false, null));
+        runtime.CommitAction(TalentActionCommittedFacts.Create(
+            decisionId: 102, actorSeatIndex: 1, sourceSeatIndex: 2, ClientActionType.Pon,
+            new TileData(Suit.Pin, 1, 2), null, false, null));
+        runtime.EndRound(new TalentRoundOutcome { WinnerSeatIndex = 2 }, session);
+
+        // Round 2: seat 0 gets 2nd ink
+        BeginReadyRound(runtime, session);
+        runtime.CommitAction(TalentActionCommittedFacts.Create(
+            decisionId: 201, actorSeatIndex: 0, sourceSeatIndex: 0, ClientActionType.Discard,
+            new TileData(Suit.Man, 2, 0) { IsModified = true }, null, false, null));
+
+        // Seat 0 activates fading_color from 2 ink -> 1 ink
+        runtime.OpenMainDecision(0, decisionId: 202);
+        var activation = runtime.TryActivate(0, new TalentActionRequest
+        {
+            TalentId = "fading_color",
+            DecisionId = 202,
+            TargetSeatIndex = 1,
+            TargetTalentId = "gather_momentum"
+        }, new TalentActivationContext(session, 0, TalentActivationWindow.MainTurn, decisionId: 202));
+
+        var snapshotEntries = runtime.GetSnapshotEntries().Where(e => e.OwnerSeatIndex == 0).ToArray();
+        var fadingEntry = snapshotEntries.FirstOrDefault(e => e.TalentId == "fading_color");
+
+        runner.Check(activation.Accepted && activation.EffectApplied
+                     && activation.PublicStateEventType == "ink_changed"
+                     && activation.PublicStateValue == 1
+                     && fadingEntry != null && fadingEntry.LastPublicValue == 1 && fadingEntry.PrivateValue == 1,
+            "fading color activation emits ink_changed event with value 1 and snapshot final public/private value is 1");
+    }
+
     private static void BeginReadyRound(TalentMatchRuntime runtime, GameSession session)
     {
         runtime.BeginRound(new TalentRoundContext(session));
         runtime.ApplyWallBuilding(new TalentWallContext(session, new List<TileData>()));
         runtime.CompleteInitialHands(new TalentInitialHandsContext(session, new ServerGameState(4)));
         runtime.ResolvePostShuffle(new TalentPostShuffleContext(session, new List<TileData>()));
+
     }
 }
 
