@@ -27,7 +27,9 @@ namespace MahjongGame.Core
 
             FanEvaluation evaluation = EvaluateBestFan(
                 hand, melds, winTile, isSelfDraw, roundWind, seatWind, options, isRobKongWin, isKongWin);
-            if (!evaluation.HasWinningShape || evaluation.Fan < 8) return false;
+            int minimumFan = options?.MinimumFan ?? 8;
+            if (minimumFan < 8) minimumFan = 8;
+            if (!evaluation.HasWinningShape || evaluation.Fan < minimumFan) return false;
 
             totalFan = evaluation.Fan;
             fanDetails = evaluation.FanDetails;

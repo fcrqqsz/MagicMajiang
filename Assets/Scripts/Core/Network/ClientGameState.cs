@@ -152,6 +152,7 @@ namespace MahjongGame.Core.Network
                     EnsurePrivateSeat(snapshot).scoringOptions = new SnapshotScoringOptions
                     {
                         bonusFan = message.bonusFan,
+                        minimumFan = message.minimumFan,
                         relaxedPureStraight = message.relaxedPureStraight
                     };
                     return;
@@ -723,6 +724,7 @@ namespace MahjongGame.Core.Network
                 scoringOptions = seat.scoringOptions == null ? null : new SnapshotScoringOptions
                 {
                     bonusFan = seat.scoringOptions.bonusFan,
+                    minimumFan = seat.scoringOptions.minimumFan,
                     relaxedPureStraight = seat.scoringOptions.relaxedPureStraight
                 },
                 peekWallTiles = CloneTiles(seat.peekWallTiles),

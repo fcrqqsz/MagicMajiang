@@ -715,8 +715,8 @@ internal static class TalentPresentationTests
 
     private static void RunLoadoutPresetTests(RegressionRunner runner)
     {
-        runner.Check(NetworkProtocol.IsSupported(6) && !NetworkProtocol.IsSupported(5),
-            "protocol v6 rejects protocol v5 before room loadout admission");
+        runner.Check(NetworkProtocol.IsSupported(7) && !NetworkProtocol.IsSupported(6),
+            "protocol v7 rejects protocol v6 before room loadout admission");
 
         var legacy = new SavedDeck { Config = DeckConfig.CreateStandard(), Talents = new TalentSlotConfig() };
         legacy.Normalize();

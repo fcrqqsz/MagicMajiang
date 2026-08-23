@@ -20,7 +20,7 @@ namespace MahjongGame.Core.Network
 
     public static class NetworkProtocol
     {
-        public const int Version = 6;
+        public const int Version = 7;
 
         public static bool IsSupported(int protocolVersion) => protocolVersion == Version;
     }

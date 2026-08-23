@@ -46,6 +46,11 @@ internal static class TalentActionTests
         RedirectForceBlocksPublicChargeReductionAndArmsBonus(runner);
         RedirectForceAndComposureDefenseOrder(runner);
         RoomManagerRoutesTalentActionsWithExactlyOneSeatResolution(runner);
+        EncirclementTriggersOnlyOnDistinctOpponentSourcesAndAwardsBonus(runner);
+        LastStandFormationTriggersOnSecondMeldRaisesGateAndAwardsBonus(runner);
+        CallTheMarkActionAndAttributionLifecycle(runner);
+        FollowTheTrailTracksOpponentDiscardsAndAwardsBonusOnMatchingSuitRon(runner);
+        MultipleNewTalentsStackAndAttributeWithGatherMomentum(runner);
     }
 
     private static void SuitConvergenceChoosesAndTransformsExactlyTwoOffSuitDraws(
@@ -2068,6 +2073,643 @@ internal static class TalentActionTests
                      && activation.PublicStateValue == 1
                      && fadingEntry != null && fadingEntry.LastPublicValue == 1 && fadingEntry.PrivateValue == 1,
             "fading color activation emits ink_changed event with value 1 and snapshot final public/private value is 1");
+    }
+
+    private static void EncirclementTriggersOnlyOnDistinctOpponentSourcesAndAwardsBonus(
+        RegressionRunner runner)
+    {
+        var config = new TalentSlotConfig();
+        config.SlotTalentIds[3] = "encirclement";
+        var runtime = new TalentMatchRuntime(
+            new Dictionary<int, TalentSlotConfig> { [0] = config },
+            TalentRegistry.Instance);
+        var session = new GameSession(GameMode.EastOnly);
+        runtime.BeginMatch(session);
+        BeginReadyRound(runtime, session);
+
+        // 1. Initial: not revealed, 0 bonus
+        TalentWinFacts winFacts = TalentTestFacts.Win(session, 0);
+        TalentFanResolution initialRes = runtime.ResolvePostLegalFan(
+            new TalentWinContext(session, 0, winFacts), eligibilityFan: 8);
+        TalentSnapshotEntry initialSnap = runtime.GetSnapshotEntries().Single(e => e.TalentId == "encirclement");
+
+        // 2. Chi from Seat 1 -> 1 source, not revealed, 0 bonus
+        runtime.CommitAction(TalentActionCommittedFacts.Create(
+            decisionId: 201, actorSeatIndex: 0, sourceSeatIndex: 1, ClientActionType.Chi,
+            new TileData(Suit.Man, 2, 1), new[] { 1, 3 }, false, null));
+        TalentFanResolution afterChi1 = runtime.ResolvePostLegalFan(
+            new TalentWinContext(session, 0, winFacts), eligibilityFan: 8);
+        TalentSnapshotEntry afterChiSnap = runtime.GetSnapshotEntries().Single(e => e.TalentId == "encirclement");
+
+        // 3. Pon from same Seat 1 -> still 1 distinct source, not revealed, 0 bonus
+        runtime.CommitAction(TalentActionCommittedFacts.Create(
+            decisionId: 202, actorSeatIndex: 0, sourceSeatIndex: 1, ClientActionType.Pon,
+            new TileData(Suit.Pin, 5, 1), null, false, null));
+        TalentFanResolution afterPon1 = runtime.ResolvePostLegalFan(
+            new TalentWinContext(session, 0, winFacts), eligibilityFan: 8);
+        TalentSnapshotEntry afterPonSnap = runtime.GetSnapshotEntries().Single(e => e.TalentId == "encirclement");
+
+        // 4. AnGan (source null) -> ignored
+        runtime.CommitAction(TalentActionCommittedFacts.Create(
+            decisionId: 203, actorSeatIndex: 0, sourceSeatIndex: null, ClientActionType.AnGan,
+            new TileData(Suit.Sou, 8, 0), null, false, null));
+
+        // 5. JiaGang (source null) -> ignored
+        runtime.CommitAction(TalentActionCommittedFacts.Create(
+            decisionId: 204, actorSeatIndex: 0, sourceSeatIndex: null, ClientActionType.JiaGang,
+            new TileData(Suit.Pin, 5, 0), null, false, null));
+
+        TalentFanResolution afterGangs = runtime.ResolvePostLegalFan(
+            new TalentWinContext(session, 0, winFacts), eligibilityFan: 8);
+
+        // 6. MingGan from Seat 2 -> 2nd distinct opponent source -> triggers!
+        runtime.CommitAction(TalentActionCommittedFacts.Create(
+            decisionId: 205, actorSeatIndex: 0, sourceSeatIndex: 2, ClientActionType.MingGan,
+            new TileData(Suit.Wind, 1, 2), null, false, null));
+        TalentFanResolution afterMingGan2 = runtime.ResolvePostLegalFan(
+            new TalentWinContext(session, 0, winFacts), eligibilityFan: 8);
+        TalentSnapshotEntry afterTriggerSnap = runtime.GetSnapshotEntries().Single(e => e.TalentId == "encirclement");
+        var events = runtime.DrainEventsForSeat(0);
+        bool hasTriggerEvent = events.Any(e => e.EventType == "encirclement_triggered" && e.Visibility == TalentEventVisibility.Public);
+
+        runner.Check(initialRes.PostLegalBonusFan == 0 && !initialSnap.IsRevealed,
+            "合围 initial state is hidden with 0 bonus");
+        runner.Check(afterChi1.PostLegalBonusFan == 0 && !afterChiSnap.IsRevealed,
+            "合围 with 1 source remains hidden with 0 bonus");
+        runner.Check(afterPon1.PostLegalBonusFan == 0 && !afterPonSnap.IsRevealed,
+            "合围 duplicate source does not count twice and remains hidden");
+        runner.Check(afterGangs.PostLegalBonusFan == 0,
+            "合围 ignores AnGan and JiaGang");
+        runner.Check(afterMingGan2.PostLegalBonusFan == 4
+                     && afterMingGan2.FinalFan == 12
+                     && afterTriggerSnap.IsRevealed
+                     && hasTriggerEvent,
+            "合围 triggers on 2nd distinct opponent source, reveals publicly, and awards +4 post-legal fan");
+
+        // 7. Check round reset
+        runtime.EndRound(new TalentRoundOutcome { WinnerSeatIndex = 0, FinalFan = 12 }, session);
+        BeginReadyRound(runtime, session);
+        TalentFanResolution nextRoundRes = runtime.ResolvePostLegalFan(
+            new TalentWinContext(session, 0, winFacts), eligibilityFan: 8);
+        runner.Check(nextRoundRes.PostLegalBonusFan == 0,
+            "合围 resets round state on next round start");
+    }
+
+    private static void LastStandFormationTriggersOnSecondMeldRaisesGateAndAwardsBonus(
+        RegressionRunner runner)
+    {
+        var config = new TalentSlotConfig();
+        config.SlotTalentIds[1] = "last_stand_formation";
+        var runtime = new TalentMatchRuntime(
+            new Dictionary<int, TalentSlotConfig> { [0] = config },
+            TalentRegistry.Instance);
+        var session = new GameSession(GameMode.EastOnly);
+        runtime.BeginMatch(session);
+        BeginReadyRound(runtime, session);
+
+        // 1. Initial state: not revealed, MinimumFan = 8, post-legal bonus = 0
+        ScoringOptions initialOpts = runtime.BuildScoringOptions(new TalentScoringContext(session, 0));
+        TalentWinFacts winFacts = TalentTestFacts.Win(session, 0);
+        TalentFanResolution initialRes = runtime.ResolvePostLegalFan(
+            new TalentWinContext(session, 0, winFacts), eligibilityFan: 8);
+        TalentSnapshotEntry initialSnap = runtime.GetSnapshotEntries().Single(e => e.TalentId == "last_stand_formation");
+
+        // 2. 1st meld: Chi -> meld count 1, not triggered
+        runtime.CommitAction(TalentActionCommittedFacts.Create(
+            decisionId: 301, actorSeatIndex: 0, sourceSeatIndex: 1, ClientActionType.Chi,
+            new TileData(Suit.Man, 2, 1), new[] { 1, 3 }, false, null));
+        ScoringOptions afterChiOpts = runtime.BuildScoringOptions(new TalentScoringContext(session, 0));
+        TalentFanResolution afterChiRes = runtime.ResolvePostLegalFan(
+            new TalentWinContext(session, 0, winFacts), eligibilityFan: 8);
+
+        // 3. AnGan -> ignored (does not count as public meld)
+        runtime.CommitAction(TalentActionCommittedFacts.Create(
+            decisionId: 302, actorSeatIndex: 0, sourceSeatIndex: null, ClientActionType.AnGan,
+            new TileData(Suit.Sou, 8, 0), null, false, null));
+
+        // 4. JiaGang -> ignored (does not count as new public meld)
+        runtime.CommitAction(TalentActionCommittedFacts.Create(
+            decisionId: 303, actorSeatIndex: 0, sourceSeatIndex: null, ClientActionType.JiaGang,
+            new TileData(Suit.Man, 2, 0), null, false, null));
+
+        ScoringOptions afterGangsOpts = runtime.BuildScoringOptions(new TalentScoringContext(session, 0));
+        TalentFanResolution afterGangsRes = runtime.ResolvePostLegalFan(
+            new TalentWinContext(session, 0, winFacts), eligibilityFan: 8);
+
+        // 5. 2nd public meld: Pon from Seat 2 -> triggers!
+        runtime.CommitAction(TalentActionCommittedFacts.Create(
+            decisionId: 304, actorSeatIndex: 0, sourceSeatIndex: 2, ClientActionType.Pon,
+            new TileData(Suit.Pin, 5, 2), null, false, null));
+        ScoringOptions afterPonOpts = runtime.BuildScoringOptions(new TalentScoringContext(session, 0));
+        TalentFanResolution afterPonRes = runtime.ResolvePostLegalFan(
+            new TalentWinContext(session, 0, winFacts), eligibilityFan: 10);
+        TalentSnapshotEntry afterPonSnap = runtime.GetSnapshotEntries().Single(e => e.TalentId == "last_stand_formation");
+        var events = runtime.DrainEventsForSeat(0);
+        bool hasTriggerEvent = events.Any(e => e.EventType == "last_stand_formation_triggered" && e.Visibility == TalentEventVisibility.Public);
+
+        // 6. Test threshold check with MahjongLogic
+        // Exactly 8 fan hand: 3 melds (2m, 4p, 7s pungs) + 1 dragon pung (Red Dragon) in hand + 5m pair = All Pungs (6) + Dragon Pung (2) = 8 fan
+        var eightFanMelds = new List<Meld>
+        {
+            new Meld(MeldType.Pon, new List<TileData> { new TileData(Suit.Man, 2, 0), new TileData(Suit.Man, 2, 0), new TileData(Suit.Man, 2, 0) }, 1),
+            new Meld(MeldType.Pon, new List<TileData> { new TileData(Suit.Pin, 4, 0), new TileData(Suit.Pin, 4, 0), new TileData(Suit.Pin, 4, 0) }, 2),
+            new Meld(MeldType.Pon, new List<TileData> { new TileData(Suit.Sou, 7, 0), new TileData(Suit.Sou, 7, 0), new TileData(Suit.Sou, 7, 0) }, 3)
+        };
+        var eightFanHand = new List<TileData>
+        {
+            new TileData(Suit.Dragon, 1, 0), new TileData(Suit.Dragon, 1, 0),
+            new TileData(Suit.Man, 5, 0), new TileData(Suit.Man, 5, 0)
+        };
+        // Without last_stand (or before trigger): 8 fan meets 8 fan gate -> Legal
+        bool canWin8Before = MahjongLogic.CheckWinWithFan(
+            eightFanHand, eightFanMelds, new TileData(Suit.Dragon, 1, 0), false,
+            out int fanBefore, out _, options: afterChiOpts);
+        // After trigger: the independent minimum threshold rises from 8 to 10.
+        bool canWin8After = MahjongLogic.CheckWinWithFan(
+            eightFanHand, eightFanMelds, new TileData(Suit.Dragon, 1, 0), false,
+            out int fanAfter, out _, options: afterPonOpts);
+        bool canWinWithHeadStart = MahjongLogic.CheckWinWithFan(
+            eightFanHand, eightFanMelds, new TileData(Suit.Dragon, 1, 0), false,
+            out int fanWithHeadStart, out _,
+            options: new ScoringOptions { BonusFan = 2, MinimumFan = afterPonOpts.MinimumFan });
+
+        // 7. 3rd meld: MingGan from Seat 3 -> still triggered, no double increase
+        runtime.CommitAction(TalentActionCommittedFacts.Create(
+            decisionId: 305, actorSeatIndex: 0, sourceSeatIndex: 3, ClientActionType.MingGan,
+            new TileData(Suit.Sou, 4, 3), null, false, null));
+        ScoringOptions after3rdOpts = runtime.BuildScoringOptions(new TalentScoringContext(session, 0));
+        TalentFanResolution after3rdRes = runtime.ResolvePostLegalFan(
+            new TalentWinContext(session, 0, winFacts), eligibilityFan: 10);
+
+        runner.Check(initialOpts.BonusFan == 0 && initialOpts.MinimumFan == 8
+                     && initialRes.PostLegalBonusFan == 0 && !initialSnap.IsRevealed,
+            "背水阵 initial state has MinimumFan=8, no eligibility adjustment, 0 bonus, hidden");
+        runner.Check(afterChiOpts.BonusFan == 0 && afterChiOpts.MinimumFan == 8
+                     && afterChiRes.PostLegalBonusFan == 0,
+            "背水阵 after 1st meld remains unrevealed with MinimumFan=8 and 0 bonus");
+        runner.Check(afterGangsOpts.BonusFan == 0 && afterGangsOpts.MinimumFan == 8
+                     && afterGangsRes.PostLegalBonusFan == 0,
+            "背水阵 ignores AnGan and JiaGang");
+        runner.Check(afterPonOpts.BonusFan == 0
+                     && afterPonOpts.MinimumFan == 10
+                     && afterPonRes.PostLegalBonusFan == 12
+                     && afterPonRes.FinalFan == 22
+                     && afterPonSnap.IsRevealed
+                     && hasTriggerEvent,
+            "背水阵 triggers on 2nd meld: MinimumFan=10 without changing fan, reveals publicly, awards +12 post-legal fan");
+        runner.Check(canWin8Before && fanBefore == 8 && !canWin8After && fanAfter == 0
+                     && canWinWithHeadStart && fanWithHeadStart == 10,
+            "背水阵 raises the independent Hu threshold while 快人一步 can still meet the ten-fan gate");
+        runner.Check(after3rdOpts.BonusFan == 0 && after3rdOpts.MinimumFan == 10
+                     && after3rdRes.PostLegalBonusFan == 12,
+            "背水阵 3rd meld does not increase threshold again or change bonus");
+
+        // 8. Round reset
+        runtime.EndRound(new TalentRoundOutcome { WinnerSeatIndex = 0, FinalFan = 22 }, session);
+        BeginReadyRound(runtime, session);
+        ScoringOptions nextRoundOpts = runtime.BuildScoringOptions(new TalentScoringContext(session, 0));
+        TalentFanResolution nextRoundRes = runtime.ResolvePostLegalFan(
+            new TalentWinContext(session, 0, winFacts), eligibilityFan: 8);
+        runner.Check(nextRoundOpts.BonusFan == 0 && nextRoundOpts.MinimumFan == 8
+                     && nextRoundRes.PostLegalBonusFan == 0,
+            "背水阵 resets round state on next round start");
+    }
+
+    private static void CallTheMarkActionAndAttributionLifecycle(
+        RegressionRunner runner)
+    {
+        var config = new TalentSlotConfig();
+        config.SlotTalentIds[1] = "call_the_mark";
+        var runtime = new TalentMatchRuntime(
+            new Dictionary<int, TalentSlotConfig> { [0] = config },
+            TalentRegistry.Instance);
+        var session = new GameSession(GameMode.EastOnly);
+        runtime.BeginMatch(session);
+        BeginReadyRound(runtime, session);
+
+        // 1. Check reveal policy: PublicAtMatchStart -> IsRevealed is true from match start
+        TalentSnapshotEntry startSnap = runtime.GetSnapshotEntries().Single(e => e.TalentId == "call_the_mark");
+        runner.Check(startSnap.IsRevealed, "点将 is revealed publicly at match start");
+
+        // 2. Open decision 401: Available actions enumerates 3 opponent seats (1, 2, 3)
+        // Kamicha of seat 0 is seat 3 ((0+3)%4 = 3), so seat 3 has highest AiPriority
+        const long DecisionId1 = 401;
+        runtime.OpenMainDecision(0, DecisionId1);
+        var actions = runtime.GetAvailableActions(
+            0,
+            new TalentActionQueryContext(session, 0, TalentActivationWindow.MainTurn, DecisionId1));
+        var callActions = actions.Where(a => a.TalentId == "call_the_mark").ToList();
+        var aiSelected = MahjongGame.Core.Agents.AiTalentDecisionPolicy.ChooseActiveAction(callActions);
+
+        runner.Check(callActions.Count == 3
+                     && callActions.Any(a => a.TargetSeatIndex == 1)
+                     && callActions.Any(a => a.TargetSeatIndex == 2)
+                     && callActions.Any(a => a.TargetSeatIndex == 3),
+            "点将 offers 3 target options for opponents 1, 2, 3");
+        runner.Check(aiSelected != null && aiSelected.TargetSeatIndex == 3,
+            "点将 AI prioritizes kamicha (seat 3) over other seats");
+
+        // 3. Rejections do not consume usage:
+        // Self target:
+        TalentActionResult selfResult = runtime.TryActivate(
+            0,
+            new TalentActionRequest { TalentId = "call_the_mark", DecisionId = DecisionId1, TargetSeatIndex = 0 },
+            new TalentActivationContext(session, 0, TalentActivationWindow.MainTurn, DecisionId1));
+        // Invalid seat index:
+        TalentActionResult outOfBoundsResult = runtime.TryActivate(
+            0,
+            new TalentActionRequest { TalentId = "call_the_mark", DecisionId = DecisionId1, TargetSeatIndex = 5 },
+            new TalentActivationContext(session, 0, TalentActivationWindow.MainTurn, DecisionId1));
+        // Wrong decisionId:
+        TalentActionResult wrongDecisionResult = runtime.TryActivate(
+            0,
+            new TalentActionRequest { TalentId = "call_the_mark", DecisionId = 9999, TargetSeatIndex = 1 },
+            new TalentActivationContext(session, 0, TalentActivationWindow.MainTurn, DecisionId1));
+
+        runner.Check(!selfResult.Accepted && !outOfBoundsResult.Accepted && !wrongDecisionResult.Accepted,
+            "点将 rejects self target, out-of-bounds target, and mismatched decisionId");
+
+        // 4. Activate targeting seat 1:
+        TalentActionResult validResult = runtime.TryActivate(
+            0,
+            new TalentActionRequest { TalentId = "call_the_mark", DecisionId = DecisionId1, TargetSeatIndex = 1 },
+            new TalentActivationContext(session, 0, TalentActivationWindow.MainTurn, DecisionId1));
+        TalentSnapshotEntry markedSnapshot = runtime.GetSnapshotEntries()
+            .Single(entry => entry.TalentId == "call_the_mark");
+        runner.Check(validResult.Accepted
+                     && validResult.EffectApplied
+                     && validResult.PublicStateValue == 2
+                     && markedSnapshot.LastPublicValue == 2
+                     && markedSnapshot.PrivateValue == 2,
+            "点将 encodes target seats as seatIndex + 1 in action and recovery state");
+
+        // 5. Duplicate activation in same round is rejected (consumed once per round):
+        TalentActionResult duplicateResult = runtime.TryActivate(
+            0,
+            new TalentActionRequest { TalentId = "call_the_mark", DecisionId = DecisionId1, TargetSeatIndex = 2 },
+            new TalentActivationContext(session, 0, TalentActivationWindow.MainTurn, DecisionId1));
+        runner.Check(!duplicateResult.Accepted,
+            "点将 cannot be activated more than once per round");
+
+        // 6. AnGan and JiaGang are ignored (do not resolve mark):
+        runtime.CommitAction(TalentActionCommittedFacts.Create(
+            decisionId: 402, actorSeatIndex: 0, sourceSeatIndex: null, ClientActionType.AnGan,
+            new TileData(Suit.Sou, 8, 0), null, false, null));
+        runtime.CommitAction(TalentActionCommittedFacts.Create(
+            decisionId: 403, actorSeatIndex: 0, sourceSeatIndex: null, ClientActionType.JiaGang,
+            new TileData(Suit.Pin, 2, 0), null, false, null));
+
+        TalentWinFacts winFacts = TalentTestFacts.Win(session, 0);
+        TalentFanResolution resBeforeMeld = runtime.ResolvePostLegalFan(
+            new TalentWinContext(session, 0, winFacts), eligibilityFan: 8);
+        runner.Check(resBeforeMeld.PostLegalBonusFan == 0,
+            "点将 ignores AnGan and JiaGang and bonus is not yet awarded");
+
+        // 7. Commit Chi from target seat 1 -> SUCCESS!
+        runtime.CommitAction(TalentActionCommittedFacts.Create(
+            decisionId: 404, actorSeatIndex: 0, sourceSeatIndex: 1, ClientActionType.Chi,
+            new TileData(Suit.Man, 2, 1), new[] { 1, 3 }, false, null));
+
+        TalentFanResolution resSuccess = runtime.ResolvePostLegalFan(
+            new TalentWinContext(session, 0, winFacts), eligibilityFan: 8);
+        runner.Check(resSuccess.PostLegalBonusFan == 6 && resSuccess.FinalFan == 14,
+            "点将 awards +6 post-legal fan upon meld from targeted seat 1");
+
+        // 8. Now test failure case in next round:
+        runtime.EndRound(new TalentRoundOutcome { WinnerSeatIndex = 0, FinalFan = 14 }, session);
+        BeginReadyRound(runtime, session);
+
+        const long DecisionId2 = 410;
+        runtime.OpenMainDecision(0, DecisionId2);
+        runtime.TryActivate(
+            0,
+            new TalentActionRequest { TalentId = "call_the_mark", DecisionId = DecisionId2, TargetSeatIndex = 1 },
+            new TalentActivationContext(session, 0, TalentActivationWindow.MainTurn, DecisionId2));
+
+        // Melded from Seat 2 instead of marked Seat 1 -> FAIL!
+        runtime.CommitAction(TalentActionCommittedFacts.Create(
+            decisionId: 411, actorSeatIndex: 0, sourceSeatIndex: 2, ClientActionType.Pon,
+            new TileData(Suit.Pin, 5, 2), null, false, null));
+
+        TalentFanResolution resFailed = runtime.ResolvePostLegalFan(
+            new TalentWinContext(session, 0, winFacts), eligibilityFan: 8);
+
+        // Subsequent meld from Seat 1 later in the round does NOT restore bonus:
+        runtime.CommitAction(TalentActionCommittedFacts.Create(
+            decisionId: 412, actorSeatIndex: 0, sourceSeatIndex: 1, ClientActionType.Chi,
+            new TileData(Suit.Man, 6, 1), new[] { 5, 7 }, false, null));
+
+        TalentFanResolution resStillFailed = runtime.ResolvePostLegalFan(
+            new TalentWinContext(session, 0, winFacts), eligibilityFan: 8);
+
+        runner.Check(resFailed.PostLegalBonusFan == 0 && resStillFailed.PostLegalBonusFan == 0,
+            "点将 permanently invalidates bonus if next meld is from a non-target opponent");
+
+        // 9. Expired without meld:
+        runtime.EndRound(new TalentRoundOutcome { WinnerSeatIndex = 3 }, session);
+        BeginReadyRound(runtime, session);
+        // Round 3 begins: usage is restored
+        const long DecisionId3 = 420;
+        runtime.OpenMainDecision(0, DecisionId3);
+        var round3Actions = runtime.GetAvailableActions(
+            0,
+            new TalentActionQueryContext(session, 0, TalentActivationWindow.MainTurn, DecisionId3));
+        runner.Check(round3Actions.Any(a => a.TalentId == "call_the_mark"),
+            "点将 restores usage in subsequent round even if expired in previous round");
+    }
+
+    private static void FollowTheTrailTracksOpponentDiscardsAndAwardsBonusOnMatchingSuitRon(
+        RegressionRunner runner)
+    {
+        var config = new TalentSlotConfig();
+        config.SlotTalentIds[3] = "follow_the_trail";
+        var runtime = new TalentMatchRuntime(
+            new Dictionary<int, TalentSlotConfig> { [0] = config },
+            TalentRegistry.Instance);
+        var session = new GameSession(GameMode.EastOnly);
+        runtime.BeginMatch(session);
+        BeginReadyRound(runtime, session);
+
+        // 1. First discard from Seat 1: Man 3
+        runtime.CommitAction(TalentActionCommittedFacts.Create(
+            decisionId: 501, actorSeatIndex: 1, sourceSeatIndex: null, ClientActionType.Discard,
+            new TileData(Suit.Man, 3, 1), null, false, null));
+
+        // Ron immediately on Seat 1's first discard (no previous discard exists):
+        TalentWinFacts winFacts1st = TalentWinFacts.Create(
+            session,
+            winnerSeatIndex: 0,
+            discarderSeatIndex: 1,
+            new[] { new TileData(Suit.Man, 1, 0) },
+            new List<Meld>(),
+            new TileData(Suit.Man, 3, 1),
+            isSelfDraw: false,
+            isRobKong: false,
+            isKongReplacement: false);
+        TalentFanResolution res1st = runtime.ResolvePostLegalFan(
+            new TalentWinContext(session, 0, winFacts1st), eligibilityFan: 8);
+        runner.Check(res1st.PostLegalBonusFan == 0,
+            "循迹 awards 0 bonus when discarder has no previous discard");
+
+        // 2. Second discard from Seat 1 (automatic fallback): Man 7 -> prev is Man 3 (Man), curr is Man 7 (Man)
+        runtime.CommitAction(TalentActionCommittedFacts.Create(
+            decisionId: 502, actorSeatIndex: 1, sourceSeatIndex: null, ClientActionType.Discard,
+            new TileData(Suit.Man, 7, 1), null, wasAutomatic: true, null));
+
+        // Ron on Seat 1's Man 7 discard: winning tile is Man 7, previous discard was Man 3 -> Both Man -> +4 bonus!
+        TalentWinFacts winFactsMatching = TalentWinFacts.Create(
+            session,
+            winnerSeatIndex: 0,
+            discarderSeatIndex: 1,
+            new[] { new TileData(Suit.Man, 1, 0) },
+            new List<Meld>(),
+            new TileData(Suit.Man, 7, 1),
+            isSelfDraw: false,
+            isRobKong: false,
+            isKongReplacement: false);
+        TalentFanResolution resMatching = runtime.ResolvePostLegalFan(
+            new TalentWinContext(session, 0, winFactsMatching), eligibilityFan: 8);
+        runner.Check(resMatching.PostLegalBonusFan == 4 && resMatching.FinalFan == 12,
+            "循迹 awards +4 post-legal fan on Ron when discarder previous discard suit matches winning tile suit (both Man)");
+
+        runtime.ResolveAcceptedWinVisibility(new TalentAcceptedWinContext(
+            session,
+            0,
+            winFactsMatching,
+            new TalentWinEvaluation(isLegal: true, finalFan: resMatching.FinalFan),
+            withoutEntryOptions =>
+            {
+                TalentFanResolution counterfactual = runtime.ResolvePostLegalFan(
+                    new TalentWinContext(session, 0, winFactsMatching),
+                    eligibilityFan: 8,
+                    withoutEntryOptions);
+                return new TalentWinEvaluation(isLegal: true, finalFan: counterfactual.FinalFan);
+            }));
+        TalentSnapshotEntry revealedSnapshot = runtime.GetSnapshotEntries()
+            .Single(entry => entry.TalentId == "follow_the_trail");
+        runner.Check(revealedSnapshot.IsRevealed,
+            "循迹 becomes public through accepted-win counterfactual visibility");
+
+        TalentWinFacts opponentWinFacts = TalentWinFacts.Create(
+            session,
+            winnerSeatIndex: 2,
+            discarderSeatIndex: 1,
+            new[] { new TileData(Suit.Man, 1, 2) },
+            new List<Meld>(),
+            new TileData(Suit.Man, 7, 1),
+            isSelfDraw: false,
+            isRobKong: false,
+            isKongReplacement: false);
+        TalentFanResolution opponentResolution = runtime.ResolvePostLegalFan(
+            new TalentWinContext(session, 2, opponentWinFacts), eligibilityFan: 8);
+        runner.Check(opponentResolution.PostLegalBonusFan == 0,
+            "循迹 global discard observation never grants its bonus to another winner");
+
+        // 3. Different suit Ron:
+        // Seat 2 discards Pin 2 (1st), then Sou 5 (2nd):
+        runtime.CommitAction(TalentActionCommittedFacts.Create(
+            decisionId: 503, actorSeatIndex: 2, sourceSeatIndex: null, ClientActionType.Discard,
+            new TileData(Suit.Pin, 2, 2), null, false, null));
+        runtime.CommitAction(TalentActionCommittedFacts.Create(
+            decisionId: 504, actorSeatIndex: 2, sourceSeatIndex: null, ClientActionType.Discard,
+            new TileData(Suit.Sou, 5, 2), null, false, null));
+
+        TalentWinFacts winFactsDiffSuit = TalentWinFacts.Create(
+            session,
+            winnerSeatIndex: 0,
+            discarderSeatIndex: 2,
+            new[] { new TileData(Suit.Sou, 1, 0) },
+            new List<Meld>(),
+            new TileData(Suit.Sou, 5, 2),
+            isSelfDraw: false,
+            isRobKong: false,
+            isKongReplacement: false);
+        TalentFanResolution resDiffSuit = runtime.ResolvePostLegalFan(
+            new TalentWinContext(session, 0, winFactsDiffSuit), eligibilityFan: 8);
+        runner.Check(resDiffSuit.PostLegalBonusFan == 0,
+            "循迹 awards 0 bonus when previous discard suit (Pin) differs from winning tile suit (Sou)");
+
+        TalentWinFacts robKongFacts = TalentWinFacts.Create(
+            session,
+            winnerSeatIndex: 0,
+            discarderSeatIndex: 2,
+            new[] { new TileData(Suit.Sou, 1, 0) },
+            new List<Meld>(),
+            new TileData(Suit.Sou, 5, 2),
+            isSelfDraw: false,
+            isRobKong: true,
+            isKongReplacement: false);
+        TalentFanResolution robKongResolution = runtime.ResolvePostLegalFan(
+            new TalentWinContext(session, 0, robKongFacts), eligibilityFan: 8);
+        runner.Check(robKongResolution.PostLegalBonusFan == 4,
+            "循迹 compares a robbed-kong tile with the discarder current history because the JiaGang is not a discard commit");
+
+        // 4. Self Draw (Tsumo):
+        TalentWinFacts winFactsTsumo = TalentWinFacts.Create(
+            session,
+            winnerSeatIndex: 0,
+            discarderSeatIndex: null,
+            new[] { new TileData(Suit.Man, 1, 0) },
+            new List<Meld>(),
+            new TileData(Suit.Man, 7, 0),
+            isSelfDraw: true,
+            isRobKong: false,
+            isKongReplacement: false);
+        TalentFanResolution resTsumo = runtime.ResolvePostLegalFan(
+            new TalentWinContext(session, 0, winFactsTsumo), eligibilityFan: 8);
+        runner.Check(resTsumo.PostLegalBonusFan == 0,
+            "循迹 awards 0 bonus on self-draw (Tsumo)");
+
+        // 5. Honor tile (字牌):
+        // Seat 3 discards East, then East:
+        runtime.CommitAction(TalentActionCommittedFacts.Create(
+            decisionId: 505, actorSeatIndex: 3, sourceSeatIndex: null, ClientActionType.Discard,
+            new TileData(Suit.Wind, 1, 3), null, false, null));
+        runtime.CommitAction(TalentActionCommittedFacts.Create(
+            decisionId: 506, actorSeatIndex: 3, sourceSeatIndex: null, ClientActionType.Discard,
+            new TileData(Suit.Wind, 1, 3), null, false, null));
+
+        TalentWinFacts winFactsHonor = TalentWinFacts.Create(
+            session,
+            winnerSeatIndex: 0,
+            discarderSeatIndex: 3,
+            new[] { new TileData(Suit.Wind, 1, 0) },
+            new List<Meld>(),
+            new TileData(Suit.Wind, 1, 3),
+            isSelfDraw: false,
+            isRobKong: false,
+            isKongReplacement: false);
+        TalentFanResolution resHonor = runtime.ResolvePostLegalFan(
+            new TalentWinContext(session, 0, winFactsHonor), eligibilityFan: 8);
+        runner.Check(resHonor.PostLegalBonusFan == 0,
+            "循迹 awards 0 bonus when tiles are Honor tiles (Wind/Dragon)");
+    }
+
+    private static void MultipleNewTalentsStackAndAttributeWithGatherMomentum(
+        RegressionRunner runner)
+    {
+        // Seat 0 has:
+        // Slot 0 (Large): gather_momentum
+        // Slot 1 (Medium): last_stand_formation
+        // Slot 2 (Medium): call_the_mark
+        // Slot 3 (Small): encirclement
+        // Slot 4 (Small): follow_the_trail
+        var config = new TalentSlotConfig();
+        config.SlotTalentIds[0] = "gather_momentum";
+        config.SlotTalentIds[1] = "last_stand_formation";
+        config.SlotTalentIds[2] = "call_the_mark";
+        config.SlotTalentIds[3] = "encirclement";
+        config.SlotTalentIds[4] = "follow_the_trail";
+
+        var runtime = new TalentMatchRuntime(
+            new Dictionary<int, TalentSlotConfig> { [0] = config },
+            TalentRegistry.Instance);
+        var session = new GameSession(GameMode.EastOnly);
+        runtime.BeginMatch(session);
+        BeginReadyRound(runtime, session);
+
+        // 1. Arm call_the_mark targeting Seat 1:
+        const long DecisionId = 601;
+        runtime.OpenMainDecision(0, DecisionId);
+        runtime.TryActivate(
+            0,
+            new TalentActionRequest { TalentId = "call_the_mark", DecisionId = DecisionId, TargetSeatIndex = 1 },
+            new TalentActivationContext(session, 0, TalentActivationWindow.MainTurn, DecisionId));
+
+        // 2. Commit Chi from Seat 1 (target):
+        // -> gather_momentum: momentum = 1
+        // -> call_the_mark: success (+6)
+        // -> encirclement: source 1 recorded (1/2)
+        // -> last_stand_formation: meld count = 1 (1/2)
+        runtime.CommitAction(TalentActionCommittedFacts.Create(
+            decisionId: 602, actorSeatIndex: 0, sourceSeatIndex: 1, ClientActionType.Chi,
+            new TileData(Suit.Man, 2, 1), new[] { 1, 3 }, false, null));
+
+        // 3. Commit Pon from Seat 2:
+        // -> gather_momentum: momentum = 2
+        // -> encirclement: source 2 recorded (2/2) -> triggers! (+4)
+        // -> last_stand_formation: meld count = 2 (2/2) -> triggers! (MinimumFan = 10, +12)
+        runtime.CommitAction(TalentActionCommittedFacts.Create(
+            decisionId: 603, actorSeatIndex: 0, sourceSeatIndex: 2, ClientActionType.Pon,
+            new TileData(Suit.Pin, 5, 2), null, false, null));
+
+        // 4. Activate gather_momentum (armed with 2 layers -> +16):
+        const long DecisionId2 = 604;
+        runtime.OpenMainDecision(0, DecisionId2);
+        runtime.TryActivate(
+            0,
+            new TalentActionRequest { TalentId = "gather_momentum", DecisionId = DecisionId2 },
+            new TalentActivationContext(session, 0, TalentActivationWindow.MainTurn, DecisionId2));
+
+        // 5. Opponent 3 discards Sou 2, then Sou 8:
+        // -> follow_the_trail: prev = Sou, curr = Sou
+        runtime.CommitAction(TalentActionCommittedFacts.Create(
+            decisionId: 605, actorSeatIndex: 3, sourceSeatIndex: null, ClientActionType.Discard,
+            new TileData(Suit.Sou, 2, 3), null, false, null));
+        runtime.CommitAction(TalentActionCommittedFacts.Create(
+            decisionId: 606, actorSeatIndex: 3, sourceSeatIndex: null, ClientActionType.Discard,
+            new TileData(Suit.Sou, 8, 3), null, false, null));
+
+        // 6. Ron from Seat 3 with Sou 8:
+        // -> follow_the_trail: matching suit Sou -> +4
+        TalentWinFacts winFacts = TalentWinFacts.Create(
+            session,
+            winnerSeatIndex: 0,
+            discarderSeatIndex: 3,
+            new[] { new TileData(Suit.Sou, 1, 0) },
+            new List<Meld>(),
+            new TileData(Suit.Sou, 8, 3),
+            isSelfDraw: false,
+            isRobKong: false,
+            isKongReplacement: false);
+
+        // Eligibility base: 10 fan hand meets last_stand_formation MinimumFan = 10.
+        // Post-legal bonuses:
+        // - gather_momentum: +16
+        // - last_stand_formation: +12
+        // - call_the_mark: +6
+        // - encirclement: +4
+        // - follow_the_trail: +4
+        // Total post-legal bonus = 16 + 12 + 6 + 4 + 4 = 42
+        // Final fan = 10 + 42 = 52.
+        TalentFanResolution resolution = runtime.ResolvePostLegalFan(
+            new TalentWinContext(session, 0, winFacts), eligibilityFan: 10);
+
+        runner.Check(resolution.EligibilityFan == 10
+                     && resolution.PostLegalBonusFan == 42
+                     && resolution.FinalFan == 52,
+            "all five talents stack post-legal bonuses correctly (16 + 12 + 6 + 4 + 4 = 42)");
+
+        // 7. Test AcceptedWin fan attribution:
+        TalentFanResolution attribution = runtime.ResolveAcceptedWinFan(
+            new TalentAcceptedWinAttributionContext(
+                session,
+                winnerSeatIndex: 0,
+                alreadyAcceptedFinalFan: 52,
+                facts: winFacts,
+                evaluateOptions: scoringOptions => new FanEvaluation
+                {
+                    HasWinningShape = true,
+                    Fan = 10 + scoringOptions.BonusFan,
+                    FanDetails = new List<string>()
+                }));
+
+        runner.Check(attribution.IsAttributionComplete
+                     && attribution.BaseFan == 10
+                     && attribution.FinalFan == 52,
+            "accepted win attribution reconciles base 10 fan to final 52 fan");
+
+        var gatherRow = attribution.Contributions.FirstOrDefault(c => c.TalentId == "gather_momentum");
+        var lastStandRow = attribution.Contributions.FirstOrDefault(c => c.TalentId == "last_stand_formation");
+        var callMarkRow = attribution.Contributions.FirstOrDefault(c => c.TalentId == "call_the_mark");
+        var encirclementRow = attribution.Contributions.FirstOrDefault(c => c.TalentId == "encirclement");
+        var followTrailRow = attribution.Contributions.FirstOrDefault(c => c.TalentId == "follow_the_trail");
+
+        runner.Check(gatherRow != null && gatherRow.FanDelta == 16, "gather_momentum attribution row is +16");
+        runner.Check(lastStandRow != null && lastStandRow.FanDelta == 12, "last_stand_formation attribution row is +12 without treating the gate as a fan penalty");
+        runner.Check(callMarkRow != null && callMarkRow.FanDelta == 6, "call_the_mark attribution row is +6");
+        runner.Check(encirclementRow != null && encirclementRow.FanDelta == 4, "encirclement attribution row is +4");
+        runner.Check(followTrailRow != null && followTrailRow.FanDelta == 4, "follow_the_trail attribution row is +4");
     }
 
     private static void BeginReadyRound(TalentMatchRuntime runtime, GameSession session)

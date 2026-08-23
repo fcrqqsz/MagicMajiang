@@ -279,6 +279,7 @@ namespace MahjongGame.Core.Network.Messages
     public class TalentInfoMessage
     {
         public int bonusFan;
+        public int minimumFan = 8;
         public bool relaxedPureStraight;
     }
 

@@ -133,6 +133,7 @@ namespace MahjongGame.Core.Network
             return new ScoringOptions
             {
                 BonusFan = options.BonusFan,
+                MinimumFan = options.MinimumFan,
                 RelaxedPureStraight = options.RelaxedPureStraight
             };
         }
@@ -851,7 +852,10 @@ namespace MahjongGame.Core.Network
                     TalentActionAdmissionPolicy.RequiredActivationWindow,
                     message.decisionId));
             if (result.Accepted)
+            {
+                RefreshScoringOptions();
                 OnTalentEventsAvailable?.Invoke();
+            }
             return result.Accepted;
         }
 
@@ -1250,7 +1254,39 @@ namespace MahjongGame.Core.Network
                 action.ChiCombinations,
                 wasAutomatic,
                 winFacts));
-            if (committed) OnTalentEventsAvailable?.Invoke();
+            if (committed)
+            {
+                RefreshScoringOptions();
+                OnTalentEventsAvailable?.Invoke();
+            }
+        }
+
+        private void RefreshScoringOptions()
+        {
+            if (_clients == null || _session == null) return;
+
+            for (int seatIndex = 0; seatIndex < _clients.Count; seatIndex++)
+            {
+                ScoringOptions next = _talentRuntime.BuildScoringOptions(
+                    new TalentScoringContext(_session, seatIndex));
+                if (_scoringOptions.TryGetValue(seatIndex, out ScoringOptions current)
+                    && HaveSameScoringOptions(current, next))
+                {
+                    continue;
+                }
+
+                _scoringOptions[seatIndex] = next;
+                _clients[seatIndex].OnTalentInfo(next);
+            }
+        }
+
+        private static bool HaveSameScoringOptions(ScoringOptions first, ScoringOptions second)
+        {
+            if (ReferenceEquals(first, second)) return true;
+            if (first == null || second == null) return false;
+            return first.BonusFan == second.BonusFan
+                   && first.MinimumFan == second.MinimumFan
+                   && first.RelaxedPureStraight == second.RelaxedPureStraight;
         }
 
         private static long GetDeadlineUnixMilliseconds(int timeoutMilliseconds)

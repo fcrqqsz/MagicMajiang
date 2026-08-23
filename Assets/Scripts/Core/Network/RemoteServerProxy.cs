@@ -108,7 +108,12 @@ namespace MahjongGame.Core.Network
                     break;
                 case "TalentInfo":
                     var talentMsg = MessageSerializer.DeserializePayload<TalentInfoMessage>(envelope.data);
-                    var opts = new ScoringOptions { BonusFan = talentMsg.bonusFan, RelaxedPureStraight = talentMsg.relaxedPureStraight };
+                    var opts = new ScoringOptions
+                    {
+                        BonusFan = talentMsg.bonusFan,
+                        MinimumFan = talentMsg.minimumFan,
+                        RelaxedPureStraight = talentMsg.relaxedPureStraight
+                    };
                     _localClient.OnTalentInfo(opts);
                     break;
                 case "GameStart":

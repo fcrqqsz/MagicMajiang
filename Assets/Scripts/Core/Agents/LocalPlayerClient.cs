@@ -207,6 +207,7 @@ namespace MahjongGame.Core.Agents
             _scoringOptions = new ScoringOptions
             {
                 BonusFan = snapshot.privateSeat?.scoringOptions?.bonusFan ?? 0,
+                MinimumFan = snapshot.privateSeat?.scoringOptions?.minimumFan ?? 8,
                 RelaxedPureStraight = snapshot.privateSeat?.scoringOptions?.relaxedPureStraight ?? false
             };
             _handController.ScoringOptions = _scoringOptions;

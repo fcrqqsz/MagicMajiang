@@ -202,6 +202,7 @@ namespace MahjongGame.Core.Network
             return new SnapshotScoringOptions
             {
                 bonusFan = options?.BonusFan ?? 0,
+                minimumFan = options?.MinimumFan ?? 8,
                 relaxedPureStraight = options?.RelaxedPureStraight ?? false
             };
         }
@@ -458,6 +459,7 @@ namespace MahjongGame.Core.Network.Messages
     public sealed class SnapshotScoringOptions
     {
         public int bonusFan;
+        public int minimumFan = 8;
         public bool relaxedPureStraight;
     }
 

@@ -691,7 +691,7 @@ internal static class SnapshotReconnectTests
             RemainingWallCount = 67,
             ScoringOptions = new[]
             {
-                new ScoringOptions { BonusFan = 2, RelaxedPureStraight = true },
+                new ScoringOptions { BonusFan = 2, MinimumFan = 10, RelaxedPureStraight = true },
                 new ScoringOptions { BonusFan = 99 },
                 new ScoringOptions(),
                 new ScoringOptions()
@@ -721,6 +721,7 @@ internal static class SnapshotReconnectTests
         runner.Check(snapshot.privateSeat.concealedHand.Length == 2
             && snapshot.privateSeat.concealedHand.All(tile => tile.suit == (int)Suit.Man)
             && snapshot.privateSeat.scoringOptions.bonusFan == 2
+            && snapshot.privateSeat.scoringOptions.minimumFan == 10
             && snapshot.privateSeat.peekWallTiles.Length == 1
             && snapshot.seats[1].concealedTileCount == 2
             && snapshot.seats[1].publicMelds.Single().isConcealed
@@ -734,7 +735,8 @@ internal static class SnapshotReconnectTests
         var restored = MessageSerializer.DeserializePayload<RoomGameSnapshot>(envelope.data);
         runner.Check(restored.rivers.Length == 4
             && restored.rivers[0].seatIndex == 0
-            && restored.rivers[0].tiles.Single().value == 3,
+            && restored.rivers[0].tiles.Single().value == 3
+            && restored.privateSeat.scoringOptions.minimumFan == 10,
             "Per-seat river DTOs must survive protocol serialization.");
 
         source.ActiveDecision = new NetworkDecisionTracker().OpenMainTurn(
@@ -749,13 +751,21 @@ internal static class SnapshotReconnectTests
                 MessageSerializer.Serialize("RoomSnapshot", 8, ownerMainTurn)).data);
         var projectedState = new ClientGameState();
         projectedState.ApplySnapshot(ownerMainTurn, 8);
+        projectedState.ApplyEnvelope(MessageSerializer.DeserializeEnvelope(
+            MessageSerializer.Serialize("TalentInfo", 9, new TalentInfoMessage
+            {
+                bonusFan = 2,
+                minimumFan = 11,
+                relaxedPureStraight = true
+            })));
         runner.Check(ownerMainTurn.mainTurnDrawnTile?.value == 8
             && ownerMainTurn.activeDecision.isKongReplacementDraw
             && opponentMainTurn.mainTurnDrawnTile == null
             && opponentMainTurn.activeDecision.isKongReplacementDraw
             && restoredMainTurn.activeDecision.isKongReplacementDraw
-            && projectedState.Snapshot.activeDecision.isKongReplacementDraw,
-            "A replacement-draw main decision survives immutable, wire, and client snapshot projection while the tile remains private.");
+            && projectedState.Snapshot.activeDecision.isKongReplacementDraw
+            && projectedState.Snapshot.privateSeat.scoringOptions.minimumFan == 11,
+            "A replacement-draw decision and an incremental private Hu threshold survive wire and client projection.");
     }
 
     private static void TestCompletedEastOnlyProjection(RegressionRunner runner)

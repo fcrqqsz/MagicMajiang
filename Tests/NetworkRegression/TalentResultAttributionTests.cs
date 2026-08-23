@@ -30,6 +30,7 @@ internal static class TalentResultAttributionTests
         LocalResultPresentationBridgeCarriesLiveAndRecoveryBreakdowns(runner);
         GatherMomentumDoesNotLowerEligibilityGateAndAttributesPostLegalBonus(runner);
         RedirectForceDoesNotLowerEligibilityGateAndAttributesPostLegalBonus(runner);
+        FourNewTalentsAttributionTests(runner);
     }
 
     private static void ChromaticCompositionCountsUniqueModifiedPhysicalTiles(
@@ -980,6 +981,142 @@ internal static class TalentResultAttributionTests
             "redirect force generates a specific post-legal attribution row with +4 delta");
         runner.Check(consumedCount1 == 1 && consumedCount2 == 0,
             "redirect force commits armed_consumed exactly once upon accepted win confirmation");
+    }
+
+    private static void FourNewTalentsAttributionTests(RegressionRunner runner)
+    {
+        var session = new GameSession(GameMode.EastOnly);
+
+        // 1. Encirclement Attribution Alone:
+        {
+            var config = new TalentSlotConfig();
+            config.SlotTalentIds[3] = "encirclement";
+            var runtime = new TalentMatchRuntime(
+                new Dictionary<int, TalentSlotConfig> { [0] = config },
+                TalentRegistry.Instance);
+            runtime.BeginMatch(session);
+            runtime.BeginRound(new TalentRoundContext(session));
+            runtime.ApplyWallBuilding(new TalentWallContext(session, new List<TileData>()));
+            runtime.CompleteInitialHands(new TalentInitialHandsContext(session, new ServerGameState(4)));
+            runtime.ResolvePostShuffle(new TalentPostShuffleContext(session, new List<TileData>()));
+
+            runtime.CommitAction(TalentActionCommittedFacts.Create(
+                decisionId: 701, actorSeatIndex: 0, sourceSeatIndex: 1, ClientActionType.Chi,
+                new TileData(Suit.Man, 2, 1), new[] { 1, 3 }, false, null));
+            runtime.CommitAction(TalentActionCommittedFacts.Create(
+                decisionId: 702, actorSeatIndex: 0, sourceSeatIndex: 2, ClientActionType.Pon,
+                new TileData(Suit.Pin, 5, 2), null, false, null));
+
+            TalentWinFacts winFacts = TalentTestFacts.Win(session, 0);
+            TalentFanResolution attribution = runtime.ResolveAcceptedWinFan(
+                new TalentAcceptedWinAttributionContext(
+                    session,
+                    winnerSeatIndex: 0,
+                    alreadyAcceptedFinalFan: 12,
+                    facts: winFacts,
+                    evaluateOptions: _ => new FanEvaluation { HasWinningShape = true, Fan = 8, FanDetails = new List<string>() }));
+
+            var row = attribution.Contributions.FirstOrDefault(c => c.TalentId == "encirclement");
+            runner.Check(attribution.IsAttributionComplete
+                         && attribution.BaseFan == 8
+                         && attribution.FinalFan == 12
+                         && row != null
+                         && row.Category == TalentFanContributionCategory.PostLegal
+                         && row.FanDelta == 4,
+                "encirclement produces accurate +4 post-legal attribution row");
+        }
+
+        // 2. CallTheMark Attribution Alone:
+        {
+            var config = new TalentSlotConfig();
+            config.SlotTalentIds[1] = "call_the_mark";
+            var runtime = new TalentMatchRuntime(
+                new Dictionary<int, TalentSlotConfig> { [0] = config },
+                TalentRegistry.Instance);
+            runtime.BeginMatch(session);
+            runtime.BeginRound(new TalentRoundContext(session));
+            runtime.ApplyWallBuilding(new TalentWallContext(session, new List<TileData>()));
+            runtime.CompleteInitialHands(new TalentInitialHandsContext(session, new ServerGameState(4)));
+            runtime.ResolvePostShuffle(new TalentPostShuffleContext(session, new List<TileData>()));
+
+            const long DecisionId = 710;
+            runtime.OpenMainDecision(0, DecisionId);
+            runtime.TryActivate(
+                0,
+                new TalentActionRequest { TalentId = "call_the_mark", DecisionId = DecisionId, TargetSeatIndex = 2 },
+                new TalentActivationContext(session, 0, TalentActivationWindow.MainTurn, DecisionId));
+
+            runtime.CommitAction(TalentActionCommittedFacts.Create(
+                decisionId: 711, actorSeatIndex: 0, sourceSeatIndex: 2, ClientActionType.MingGan,
+                new TileData(Suit.Sou, 5, 2), null, false, null));
+
+            TalentWinFacts winFacts = TalentTestFacts.Win(session, 0);
+            TalentFanResolution attribution = runtime.ResolveAcceptedWinFan(
+                new TalentAcceptedWinAttributionContext(
+                    session,
+                    winnerSeatIndex: 0,
+                    alreadyAcceptedFinalFan: 14,
+                    facts: winFacts,
+                    evaluateOptions: _ => new FanEvaluation { HasWinningShape = true, Fan = 8, FanDetails = new List<string>() }));
+
+            var row = attribution.Contributions.FirstOrDefault(c => c.TalentId == "call_the_mark");
+            runner.Check(attribution.IsAttributionComplete
+                         && attribution.BaseFan == 8
+                         && attribution.FinalFan == 14
+                         && row != null
+                         && row.Category == TalentFanContributionCategory.PostLegal
+                         && row.FanDelta == 6,
+                "call_the_mark produces accurate +6 post-legal attribution row");
+        }
+
+        // 3. FollowTheTrail Attribution Alone:
+        {
+            var config = new TalentSlotConfig();
+            config.SlotTalentIds[3] = "follow_the_trail";
+            var runtime = new TalentMatchRuntime(
+                new Dictionary<int, TalentSlotConfig> { [0] = config },
+                TalentRegistry.Instance);
+            runtime.BeginMatch(session);
+            runtime.BeginRound(new TalentRoundContext(session));
+            runtime.ApplyWallBuilding(new TalentWallContext(session, new List<TileData>()));
+            runtime.CompleteInitialHands(new TalentInitialHandsContext(session, new ServerGameState(4)));
+            runtime.ResolvePostShuffle(new TalentPostShuffleContext(session, new List<TileData>()));
+
+            runtime.CommitAction(TalentActionCommittedFacts.Create(
+                decisionId: 720, actorSeatIndex: 2, sourceSeatIndex: null, ClientActionType.Discard,
+                new TileData(Suit.Pin, 3, 2), null, false, null));
+            runtime.CommitAction(TalentActionCommittedFacts.Create(
+                decisionId: 721, actorSeatIndex: 2, sourceSeatIndex: null, ClientActionType.Discard,
+                new TileData(Suit.Pin, 8, 2), null, false, null));
+
+            TalentWinFacts winFacts = TalentWinFacts.Create(
+                session,
+                winnerSeatIndex: 0,
+                discarderSeatIndex: 2,
+                new[] { new TileData(Suit.Pin, 1, 0) },
+                new List<Meld>(),
+                new TileData(Suit.Pin, 8, 2),
+                isSelfDraw: false,
+                isRobKong: false,
+                isKongReplacement: false);
+
+            TalentFanResolution attribution = runtime.ResolveAcceptedWinFan(
+                new TalentAcceptedWinAttributionContext(
+                    session,
+                    winnerSeatIndex: 0,
+                    alreadyAcceptedFinalFan: 12,
+                    facts: winFacts,
+                    evaluateOptions: _ => new FanEvaluation { HasWinningShape = true, Fan = 8, FanDetails = new List<string>() }));
+
+            var row = attribution.Contributions.FirstOrDefault(c => c.TalentId == "follow_the_trail");
+            runner.Check(attribution.IsAttributionComplete
+                         && attribution.BaseFan == 8
+                         && attribution.FinalFan == 12
+                         && row != null
+                         && row.Category == TalentFanContributionCategory.PostLegal
+                         && row.FanDelta == 4,
+                "follow_the_trail produces accurate +4 post-legal attribution row");
+        }
     }
 
     private static Meld Pung(Suit suit, int value) => new Meld(

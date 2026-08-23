@@ -10,8 +10,41 @@ internal static class ActionValidationTests
         DoesNotTreatAdjacentFrequencySlotsAsCrossSuitChi(runner);
         PreservesAllLegalChiDirections(runner);
         KongReplacementDrawSuppliesEligibilityAndExcludesSelfDraw(runner);
+        MinimumFanRaisesGateWithoutChangingCalculatedFan(runner);
         SheathedEdgeDoesNotGrantWinEligibilityButAddsAfterLegalWin(runner);
         PostLegalPenaltiesClampPerEffectAndInTotal(runner);
+    }
+
+    private static void MinimumFanRaisesGateWithoutChangingCalculatedFan(
+        RegressionRunner runner)
+    {
+        List<Meld> melds = BuildThreeFixedPungs();
+        var hand = new List<TileData>
+        {
+            Tile(Suit.Dragon, 1), Tile(Suit.Dragon, 1),
+            Tile(Suit.Man, 5), Tile(Suit.Man, 5)
+        };
+        TileData winningTile = Tile(Suit.Dragon, 1);
+        var raisedGate = new ScoringOptions { MinimumFan = 10 };
+        FanEvaluation evaluation = MahjongLogic.EvaluateBestFan(
+            hand, melds, winningTile, false, options: raisedGate);
+        bool blockedAtEight = MahjongLogic.CheckWinWithFan(
+            hand, melds, winningTile, false, out _, out _, options: raisedGate);
+        bool headStartReachesTen = MahjongLogic.CheckWinWithFan(
+            hand,
+            melds,
+            winningTile,
+            false,
+            out int eligibleFan,
+            out _,
+            options: new ScoringOptions { BonusFan = 2, MinimumFan = 10 });
+
+        runner.Check(evaluation.HasWinningShape
+                     && evaluation.Fan == 8
+                     && !blockedAtEight
+                     && headStartReachesTen
+                     && eligibleFan == 10,
+            "MinimumFan changes only the legal Hu gate while ordinary eligibility bonuses can still satisfy it");
     }
 
     private static void KongReplacementDrawSuppliesEligibilityAndExcludesSelfDraw(

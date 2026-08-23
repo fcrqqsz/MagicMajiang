@@ -61,6 +61,7 @@ namespace MahjongGame.Core.Network
             var msg = new TalentInfoMessage
             {
                 bonusFan = options.BonusFan,
+                minimumFan = options.MinimumFan,
                 relaxedPureStraight = options.RelaxedPureStraight
             };
             Send("TalentInfo", msg);

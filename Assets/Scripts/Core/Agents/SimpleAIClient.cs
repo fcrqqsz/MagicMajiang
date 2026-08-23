@@ -292,6 +292,7 @@ namespace MahjongGame.Core.Agents
                 : new ScoringOptions
                 {
                     BonusFan = scoringOptions.BonusFan,
+                    MinimumFan = scoringOptions.MinimumFan,
                     RelaxedPureStraight = scoringOptions.RelaxedPureStraight
                 };
         }
