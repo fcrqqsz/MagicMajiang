@@ -23,6 +23,7 @@ namespace MahjongGame.Core.Network
         public int RemainingWallCount;
         public ScoringOptions[] ScoringOptions;
         public List<TileData>[] PeekWallTiles;
+        public TalentPrivateTileReveal PrivateTileReveal;
         public NetworkDecisionContext ActiveDecision;
         public RoomSnapshotTalentSource[] Talents;
         public IReadOnlyList<TalentActionOption> AvailableTalentActions;
@@ -106,6 +107,9 @@ namespace MahjongGame.Core.Network
                     melds = ToMeldSnapshots(GetAt(source.Melds, requestingSeatIndex)),
                     scoringOptions = ToScoringOptions(GetAt(source.ScoringOptions, requestingSeatIndex)),
                     peekWallTiles = ToSimpleTiles(GetAt(source.PeekWallTiles, requestingSeatIndex)),
+                    privateTileReveal = source.PrivateTileReveal?.ViewerSeatIndex == requestingSeatIndex
+                        ? CreatePrivateTileRevealSnapshot(source.PrivateTileReveal)
+                        : null,
                     ownTalents = BuildOwnTalents(source, requestingSeatIndex),
                     availableTalentActions = BuildTalentActionOptions(source.AvailableTalentActions)
                 },
@@ -309,6 +313,26 @@ namespace MahjongGame.Core.Network
             return tile == null ? null : new SimpleTileData(tile);
         }
 
+        private static SnapshotPrivateTileReveal CreatePrivateTileRevealSnapshot(TalentPrivateTileReveal reveal)
+        {
+            if (reveal == null) return null;
+            return new SnapshotPrivateTileReveal
+            {
+                talentId = reveal.TalentId,
+                viewerSeatIndex = reveal.ViewerSeatIndex,
+                targetSeatIndex = reveal.TargetSeatIndex,
+                roundNumber = reveal.RoundNumber,
+                tiles = (reveal.Tiles ?? Array.Empty<TileData>())
+                    .Select(t => new SnapshotRevealedTile
+                    {
+                        suit = (int)t.TileSuit,
+                        value = t.Value,
+                        isModified = t.IsModified
+                    })
+                    .ToArray()
+            };
+        }
+
         private static T GetAt<T>(T[] values, int index) where T : class
         {
             return values != null && index >= 0 && index < values.Length ? values[index] : null;
@@ -371,6 +395,7 @@ namespace MahjongGame.Core.Network.Messages
         public SnapshotMeld[] melds;
         public SnapshotScoringOptions scoringOptions;
         public SimpleTileData[] peekWallTiles;
+        public SnapshotPrivateTileReveal privateTileReveal;
         public SnapshotOwnTalent[] ownTalents;
         public SnapshotTalentActionOption[] availableTalentActions;
     }

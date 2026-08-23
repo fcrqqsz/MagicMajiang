@@ -154,7 +154,9 @@
     <Compile Include="..\..\Assets\Scripts\Talent\Impl\EncirclementTalent.cs" Link="EncirclementTalent.cs" />
     <Compile Include="..\..\Assets\Scripts\Talent\Impl\LastStandFormationTalent.cs" Link="LastStandFormationTalent.cs" />
     <Compile Include="..\..\Assets\Scripts\Talent\Impl\CallTheMarkTalent.cs" Link="CallTheMarkTalent.cs" />
+    <Compile Include="..\..\Assets\Scripts\Talent\TalentPrivateTileReveal.cs" Link="TalentPrivateTileReveal.cs" />
     <Compile Include="..\..\Assets\Scripts\Talent\Impl\FollowTheTrailTalent.cs" Link="FollowTheTrailTalent.cs" />
+    <Compile Include="..\..\Assets\Scripts\Talent\Impl\PiercingInsightTalent.cs" Link="PiercingInsightTalent.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\Data\SavedDeck.cs" Link="SavedDeck.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\Data\PlayerProfile.cs" Link="PlayerProfile.cs" />
   </ItemGroup>

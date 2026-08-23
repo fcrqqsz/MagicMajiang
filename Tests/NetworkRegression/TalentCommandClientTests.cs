@@ -14,6 +14,7 @@ internal static class TalentCommandClientTests
     {
         RemoteProxySerializesTalentActionFromAuthoritativeMainDecision(runner);
         RemoteProxyForwardsKongReplacementDrawAuthority(runner);
+        RemoteProxyRejectsPrivateRevealForAnotherViewer(runner);
         RemoteProxyBindsAndUnbindsTalentPresentationClient(runner);
         SameSceneRecoveryPublishesTalentProjectionOnce(runner);
         CurrentSnapshotTalentProjectionReplaysAfterSceneConstruction(runner);
@@ -52,6 +53,29 @@ internal static class TalentCommandClientTests
 
         runner.Check(local.LastDrawWasKongReplacement,
             "RemoteServerProxy forwards the ordered main decision's replacement-draw authority to the local client");
+    }
+
+    private static void RemoteProxyRejectsPrivateRevealForAnotherViewer(RegressionRunner runner)
+    {
+        using ClientRoomService service = CreateLiveRoomService();
+        var local = new TalentPresentationClientStub();
+        using var proxy = new ProxyLifetime(new RemoteServerProxy(local, service));
+
+        WebSocketClient.Instance.Receive(MessageSerializer.Serialize("PrivateTileReveal", 3,
+            new PrivateTileRevealMessage
+            {
+                talentId = "piercing_insight",
+                viewerSeatIndex = 1,
+                targetSeatIndex = 2,
+                roundNumber = 1,
+                tiles = new[]
+                {
+                    new SnapshotRevealedTile { suit = (int)Suit.Man, value = 5, isModified = true }
+                }
+            }));
+
+        runner.Check(local.LastPrivateTileReveal == null,
+            "RemoteServerProxy refuses a private tile reveal addressed to another viewer seat");
     }
 
     private static void CurrentSnapshotTalentProjectionReplaysAfterSceneConstruction(RegressionRunner runner)
@@ -554,6 +578,7 @@ internal static class TalentCommandClientTests
         public int UnbindCount { get; private set; }
         public RemoteServerProxy LastProxy { get; private set; }
         public bool LastDrawWasKongReplacement { get; private set; }
+        public TalentPrivateTileReveal LastPrivateTileReveal { get; private set; }
 
         public int PlayerId => 0;
         public System.Threading.CancellationToken TurnCancellationToken { get; set; }
@@ -588,5 +613,7 @@ internal static class TalentCommandClientTests
         public void OnTimeout(TileData autoDiscardedTile) { }
         public void OnTalentInfo(ScoringOptions scoringOptions) { }
         public void OnPeekWallTiles(List<TileData> topTiles) { }
+        public void OnPrivateTileReveal(MahjongGame.Talents.TalentPrivateTileReveal reveal) =>
+            LastPrivateTileReveal = reveal;
     }
 }

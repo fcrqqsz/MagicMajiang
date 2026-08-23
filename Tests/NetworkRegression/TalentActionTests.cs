@@ -51,6 +51,7 @@ internal static class TalentActionTests
         CallTheMarkActionAndAttributionLifecycle(runner);
         FollowTheTrailTracksOpponentDiscardsAndAwardsBonusOnMatchingSuitRon(runner);
         MultipleNewTalentsStackAndAttributeWithGatherMomentum(runner);
+        PiercingInsightUniversalRevealAndNetworkTests(runner);
     }
 
     private static void SuitConvergenceChoosesAndTransformsExactlyTwoOffSuitDraws(
@@ -2710,6 +2711,297 @@ internal static class TalentActionTests
         runner.Check(callMarkRow != null && callMarkRow.FanDelta == 6, "call_the_mark attribution row is +6");
         runner.Check(encirclementRow != null && encirclementRow.FanDelta == 4, "encirclement attribution row is +4");
         runner.Check(followTrailRow != null && followTrailRow.FanDelta == 4, "follow_the_trail attribution row is +4");
+    }
+
+    private static void PiercingInsightUniversalRevealAndNetworkTests(RegressionRunner runner)
+    {
+        // 1. Universal Private Reveal model & sanitization
+        var dirtyTiles = new List<TileData>
+        {
+            new TileData(Suit.Man, 5, 2) { ID = "tile-secret-123", IsModified = true, SpecialEffectID = "midas_touch" },
+            new TileData(Suit.Pin, 1, 3) { ID = "tile-secret-456", IsModified = false, SpecialEffectID = null }
+        };
+        var reveal = new TalentPrivateTileReveal("piercing_insight", 0, 1, 1, dirtyTiles);
+        runner.Check(reveal.TalentId == "piercing_insight"
+            && reveal.ViewerSeatIndex == 0
+            && reveal.TargetSeatIndex == 1
+            && reveal.RoundNumber == 1
+            && reveal.Tiles.Count == 2
+            && reveal.Tiles[0].TileSuit == Suit.Man
+            && reveal.Tiles[0].Value == 5
+            && reveal.Tiles[0].IsModified
+            && string.IsNullOrEmpty(reveal.Tiles[0].ID)
+            && string.IsNullOrEmpty(reveal.Tiles[0].SpecialEffectID)
+            && reveal.Tiles[0].OriginalOwnerID == 0
+            && reveal.Tiles[1].TileSuit == Suit.Pin
+            && reveal.Tiles[1].Value == 1
+            && !reveal.Tiles[1].IsModified,
+            "TalentPrivateTileReveal sanitizes Tile ID, owner, and internal specialEffectId while keeping suit, value, and isModified");
+
+        // 2. Runtime lifecycle and deep copy checks
+        var loadouts = Enumerable.Range(0, 4).ToDictionary(index => index, _ => new TalentSlotConfig());
+        loadouts[0].SlotTalentIds[0] = "piercing_insight";
+        var runtime = new TalentMatchRuntime(loadouts, TalentRegistry.Instance);
+        var session = new GameSession(GameMode.Single);
+        runtime.BeginMatch(session);
+        BeginReadyRound(runtime, session);
+
+        runtime.RecordPrivateTileReveal(0, 1, "piercing_insight", dirtyTiles, 1);
+        TalentPrivateTileReveal runtimeReveal = runtime.GetPrivateTileReveal(0);
+        runner.Check(runtimeReveal != null && runtimeReveal.Tiles.Count == 2,
+            "runtime stores private tile reveal for viewer seat 0");
+        runner.Check(runtime.GetPrivateTileReveal(1) == null
+            && runtime.GetPrivateTileReveal(2) == null
+            && runtime.GetPrivateTileReveal(3) == null,
+            "runtime returns null private tile reveal for other seats");
+
+        // Modifying returned tile data must not affect runtime state.
+        runtimeReveal.Tiles[0].Value = 9;
+        runtimeReveal.Tiles[0].IsModified = false;
+        TalentPrivateTileReveal runtimeRevealSecond = runtime.GetPrivateTileReveal(0);
+        runner.Check(runtimeRevealSecond != null
+            && runtimeRevealSecond.Tiles.Count == 2
+            && runtimeRevealSecond.Tiles[0].Value == 5
+            && runtimeRevealSecond.Tiles[0].IsModified,
+            "mutating returned reveal tiles does not modify runtime state");
+
+        // Ending the round clears private tile reveal before the next round begins.
+        runtime.EndRound(new TalentRoundOutcome { WinnerSeatIndex = 1 }, session);
+        runner.Check(runtime.GetPrivateTileReveal(0) == null,
+            "round end clears private tile reveals immediately");
+        BeginReadyRound(runtime, session);
+        runner.Check(runtime.GetPrivateTileReveal(0) == null,
+            "new round clears private tile reveals");
+
+        // 3. PiercingInsight rule tests
+        TalentMetadata metadata = TalentRegistry.Instance.GetMetadata("piercing_insight");
+        runner.Check(TalentRegistry.Instance.GetTier("piercing_insight") == TalentTier.Large
+            && TalentRegistry.Instance.GetCost("piercing_insight") == 26
+            && metadata != null
+            && metadata.StateScope == TalentStateScope.Round
+            && metadata.ActivationWindow == TalentActivationWindow.MainTurn
+            && metadata.RevealPolicy == TalentRevealPolicy.HiddenUntilPublicEffect
+            && metadata.SideboardPolicy == TalentSideboardPolicy.Flexible,
+            "piercing_insight has correct Large tier, 26 cost, MainTurn window, HiddenUntilPublicEffect, Flexible sideboard metadata");
+
+        var options = runtime.GetAvailableActions(0, new TalentActionQueryContext(session, 0, TalentActivationWindow.MainTurn, 1001));
+        var piercingOptions = options.Where(o => o.TalentId == "piercing_insight").ToList();
+        runner.Check(piercingOptions.Count == 3
+            && piercingOptions.Select(o => o.TargetSeatIndex).OrderBy(s => s).SequenceEqual(new[] { 1, 2, 3 }),
+            "piercing_insight generates 3 legal opponent candidates and excludes self");
+
+        // Target hands mock
+        var targetHands = new Dictionary<int, List<TileData>>
+        {
+            [0] = new List<TileData> { new(Suit.Man, 1, 0) },
+            [1] = new List<TileData>
+            {
+                new(Suit.Man, 1, 1),
+                new(Suit.Man, 9, 1) { IsModified = true },
+                new(Suit.Pin, 3, 1),
+                new(Suit.Pin, 3, 1), // duplicate preserved
+                new(Suit.Sou, 7, 1),
+                new(Suit.Wind, 1, 1), // honor filtered out
+                new(Suit.Dragon, 2, 1) // honor filtered out
+            },
+            [2] = new List<TileData>
+            {
+                new(Suit.Wind, 1, 2),
+                new(Suit.Dragon, 3, 2)
+            } // no number tiles
+        };
+
+        Func<int, IReadOnlyList<TileData>> handProvider = seat => targetHands.TryGetValue(seat, out var h) ? h : Array.Empty<TileData>();
+
+        // Rejection: authoritative concealed-hand provider is unavailable.
+        TalentActionResult missingProviderReject = runtime.TryActivate(0,
+            new TalentActionRequest { TalentId = "piercing_insight", DecisionId = 1001, TargetSeatIndex = 1 },
+            new TalentActivationContext(session, 0, TalentActivationWindow.MainTurn, 1001));
+        runner.Check(!missingProviderReject.Accepted
+            && missingProviderReject.ErrorCode == TalentActionErrorCodes.NotAvailable
+            && runtime.GetPrivateTileReveal(0) == null,
+            "piercing_insight rejects without an authoritative hand provider and does not consume its use");
+
+        // Rejection: Invalid Target (self)
+        TalentActionResult selfReject = runtime.TryActivate(0,
+            new TalentActionRequest { TalentId = "piercing_insight", DecisionId = 1001, TargetSeatIndex = 0 },
+            new TalentActivationContext(session, 0, TalentActivationWindow.MainTurn, 1001, handProvider));
+        runner.Check(!selfReject.Accepted && selfReject.ErrorCode == TalentActionErrorCodes.InvalidTarget,
+            "piercing_insight rejects targeting self");
+
+        // Rejection: Out of range target
+        TalentActionResult rangeReject = runtime.TryActivate(0,
+            new TalentActionRequest { TalentId = "piercing_insight", DecisionId = 1001, TargetSeatIndex = 5 },
+            new TalentActivationContext(session, 0, TalentActivationWindow.MainTurn, 1001, handProvider));
+        runner.Check(!rangeReject.Accepted && rangeReject.ErrorCode == TalentActionErrorCodes.InvalidTarget,
+            "piercing_insight rejects out-of-range target");
+
+        // Rejection: Wrong activation window
+        TalentActionResult windowReject = runtime.TryActivate(0,
+            new TalentActionRequest { TalentId = "piercing_insight", DecisionId = 1001, TargetSeatIndex = 1 },
+            new TalentActivationContext(session, 0, TalentActivationWindow.Response, 1001, handProvider));
+        runner.Check(!windowReject.Accepted,
+            "piercing_insight rejects activation outside MainTurn window");
+
+        // Legal activation targeting Seat 1
+        TalentActionResult successResult = runtime.TryActivate(0,
+            new TalentActionRequest { TalentId = "piercing_insight", DecisionId = 1001, TargetSeatIndex = 1 },
+            new TalentActivationContext(session, 0, TalentActivationWindow.MainTurn, 1001, handProvider));
+        runner.Check(successResult.Accepted
+            && successResult.EffectApplied
+            && successResult.PublicStateEventType == "piercing_insight_target"
+            && successResult.PublicStateValue == 2,
+            "piercing_insight activates successfully with public target value = 2 (seat 1 + 1)");
+
+        TalentPrivateTileReveal revealedResult = runtime.GetPrivateTileReveal(0);
+        runner.Check(revealedResult != null
+            && revealedResult.TargetSeatIndex == 1
+            && revealedResult.Tiles.Count == 5
+            && revealedResult.Tiles.All(t => t.TileSuit is Suit.Man or Suit.Pin or Suit.Sou)
+            && revealedResult.Tiles.Count(t => t.TileSuit == Suit.Pin && t.Value == 3) == 2
+            && revealedResult.Tiles.Single(t => t.TileSuit == Suit.Man && t.Value == 9).IsModified,
+            "piercing_insight reveals only number tiles, preserves duplicates and IsModified, and excludes honor tiles");
+
+        // Public event verification: public events must not contain reveal tiles
+        var seat1Events = runtime.DrainEventsForSeat(1);
+        var targetEvent = seat1Events.FirstOrDefault(e => e.EventType == "piercing_insight_target");
+        runner.Check(targetEvent != null && targetEvent.Value == 2,
+            "public event exposes target seat index + 1 without exposing tile contents");
+
+        // Snapshot entry private value
+        TalentSnapshotEntry snapEntry = runtime.GetSnapshotEntries().Single(e => e.TalentId == "piercing_insight");
+        runner.Check(snapEntry.IsRevealed && snapEntry.PrivateValue == 0,
+            "snapshot entry is revealed and has private value 0 (0 uses remaining)");
+
+        // Rejection: second activation in same round
+        TalentActionResult secondUseReject = runtime.TryActivate(0,
+            new TalentActionRequest { TalentId = "piercing_insight", DecisionId = 1002, TargetSeatIndex = 2 },
+            new TalentActivationContext(session, 0, TalentActivationWindow.MainTurn, 1002, handProvider));
+        runner.Check(!secondUseReject.Accepted && secondUseReject.ErrorCode == TalentActionErrorCodes.AlreadyUsedThisTurn,
+            "piercing_insight cannot be activated twice in the same round");
+
+        // Legal activation on seat 2 (empty number tiles) in next round
+        runtime.EndRound(new TalentRoundOutcome { WinnerSeatIndex = 1 }, session);
+        BeginReadyRound(runtime, session);
+        TalentActionResult emptyTargetSuccess = runtime.TryActivate(0,
+            new TalentActionRequest { TalentId = "piercing_insight", DecisionId = 2001, TargetSeatIndex = 2 },
+            new TalentActivationContext(session, 0, TalentActivationWindow.MainTurn, 2001, handProvider));
+        runner.Check(emptyTargetSuccess.Accepted && emptyTargetSuccess.EffectApplied,
+            "piercing_insight targeting player with no number tiles succeeds and consumes use");
+        TalentPrivateTileReveal emptyReveal = runtime.GetPrivateTileReveal(0);
+        runner.Check(emptyReveal != null && emptyReveal.Tiles.Count == 0,
+            "piercing_insight on player without number tiles yields empty tile list");
+
+        // 4. Network and Snapshot integration
+        using (var manager = new RoomManager(1, true, new ConnectionRegistry(int.MaxValue), messageCacheSize: 64))
+        {
+            var endpoint = new GameEndpoint();
+            endpoint.Connect("insight-test-user", 1);
+            endpoint.Receive("insight-test-user", 1, MessageSerializer.Serialize("Hello", 0, new HelloMessage
+            {
+                protocolVersion = NetworkProtocol.Version,
+                username = "insight-test-user"
+            }));
+            TrustedPlayerLoadout standard = PlayerLoadoutCodec.CreateStandardLoadout();
+            var talentConfig = new TalentSlotConfig();
+            talentConfig.SlotTalentIds[0] = "piercing_insight";
+            PlayerLoadoutMessage loadoutMsg = PlayerLoadoutCodec.CreateMessage(
+                standard.DeckConfig, talentConfig, AlienationPreset.Standard);
+
+            endpoint.Receive("insight-test-user", 1, MessageSerializer.Serialize("CreateRoom", 0, new CreateRoomMessage
+            {
+                gameMode = (int)GameMode.Single,
+                alienationPreset = (int)AlienationPreset.Standard,
+                loadout = loadoutMsg
+            }));
+            var roomsField = typeof(RoomManager).GetField(
+                "_rooms",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+            var rooms = roomsField?.GetValue(manager) as Dictionary<string, Room>;
+            Room room = rooms?.Values.SingleOrDefault();
+            endpoint.Receive("insight-test-user", 1, MessageSerializer.Serialize("Ready", 0,
+                new ReadyMessage { phase = (int)ReadyPhase.MatchStart }));
+            endpoint.Receive("insight-test-user", 1, MessageSerializer.Serialize("Ready", 0,
+                new ReadyMessage { phase = (int)ReadyPhase.GameSceneLoaded }));
+
+            runner.Check(room != null && room.State == RoomState.InRound, "room started into round with piercing_insight");
+            room.GameServer.SetAiTalentDecisionForTests(
+                1001,
+                0,
+                new[]
+                {
+                    new TalentActionOption
+                    {
+                        TalentId = "piercing_insight",
+                        TargetSeatIndex = 1
+                    }
+                },
+                TalentActionResult.Success(effectApplied: true, publicStateEventType: "piercing_insight_target", publicStateValue: 2));
+
+            long decisionId = room.GameServer.ActiveDecision?.DecisionId ?? 0;
+            runner.Check(decisionId == 1001, "active decision opened for seat 0");
+
+            room.GameServer.TalentRuntime.RecordPrivateTileReveal(0, 1, "piercing_insight", new TileData[] { new(Suit.Man, 1, 0), new(Suit.Pin, 2, 0) }, 1);
+
+            int beforeCount = endpoint.SentMessages.Count;
+            endpoint.Receive("insight-test-user", 1, MessageSerializer.Serialize("TalentAction", 0, new TalentActionMessage
+            {
+                decisionId = decisionId,
+                talentId = "piercing_insight",
+                targetSeatIndex = 1
+            }));
+
+            NetworkMessageEnvelope[] newMessages = endpoint.SentMessages
+                .Skip(beforeCount)
+                .Select(MessageSerializer.DeserializeEnvelope)
+                .Where(envelope => envelope != null)
+                .ToArray();
+
+            TalentActionResolvedMessage resolvedMsg = newMessages.Select(e => e.type == "TalentActionResolved"
+                ? MessageSerializer.DeserializePayload<TalentActionResolvedMessage>(e.data)
+                : null).FirstOrDefault(m => m != null);
+
+            runner.Check(resolvedMsg != null
+                && resolvedMsg.accepted
+                && resolvedMsg.talentId == "piercing_insight"
+                && resolvedMsg.ownerSeatIndex == 0,
+                "Seat 0 received TalentActionResolved message");
+
+            // Snapshot test
+            RoomGameSnapshot snapshot0 = room.BuildSnapshot(0);
+            RoomGameSnapshot snapshot1 = room.BuildSnapshot(1);
+            runner.Check(snapshot0.privateSeat.privateTileReveal != null
+                && snapshot0.privateSeat.privateTileReveal.talentId == "piercing_insight"
+                && snapshot0.privateSeat.privateTileReveal.targetSeatIndex == 1
+                && snapshot0.privateSeat.privateTileReveal.tiles.Length == 2,
+                "Snapshot for Seat 0 contains privateTileReveal");
+            runner.Check(snapshot1.privateSeat.privateTileReveal == null,
+                "Snapshot for Seat 1 contains null privateTileReveal");
+
+            // ClientGameState application
+            var clientState0 = new ClientGameState();
+            clientState0.ApplySnapshot(snapshot0, 10);
+            runner.Check(clientState0.Snapshot.privateSeat.privateTileReveal != null
+                && clientState0.Snapshot.privateSeat.privateTileReveal.talentId == "piercing_insight",
+                "ClientGameState atomically applies snapshot with privateTileReveal");
+
+            var clientState1 = new ClientGameState();
+            clientState1.ApplySnapshot(snapshot1, 10);
+            runner.Check(clientState1.Snapshot.privateSeat.privateTileReveal == null,
+                "ClientGameState for Seat 1 has no privateTileReveal in privateSeat");
+
+            var mismatchedRevealSnapshot = RoomGameSnapshotBuilder.Build(new RoomGameSnapshotSource
+            {
+                RoomId = "mismatched-private-reveal",
+                RoomState = RoomState.InRound,
+                GameMode = GameMode.Single,
+                Session = new GameSession(GameMode.Single),
+                PrivateTileReveal = new TalentPrivateTileReveal(
+                    "piercing_insight", 0, 1, 1, new[] { new TileData(Suit.Man, 5, 0) })
+            }, 1);
+            runner.Check(mismatchedRevealSnapshot.privateSeat.privateTileReveal == null,
+                "snapshot builder refuses a private reveal owned by another requesting seat");
+        }
     }
 
     private static void BeginReadyRound(TalentMatchRuntime runtime, GameSession session)

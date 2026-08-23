@@ -16,6 +16,10 @@ namespace MahjongGame.Talents
         private readonly Dictionary<int, long> _eventCursors = new Dictionary<int, long>();
         private readonly Dictionary<int, List<TileData>> _privatePeekTiles =
             new Dictionary<int, List<TileData>>();
+        private readonly Dictionary<int, TalentPrivateTileReveal> _privateTileReveals =
+            new Dictionary<int, TalentPrivateTileReveal>();
+        private readonly Dictionary<int, long> _privateTileRevealVersions =
+            new Dictionary<int, long>();
         private readonly Dictionary<int, long> _firstMainDecisionIds =
             new Dictionary<int, long>();
         private readonly List<TalentActionCommittedFacts> _roundActions =
@@ -134,6 +138,8 @@ namespace MahjongGame.Talents
             _session = session;
             _sessionIdentity = TalentSessionSnapshot.Create(session).Identity;
             _phase = RuntimePhase.BetweenRounds;
+            _privateTileReveals.Clear();
+            _privateTileRevealVersions.Clear();
 
             foreach (RuntimeEntry entry in _entries)
             {
@@ -172,6 +178,8 @@ namespace MahjongGame.Talents
             EnsurePhase(RuntimePhase.BetweenRounds, nameof(BeginRound));
 
             _privatePeekTiles.Clear();
+            _privateTileReveals.Clear();
+            _privateTileRevealVersions.Clear();
             _firstMainDecisionIds.Clear();
             _roundActions.Clear();
             _committedActionDecisionIds.Clear();
@@ -454,7 +462,8 @@ namespace MahjongGame.Talents
                         ownerSeatIndex,
                         context.RequiredWindow,
                         context.DecisionId),
-                    this),
+                    this,
+                    entry.Rule.Id),
                 request)
                 ?? TalentActionResult.NotSupported();
             if (result.Accepted && result.EffectApplied)
@@ -1009,6 +1018,44 @@ namespace MahjongGame.Talents
             return tiles.Select(CopyTile).ToArray();
         }
 
+        public void RecordPrivateTileReveal(
+            int viewerSeatIndex,
+            int targetSeatIndex,
+            string talentId,
+            IEnumerable<TileData> revealedTiles,
+            int roundNumber)
+        {
+            ValidateSeatIndex(viewerSeatIndex, nameof(viewerSeatIndex));
+            ValidateSeatIndex(targetSeatIndex, nameof(targetSeatIndex));
+            if (string.IsNullOrWhiteSpace(talentId))
+                throw new ArgumentException("A talent id is required.", nameof(talentId));
+
+            _privateTileReveals[viewerSeatIndex] = new TalentPrivateTileReveal(
+                talentId,
+                viewerSeatIndex,
+                targetSeatIndex,
+                roundNumber,
+                revealedTiles);
+            _privateTileRevealVersions[viewerSeatIndex] = checked(
+                GetPrivateTileRevealVersion(viewerSeatIndex) + 1);
+        }
+
+        public TalentPrivateTileReveal GetPrivateTileReveal(int viewerSeatIndex)
+        {
+            ValidateSeatIndex(viewerSeatIndex, nameof(viewerSeatIndex));
+            return _privateTileReveals.TryGetValue(viewerSeatIndex, out TalentPrivateTileReveal reveal)
+                ? reveal.CreateDetachedCopy()
+                : null;
+        }
+
+        public long GetPrivateTileRevealVersion(int viewerSeatIndex)
+        {
+            ValidateSeatIndex(viewerSeatIndex, nameof(viewerSeatIndex));
+            return _privateTileRevealVersions.TryGetValue(viewerSeatIndex, out long version)
+                ? version
+                : 0;
+        }
+
         public void EndRound(
             TalentRoundOutcome outcome,
             GameSession session,
@@ -1054,6 +1101,8 @@ namespace MahjongGame.Talents
                         }, isAuthoritativeScoreDelta: true);
                     }), outcome);
             }
+            _privateTileReveals.Clear();
+            _privateTileRevealVersions.Clear();
             _phase = RuntimePhase.BetweenRounds;
             TalentTelemetryRecord telemetryRecord = CreateTelemetryRecord("round_end");
             telemetryRecord.completedRound = session.TotalRoundsPlayed + 1;

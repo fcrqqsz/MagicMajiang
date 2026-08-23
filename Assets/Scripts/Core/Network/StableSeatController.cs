@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading;
 using MahjongGame.Core.Agents;
 using MahjongGame.Core.Network.Messages;
+using MahjongGame.Talents;
 
 namespace MahjongGame.Core.Network
 {
@@ -137,6 +138,7 @@ namespace MahjongGame.Core.Network
             _temporaryAi.OnTalentInfo(scoringOptions);
         }
         public void OnPeekWallTiles(List<TileData> topTiles) => _remote.OnPeekWallTiles(topTiles);
+        public void OnPrivateTileReveal(TalentPrivateTileReveal reveal) => _remote.OnPrivateTileReveal(reveal);
 
         private bool Participates(NetworkDecisionContext decision)
         {

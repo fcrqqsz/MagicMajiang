@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Threading;
 using MahjongGame.Core;
 using MahjongGame.Core.Network.Messages;
+using MahjongGame.Talents;
 
 namespace MahjongGame.Core.Agents
 {
@@ -93,5 +94,10 @@ namespace MahjongGame.Core.Agents
         /// 窥探天赋：通知牌山顶部几张牌
         /// </summary>
         void OnPeekWallTiles(List<TileData> topTiles);
+
+        /// <summary>
+        /// 通用私有牌面揭示（如洞若观火天赋）
+        /// </summary>
+        void OnPrivateTileReveal(TalentPrivateTileReveal reveal);
     }
 }

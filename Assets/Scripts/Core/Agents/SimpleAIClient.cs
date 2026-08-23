@@ -7,6 +7,7 @@ using UnityEngine;
 using MahjongGame.Core.Network;
 using MahjongGame.Core.Network.Messages;
 using MahjongGame.Core;
+using MahjongGame.Talents;
 
 namespace MahjongGame.Core.Agents
 {
@@ -300,6 +301,11 @@ namespace MahjongGame.Core.Agents
         public void OnPeekWallTiles(List<TileData> topTiles)
         {
             // AI 暂不使用窥探
+        }
+
+        public void OnPrivateTileReveal(TalentPrivateTileReveal reveal)
+        {
+            // AI 暂不使用私有揭示
         }
 
         // --- 本地内部逻辑 ---

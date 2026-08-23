@@ -124,6 +124,30 @@ namespace MahjongGame.Core.Network
                     var peekMsg = MessageSerializer.DeserializePayload<PeekWallMessage>(envelope.data);
                     _localClient.OnPeekWallTiles(peekMsg.tiles.Select(t => t.ToTileData()).ToList());
                     break;
+                case "PrivateTileReveal":
+                    var revealMsg = MessageSerializer.DeserializePayload<PrivateTileRevealMessage>(envelope.data);
+                    if (revealMsg != null
+                        && _localClient != null
+                        && revealMsg.viewerSeatIndex == _localClient.PlayerId
+                        && revealMsg.targetSeatIndex >= 0
+                        && revealMsg.targetSeatIndex < 4)
+                    {
+                        var revealTiles = revealMsg.tiles?.Select(t => new TileData((Suit)t.suit, t.value, 0)
+                        {
+                            ID = string.Empty,
+                            IsModified = t.isModified,
+                            SpecialEffectID = null
+                        }).ToArray() ?? System.Array.Empty<TileData>();
+
+                        var reveal = new TalentPrivateTileReveal(
+                            revealMsg.talentId,
+                            revealMsg.viewerSeatIndex,
+                            revealMsg.targetSeatIndex,
+                            revealMsg.roundNumber,
+                            revealTiles);
+                        _localClient.OnPrivateTileReveal(reveal);
+                    }
+                    break;
                 case "TileDrawn":
                     var drawnMsg = MessageSerializer.DeserializePayload<TileDrawnMessage>(envelope.data);
                     _activeDecisionId = drawnMsg?.decisionId ?? 0;

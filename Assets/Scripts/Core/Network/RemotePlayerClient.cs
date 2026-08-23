@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using MahjongGame.Core.Network.Messages;
+using MahjongGame.Talents;
 
 namespace MahjongGame.Core.Network
 {
@@ -83,6 +84,25 @@ namespace MahjongGame.Core.Network
                 tiles = topTiles.Select(t => new SimpleTileData(t)).ToArray()
             };
             Send("PeekWall", msg);
+        }
+
+        public void OnPrivateTileReveal(TalentPrivateTileReveal reveal)
+        {
+            if (reveal == null || reveal.ViewerSeatIndex != _playerId) return;
+            var msg = new PrivateTileRevealMessage
+            {
+                talentId = reveal.TalentId,
+                viewerSeatIndex = reveal.ViewerSeatIndex,
+                targetSeatIndex = reveal.TargetSeatIndex,
+                roundNumber = reveal.RoundNumber,
+                tiles = reveal.Tiles?.Select(t => new SnapshotRevealedTile
+                {
+                    suit = (int)t.TileSuit,
+                    value = t.Value,
+                    isModified = t.IsModified
+                }).ToArray() ?? System.Array.Empty<SnapshotRevealedTile>()
+            };
+            Send("PrivateTileReveal", msg);
         }
 
         public void OnTileDrawn(TileData drawnTile, bool isKongReplacementDraw)

@@ -524,4 +524,32 @@ namespace MahjongGame.Core.Network.Messages
         public int totalFan;
         public string[] fanDetails;
     }
+
+    [Serializable]
+    public sealed class SnapshotRevealedTile
+    {
+        public int suit;
+        public int value;
+        public bool isModified;
+    }
+
+    [Serializable]
+    public sealed class PrivateTileRevealMessage
+    {
+        public string talentId;
+        public int viewerSeatIndex;
+        public int targetSeatIndex;
+        public int roundNumber;
+        public SnapshotRevealedTile[] tiles;
+    }
+
+    [Serializable]
+    public sealed class SnapshotPrivateTileReveal
+    {
+        public string talentId;
+        public int viewerSeatIndex;
+        public int targetSeatIndex;
+        public int roundNumber;
+        public SnapshotRevealedTile[] tiles;
+    }
 }

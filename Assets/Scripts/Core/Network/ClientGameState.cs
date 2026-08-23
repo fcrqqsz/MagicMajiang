@@ -193,6 +193,22 @@ namespace MahjongGame.Core.Network
                     privateSeat.availableTalentActions = CloneTalentActionOptions(message.availableTalentActions);
                     return;
                 }
+                case "PrivateTileReveal":
+                {
+                    var message = MessageSerializer.DeserializePayload<PrivateTileRevealMessage>(envelope.data);
+                    if (message == null || message.viewerSeatIndex != snapshot.requestingSeatIndex) return;
+                    SnapshotPrivateSeat privateSeat = EnsurePrivateSeat(snapshot);
+                    privateSeat.privateTileReveal = new SnapshotPrivateTileReveal
+                    {
+                        talentId = message.talentId,
+                        viewerSeatIndex = message.viewerSeatIndex,
+                        targetSeatIndex = message.targetSeatIndex,
+                        roundNumber = message.roundNumber,
+                        tiles = message.tiles?.Select(CloneRevealedTile).Where(t => t != null).ToArray()
+                            ?? Array.Empty<SnapshotRevealedTile>()
+                    };
+                    return;
+                }
                 case "SideboardStarted":
                 {
                     var message = MessageSerializer.DeserializePayload<SideboardStartedMessage>(envelope.data);
@@ -729,7 +745,8 @@ namespace MahjongGame.Core.Network
                 },
                 peekWallTiles = CloneTiles(seat.peekWallTiles),
                 ownTalents = CloneOwnTalents(seat.ownTalents),
-                availableTalentActions = CloneTalentActionOptions(seat.availableTalentActions)
+                availableTalentActions = CloneTalentActionOptions(seat.availableTalentActions),
+                privateTileReveal = ClonePrivateTileReveal(seat.privateTileReveal)
             };
         }
 
@@ -762,6 +779,31 @@ namespace MahjongGame.Core.Network
                 .Select(TalentActionSnapshotCodec.FromSnapshot)
                 .Where(option => option != null)
                 .ToArray();
+
+        private static SnapshotPrivateTileReveal ClonePrivateTileReveal(SnapshotPrivateTileReveal reveal)
+        {
+            if (reveal == null) return null;
+            return new SnapshotPrivateTileReveal
+            {
+                talentId = reveal.talentId,
+                viewerSeatIndex = reveal.viewerSeatIndex,
+                targetSeatIndex = reveal.targetSeatIndex,
+                roundNumber = reveal.roundNumber,
+                tiles = reveal.tiles?.Select(CloneRevealedTile).Where(t => t != null).ToArray()
+                    ?? Array.Empty<SnapshotRevealedTile>()
+            };
+        }
+
+        private static SnapshotRevealedTile CloneRevealedTile(SnapshotRevealedTile tile)
+        {
+            if (tile == null) return null;
+            return new SnapshotRevealedTile
+            {
+                suit = tile.suit,
+                value = tile.value,
+                isModified = tile.isModified
+            };
+        }
 
         private static SnapshotSideboardState CloneSideboard(SnapshotSideboardState sideboard) =>
             sideboard == null ? null : new SnapshotSideboardState

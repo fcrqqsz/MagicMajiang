@@ -604,7 +604,8 @@ namespace MahjongGame.Core.Network
                 LoserId = GameServer?.LoserId ?? Session.LastLoserId,
                 IsDrawGame = GameServer?.IsDrawGame ?? false,
                 WinningHand = GameServer?.WinningHandSnapshot,
-                TalentFanBreakdown = TalentFanBreakdownMessage.Clone(GameServer?.WinTalentFanBreakdown)
+                TalentFanBreakdown = TalentFanBreakdownMessage.Clone(GameServer?.WinTalentFanBreakdown),
+                PrivateTileReveal = _talentRuntime?.GetPrivateTileReveal(requestingSeatIndex)
             };
 
             for (int i = 0; i < _seats.Length; i++)

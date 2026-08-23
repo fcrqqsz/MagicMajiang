@@ -72,7 +72,7 @@ WebSocketClient
   -> Hand / River / HUD / Result presentation
 ```
 
-协议版本为 v7，携带构筑 schema 为 v3。username 目前仅作为开发期身份桥接，经 `IAccountAuthenticator` 规范化为稳定 `playerId`；它不是正式鉴权。`Room` 锁定四席构筑后重建并验证 Low 40 / Standard 80 / High 120 异化值预算，公开消息只携带档位而非其他玩家精确总值。主动天赋、基础动作和备牌提交都使用权威 `decisionId`；类型化天赋选择集合仅进入本家私有快照，客户端只回传所选 `choiceId`，runtime 在执行前重新生成授权集合。半庄/全庄第 4 小局后恰好开放一次备牌阶段。断线时物理 endpoint 与逻辑席位分离，席位可进入 `OfflineReserved` / `AiControlled`，并只在安全决策边界切换控制者。重连使用 `{roomId, streamId}` 和已认证身份定位席位，当前始终请求完整权威快照；Dedicated Server 重启不恢复房间。
+协议版本为 v8，携带构筑 schema 为 v3。username 目前仅作为开发期身份桥接，经 `IAccountAuthenticator` 规范化为稳定 `playerId`；它不是正式鉴权。`Room` 锁定四席构筑后重建并验证 Low 40 / Standard 80 / High 120 异化值预算，公开消息只携带档位而非其他玩家精确总值。主动天赋、基础动作和备牌提交都使用权威 `decisionId`；类型化天赋选择集合仅进入本家私有快照，客户端只回传所选 `choiceId`，runtime 在执行前重新生成授权集合。半庄/全庄第 4 小局后恰好开放一次备牌阶段。断线时物理 endpoint 与逻辑席位分离，席位可进入 `OfflineReserved` / `AiControlled`，并只在安全决策边界切换控制者。重连使用 `{roomId, streamId}` 和已认证身份定位席位，当前始终请求完整权威快照；Dedicated Server 重启不恢复房间。
 *   **表现层控制器 (MonoBehaviour)**:
     *   `HandController.cs`: 管理 3D 手牌生成、布局、DoTween 动画及交互。含 `ForceRemoveTile()` 超时出牌专用方法。
     *   `RiverController.cs`: 管理牌河的 3D 排布。
@@ -113,6 +113,7 @@ WebSocketClient
     *   `TalentActionModels.cs`: 服务端下发的主动天赋目标、Mode/Suit/Seat/Tile 类型化选择集合、请求和结果模型。
     *   `TalentNegativeEffect.cs`: 窄负面效果描述与公开充能能力边界，runtime 保证阻挡时不执行、放行时只执行一次。
     *   `TalentTelemetry.cs`: 匿名玩法记录与 Null/Memory/JSONL sink；Dedicated Server 默认写 `Logs/talent-playtest.jsonl`。
+    *   `TalentPrivateTileReveal.cs`: 结构化、脱敏的只读私有牌面揭示结果数据模型。
     *   `TalentDefinition.cs`: ScriptableObject 元数据（图标/显示名/描述），仅供 UI 展示，运行时逻辑不依赖。
 *   **具体实现 (`Impl/`)**:
     *   `MidasTouchTalent.cs`: 点金手——摸牌时将风牌/箭牌转化为发财。
@@ -130,6 +131,11 @@ WebSocketClient
     *   `GatherMomentumTalent.cs`: 乘势——吃碰杠积攒跨局公开势，主回合每局一次消耗全部势，本局合法胡牌每层 +8 post-legal 番。
     *   `FadingColorTalent.cs`: 褪色——每局首次打出异化牌获得公开墨，主回合每回合一次消耗 1 墨削减对手公开充能。
     *   `RedirectForceTalent.cs`: 化劲——每局首次阻挡公开充能削减，并将该次控制转化为本局合法胡牌 +4 post-legal 番。
+    *   `EncirclementTalent.cs`: 合围——吃碰明杠来自至少两个不同对手后，当局合法胡牌 +4 post-legal 番。
+    *   `LastStandFormationTalent.cs`: 背水阵——提交第 2 个新公开副露后，当局独立起胡门槛 +2，满足门槛的合法胡牌奖励 +12 post-legal 番。
+    *   `CallTheMarkTalent.cs`: 点将——每局指定一名公开目标，下一次吃碰明杠来自目标时保留当局 +6 post-legal 番奖励。
+    *   `FollowTheTrailTalent.cs`: 循迹——荣和时胡牌张与放铳者上一张弃牌同为相同数牌花色，奖励 +4 post-legal 番。
+    *   `PiercingInsightTalent.cs`: 洞若观火——每小局一次，私下查看一名其他玩家当前暗手中的所有数牌。
 
 #### 天赋定义规范
 

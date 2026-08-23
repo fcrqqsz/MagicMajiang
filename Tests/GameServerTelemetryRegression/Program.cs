@@ -18,6 +18,7 @@ await RealGameServerMarksAndScoresEveryCommittedKongReplacementDraw(failures);
 await RealGameServerAutoTimeoutDiscardModifiedTileChargesFadingColor(failures);
 await RealGameServerRobKongDoesNotChargeGatherMomentumUntilKongActuallyResolves(failures);
 await RealGameServerRefreshesIndependentHuThresholdAfterCommittedMelds(failures);
+await RealGameServerExecutesPiercingInsightAndDeliversPrivateReveal(failures);
 JsonLineSinkWritesEscapedCompactUtf8Records(failures);
 JsonLineFactoryFallsBackToNullWhenCreationFails(failures);
 
@@ -530,6 +531,98 @@ static async Task RealGameServerRobKongDoesNotChargeGatherMomentumUntilKongActua
     }
 }
 
+
+static async Task RealGameServerExecutesPiercingInsightAndDeliversPrivateReveal(List<string> failures)
+{
+    var loadouts = Enumerable.Range(0, 4)
+        .ToDictionary(index => index, _ => new TalentSlotConfig());
+    loadouts[0].SlotTalentIds[0] = "piercing_insight";
+    loadouts[0].SlotTalentIds[1] = "call_the_mark";
+    var runtime = new TalentMatchRuntime(loadouts, TalentRegistry.Instance);
+    var session = new GameSession(GameMode.Single);
+    runtime.BeginMatch(session);
+
+    var wall = new ScriptedDrawWallService(
+        KongFixtures.Tile(Suit.Man, 9, 0),
+        KongFixtures.Tile(Suit.Pin, 1, 0),
+        KongFixtures.Tile(Suit.Sou, 5, 0));
+
+    var receivedReveals = Enumerable.Range(0, 4)
+        .ToDictionary(seatIndex => seatIndex, _ => new List<TalentPrivateTileReveal>());
+
+    GameServer server = null;
+    var serverOptions = new GameServerOptions
+    {
+        ActionTimeoutMs = 2000,
+        ResponseTimeoutMs = 2000,
+        UseDebugHand = true,
+        DebugHand = Enumerable.Range(0, 13).Select(_ => KongFixtures.Tile(Suit.Pin, 1, 0)).ToList()
+    };
+
+    var client0 = new InsightTestClient(0, () => server, r => receivedReveals[0].Add(r));
+    var client1 = new InsightTestClient(1, () => server, r => receivedReveals[1].Add(r));
+    var client2 = new InsightTestClient(2, () => server, r => receivedReveals[2].Add(r));
+    var client3 = new InsightTestClient(3, () => server, r => receivedReveals[3].Add(r));
+    var clients = new List<IPlayerClient> { client0, client1, client2, client3 };
+
+    server = new GameServer(wall, runtime, serverOptions);
+
+    var configs = Enumerable.Range(0, 4).Select(_ => DeckConfig.CreateStandard()).ToList();
+    server.StartGame(clients, configs, session);
+
+    await Task.Delay(50);
+
+    long decisionId = server.ActiveDecision?.DecisionId ?? 0;
+    Check(decisionId > 0 && server.ActiveDecision.ActingSeatIndex == 0,
+        "real GameServer opens active main turn decision for seat 0", failures);
+
+    var gameState = (ServerGameState)typeof(GameServer)
+        .GetField("_gameState", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+        .GetValue(server);
+    gameState.InitHand(1, new List<TileData>
+    {
+        new TileData(Suit.Man, 5, 1) { IsModified = true },
+        new TileData(Suit.Wind, 1, 1)
+    });
+
+    bool accepted = server.SubmitNetworkTalentAction(0, new TalentActionMessage
+    {
+        decisionId = decisionId,
+        talentId = "piercing_insight",
+        targetSeatIndex = 1
+    }, out TalentActionResult result);
+
+    Check(accepted && result != null && result.Accepted && result.EffectApplied,
+        "real GameServer accepts piercing_insight talent action on seat 0", failures);
+
+    TalentPrivateTileReveal receivedReveal0 = receivedReveals[0].SingleOrDefault();
+    Check(receivedReveal0 != null
+        && receivedReveal0.TalentId == "piercing_insight"
+        && receivedReveal0.ViewerSeatIndex == 0
+        && receivedReveal0.TargetSeatIndex == 1
+        && receivedReveal0.Tiles.Count == 1
+        && receivedReveal0.Tiles[0].TileSuit == Suit.Man
+        && receivedReveal0.Tiles[0].Value == 5
+        && receivedReveal0.Tiles[0].IsModified,
+        "seat 0 received the target's sanitized numeric tiles while honors remain private", failures);
+
+    Check(receivedReveals.Skip(1).All(pair => pair.Value.Count == 0),
+        "no non-viewer seat received the private reveal", failures);
+
+    bool followUpAccepted = server.SubmitNetworkTalentAction(0, new TalentActionMessage
+    {
+        decisionId = decisionId,
+        talentId = "call_the_mark",
+        targetSeatIndex = 2
+    }, out TalentActionResult followUpResult);
+    Check(followUpAccepted && followUpResult != null && followUpResult.Accepted,
+        "real GameServer accepts a second unrelated active talent in the same main decision", failures);
+    Check(receivedReveals[0].Count == 1,
+        "an unrelated accepted talent action does not resend the previous private reveal", failures);
+
+    server.StopGame();
+}
+
 sealed class DeterministicWallService : IWallService
 {
     private readonly TileData _winningTile;
@@ -687,6 +780,7 @@ sealed class MinimumFanFlowClient : IPlayerClient
     public void OnSessionEnd(int[] finalScores) { }
     public void OnTimeout(TileData autoDiscardedTile) { }
     public void OnPeekWallTiles(List<TileData> topTiles) { }
+    public void OnPrivateTileReveal(TalentPrivateTileReveal reveal) { }
 }
 
 sealed class KongFlowClient : IPlayerClient
@@ -811,6 +905,7 @@ sealed class KongFlowClient : IPlayerClient
     public void OnTimeout(TileData autoDiscardedTile) { }
     public void OnTalentInfo(ScoringOptions scoringOptions) { }
     public void OnPeekWallTiles(List<TileData> topTiles) { }
+    public void OnPrivateTileReveal(TalentPrivateTileReveal reveal) { }
 }
 
 static class KongFixtures
@@ -870,6 +965,7 @@ sealed class WinningClient : IPlayerClient
     public void OnTimeout(TileData autoDiscardedTile) { }
     public void OnTalentInfo(ScoringOptions scoringOptions) { }
     public void OnPeekWallTiles(List<TileData> topTiles) { }
+    public void OnPrivateTileReveal(TalentPrivateTileReveal reveal) { }
 }
 
 sealed class ThrowingSink : ITalentTelemetrySink
@@ -920,6 +1016,7 @@ sealed class TimeoutDiscardClient : IPlayerClient
     public void OnTimeout(TileData autoDiscardedTile) { }
     public void OnTalentInfo(ScoringOptions scoringOptions) { }
     public void OnPeekWallTiles(List<TileData> topTiles) { }
+    public void OnPrivateTileReveal(TalentPrivateTileReveal reveal) { }
 }
 
 sealed class RobKongTestClient : IPlayerClient
@@ -1024,4 +1121,38 @@ sealed class RobKongTestClient : IPlayerClient
     public void OnTimeout(TileData autoDiscardedTile) { }
     public void OnTalentInfo(ScoringOptions scoringOptions) { }
     public void OnPeekWallTiles(List<TileData> topTiles) { }
+    public void OnPrivateTileReveal(TalentPrivateTileReveal reveal) { }
+}
+
+sealed class InsightTestClient : IPlayerClient
+{
+    private readonly Func<GameServer> _serverProvider;
+    private readonly Action<TalentPrivateTileReveal> _revealCallback;
+
+    public InsightTestClient(int playerId, Func<GameServer> serverProvider, Action<TalentPrivateTileReveal> revealCallback)
+    {
+        PlayerId = playerId;
+        _serverProvider = serverProvider;
+        _revealCallback = revealCallback;
+    }
+
+    public int PlayerId { get; }
+    public CancellationToken TurnCancellationToken { get; set; }
+
+    public void OnGameStart(List<TileData> startingHand) { }
+    public void OnTileDrawn(TileData drawnTile, bool isKongReplacementDraw) { }
+    public void OnPlayerDrawn(int playerId) { }
+    public void OnTurnWithoutDraw() { }
+    public void OnWallCountChanged(int remainingCount) { }
+    public void OnOtherPlayerDiscarded(int playerId, TileData discardedTile) { }
+    public void OnAddedKongDeclared(int playerId, TileData targetTile) { }
+    public void OnActionResolved(int playerId, ClientActionType actionType, TileData targetTile, int[] chiCombinations = null) { }
+    public void OnDrawGame() { }
+    public void OnPlayerWin(int playerId, int totalFan, List<string> fanDetails, bool isSelfDraw, WinKind winKind, int loserId, WinningHandSnapshot winningHand, TalentFanBreakdownMessage talentFanBreakdown) { }
+    public void OnRoundStart(int roundNumber, WindDirection prevalentWind, WindDirection seatWind, int dealerIndex) { }
+    public void OnSessionEnd(int[] finalScores) { }
+    public void OnTimeout(TileData autoDiscardedTile) { }
+    public void OnTalentInfo(ScoringOptions scoringOptions) { }
+    public void OnPeekWallTiles(List<TileData> topTiles) { }
+    public void OnPrivateTileReveal(TalentPrivateTileReveal reveal) => _revealCallback?.Invoke(reveal);
 }

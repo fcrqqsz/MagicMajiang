@@ -1,5 +1,5 @@
 麻将 Roguelike 项目进度快照 (Project Snapshot)
-日期: 2026-08-22 版本: Alpha - First Talent Gameplay Batch 引擎: Unity (2022.3.61t9 / Tuanjie 1.6.8)
+日期: 2026-08-23 版本: Alpha - Strategy Talent Expansion 引擎: Unity (2022.3.61t9 / Tuanjie 1.6.8)
 
 > **文档约定**: 已完成的任务统一记录在 `milestone.md`，`plan.md` 仅保留待办与未来规划。
 
@@ -8,7 +8,16 @@
 *   **核心规则**: 以国标麻将 (MCR) 为基础，支持81番种计算。
 *   **特色玩法**: Roguelike 天赋系统、自定义 34 张牌库及异化值机制。
 
-2. 最近进展 (Recent Progress, snapshot 2026-08-22)
+2. 最近进展 (Recent Progress, snapshot 2026-08-23)
+*   **通用私有牌面揭示能力与洞若观火完成 (2026-08-23)**:
+    *   **通用私有牌面揭示 (Universal Private Tile Reveal)**: 服务端提供通用的私有牌面揭示机制，对牌数据做权威脱敏（仅保留花色、数值与修改标记，抹除全局 ID、归属与特效）；揭示结果对外保持 detached、只在本次主动动作新生成时投递，并严格按查看席位隔离；对应 `SeatMessageStream` 与 `RoomGameSnapshot.privateSeat.privateTileReveal` 支持本家断线恢复，小局结束立即清理。
+    *   **协议升级为 v8**: 升级网络协议版本至 v8（拒绝 v7），新增 `SnapshotRevealedTile`, `PrivateTileRevealMessage`, `SnapshotPrivateTileReveal` 等 DTO，`ClientGameState` 原子投影并支持重连快照恢复。
+    *   **洞若观火 (`piercing_insight`)**: 大品阶 26 成本，小局生效范围（`TalentStateScope.Round`），主回合主动激活（`TalentActivationWindow.MainTurn`），公开效果前隐藏（`TalentRevealPolicy.HiddenUntilPublicEffect`），备选灵活（`TalentSideboardPolicy.Flexible`）。每小局限 1 次，私下查看一名其他玩家当前暗手中的全部数牌（万/饼/条，保留重复牌与修改标记，排除字牌与花牌）；即使目标无数牌亦正常消耗当局次数；触发公开事件 `piercing_insight_target` 携带目标席位编号（1..4）；不改变算番。
+    *   **UI 表现与交互**: `LocalPlayerClient` 收到揭示通知时通过 `FloatingTilePanelController` 弹窗展示目标玩家暗手数牌，空牌时友好展示“没有可展示的牌”；`TalentActionPanelPolicy` 拓展支持纯玩家目标选择（无需挂载目标天赋）。
+    *   **全量回归通过**: 纯 C# 自动化回归、`NetworkRegression` 与真实 `GameServerTelemetryRegression` 均 100% 通过。
+*   **开放副露与牌河运营天赋完成 (2026-08-23)**:
+    *   **合围 (`encirclement`)**、**背水阵 (`last_stand_formation`)**、**点将 (`call_the_mark`)** 围绕吃碰明杠的来源和顺序形成开放副露构筑；**循迹 (`follow_the_trail`)** 则围绕放铳者的连续弃牌花色提供荣和奖励。四者复用权威小局动作账本、独立起胡门槛控制和 post-legal 算番归因，不按具体天赋 ID 接线。
+    *   背水阵在第 2 个公开副露后同时提高 2 番起胡门槛并开放 +12 番奖励；点将公开目标、合围要求多来源、循迹要求胡牌张与放铳者上一张弃牌同花色，均提供明确的风险窗口与对手调整空间。
 *   **第二批新玩法天赋 4–6 完成 (2026-08-22)**:
     *   **乘势 (`gather_momentum`)**: 大品阶 26 成本，跨小局保留最多 3 层【势】。吃/碰/明杠/暗杠/加杠入账时充能，摸牌出牌阶段主动全额消耗强化（每局限 1 次），合法胡牌每层提供 +8 post-legal 番；完整实现 `IPublicChargeTalent`。
     *   **褪色 (`fading_color`)**: 小品阶 8 成本，跨小局保留最多 2 点【墨】。每局首次打出异化牌充能（满墨亦消耗当局充能机会），主动消耗 1 墨削减对手公开充能，并保持剩余墨量公开同步；实现 `IPublicChargeTalent` 与 `IPublicChargeControlTalent`。

@@ -24,7 +24,7 @@
 2. **联机服务端与房间系统**:
    - Dedicated Server 使用 Headless 模式从 `00_ServerBootstrap` 启动；客户端默认首场景为 `00_Persistent`。
    - 服务端链路：`ServerBootstrap -> WebSocketService -> ConnectionRegistry -> RoomManager -> Room -> GameServer`。
-   - 协议版本为 v4，携带构筑 schema 为 v3。连接先经 `Hello` 握手，开发期由 username 生成稳定 `playerId`。
+   - 协议版本为 v8，携带构筑 schema 为 v3。连接先经 `Hello` 握手，开发期由 username 生成稳定 `playerId`。
    - 每个真人席位使用连续递增的 `SeatMessageStream`；`RoomGameSnapshot` 只向本家暴露完整暗手牌；客户端通过纯 C# `ClientGameState` 投影原子更新状态。
    - 断线后保留逻辑席位并在安全决策边界由 AI 托管；重连通过完整权威快照恢复。
 3. **多局对战系统**:
@@ -37,7 +37,7 @@
    - 纯 C# 管道架构，服务端统一执行，由 `[TalentRuleAttribute]` 标记，`TalentRegistry` 自动注册。
    - `Room` 锁定四席构筑后恰好创建一个跨小局复用的 `TalentMatchRuntime`。
    - 携带构筑为 6 个主槽（大×1 + 中×2 + 小×3）+ 3 个备选槽。异化值档位为 Low 40 / Standard 80 / High 120，总成本 = 牌库成本 + 当前激活主天赋成本。
-   - 已落地 15 个天赋：点金手、窥探、如龙、厚积、快人一步、初始资金、定心、截流、藏锋、轻装上阵、归色、异彩成章、乘势、褪色、化劲。
+   - 已落地 20 个天赋：点金手、窥探、如龙、厚积、快人一步、初始资金、定心、截流、藏锋、轻装上阵、归色、异彩成章、乘势、褪色、化劲、合围、背水阵、点将、循迹、洞若观火。
    - 半庄/全庄第 4 小局后进入 45 秒中场备牌；胡牌番数拆为基础番、天赋门槛/奖励/惩罚和最终番并逐项归因。
 
 ## Critical Constraints (核心开发约束)

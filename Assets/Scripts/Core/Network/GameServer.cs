@@ -836,6 +836,7 @@ namespace MahjongGame.Core.Network
                 return false;
             }
 
+            long revealVersionBefore = _talentRuntime.GetPrivateTileRevealVersion(boundSeatIndex);
             result = _talentRuntime.TryActivate(
                 boundSeatIndex,
                 new TalentActionRequest
@@ -850,11 +851,20 @@ namespace MahjongGame.Core.Network
                     _session,
                     boundSeatIndex,
                     TalentActionAdmissionPolicy.RequiredActivationWindow,
-                    message.decisionId));
+                    message.decisionId,
+                    seatIndex => _gameState.GetHand(seatIndex)));
             if (result.Accepted)
             {
                 RefreshScoringOptions();
                 OnTalentEventsAvailable?.Invoke();
+                long revealVersionAfter = _talentRuntime.GetPrivateTileRevealVersion(boundSeatIndex);
+                TalentPrivateTileReveal reveal = revealVersionAfter > revealVersionBefore
+                    ? _talentRuntime.GetPrivateTileReveal(boundSeatIndex)
+                    : null;
+                if (reveal != null && boundSeatIndex >= 0 && boundSeatIndex < _clients.Count)
+                {
+                    _clients[boundSeatIndex]?.OnPrivateTileReveal(reveal);
+                }
             }
             return result.Accepted;
         }

@@ -501,6 +501,8 @@ namespace MahjongGame.Talents
     public sealed class TalentActivationContext : TalentContext
     {
         private TalentMatchRuntime _runtime;
+        private readonly Func<int, IReadOnlyList<TileData>> _handSnapshotProvider;
+        private string _sourceTalentId;
         public new int CurrentSeatIndex => base.CurrentSeatIndex.Value;
         public TalentActivationWindow RequiredWindow { get; }
         public long DecisionId { get; }
@@ -510,41 +512,78 @@ namespace MahjongGame.Talents
             GameSession session,
             int currentSeatIndex,
             TalentActivationWindow requiredWindow,
-            long decisionId = 0)
+            long decisionId = 0,
+            Func<int, IReadOnlyList<TileData>> handSnapshotProvider = null)
             : base(session, ValidateSeatIndex(currentSeatIndex))
         {
             RequiredWindow = requiredWindow;
             DecisionId = decisionId;
+            _handSnapshotProvider = handSnapshotProvider;
         }
 
         private TalentActivationContext(
             TalentSessionSnapshot session,
             int currentSeatIndex,
             TalentActivationWindow requiredWindow,
-            long decisionId)
+            long decisionId,
+            Func<int, IReadOnlyList<TileData>> handSnapshotProvider)
             : base(session, currentSeatIndex, null, null)
         {
             RequiredWindow = requiredWindow;
             DecisionId = decisionId;
+            _handSnapshotProvider = handSnapshotProvider;
         }
 
         internal TalentActivationContext WithState(
             TalentRuntimeState state,
             Action<TalentRuntimeEvent> eventSink,
             bool isFirstMainDecisionOfRound,
-            TalentMatchRuntime runtime)
+            TalentMatchRuntime runtime,
+            string sourceTalentId)
         {
             TalentActivationContext context = new TalentActivationContext(
                 Session,
                 CurrentSeatIndex,
                 RequiredWindow,
-                DecisionId)
+                DecisionId,
+                _handSnapshotProvider)
             {
                 IsFirstMainDecisionOfRound = isFirstMainDecisionOfRound
             };
             context.ConfigureEntry(CurrentSeatIndex, state, eventSink);
             context._runtime = runtime;
+            context._sourceTalentId = sourceTalentId;
             return context;
+        }
+
+        public bool TryGetConcealedHandSnapshot(int seatIndex, out IReadOnlyList<TileData> snapshot)
+        {
+            ValidateSeatIndex(seatIndex);
+            snapshot = Array.Empty<TileData>();
+            if (_handSnapshotProvider == null) return false;
+            IReadOnlyList<TileData> hand = _handSnapshotProvider(seatIndex);
+            if (hand == null) return false;
+            snapshot = hand.Where(t => t != null).Select(t => new TileData(t.TileSuit, t.Value, t.OriginalOwnerID)
+            {
+                ID = t.ID,
+                IsModified = t.IsModified,
+                SpecialEffectID = t.SpecialEffectID
+            }).ToArray();
+            return true;
+        }
+
+        public void RecordPrivateTileReveal(int targetSeatIndex, IEnumerable<TileData> revealedTiles)
+        {
+            if (_runtime == null)
+                throw new InvalidOperationException("Talent activation context is not bound to a runtime.");
+            if (string.IsNullOrWhiteSpace(_sourceTalentId))
+                throw new InvalidOperationException("Talent activation context has no bound source talent.");
+            _runtime.RecordPrivateTileReveal(
+                CurrentSeatIndex,
+                targetSeatIndex,
+                _sourceTalentId,
+                revealedTiles,
+                Session.TotalRoundsPlayed + 1);
         }
 
         public PublicChargeTarget ResolvePublicChargeTarget(TalentActionRequest request)

@@ -62,13 +62,13 @@ namespace MahjongGame.UI
         /// <summary>
         /// 展示模式：显示牌面信息，autoCloseSeconds=0 表示不自动关闭
         /// </summary>
-        public void ShowTiles(string title, List<TileData> tiles, float autoCloseSeconds = 5f)
+        public void ShowTiles(string title, IEnumerable<TileData> tiles, float autoCloseSeconds = 5f)
         {
             if (_root == null) return;
 
             StopAutoClose();
             _isOptionSelection = false;
-            PopulateTiles(title, tiles, false, null);
+            PopulateTiles(title, (tiles ?? Array.Empty<TileData>()).ToList(), false, null);
             ConfigureClose(Hide);
             _closeBtn.text = "知道了";
             _closeBtn.style.display = DisplayStyle.Flex;
@@ -110,9 +110,12 @@ namespace MahjongGame.UI
             {
                 if (target?.Option == null) continue;
                 TalentActionOption selected = TalentActionPanelPolicy.CloneOption(target.Option);
+                string buttonText = string.IsNullOrWhiteSpace(target.TalentDisplayName)
+                    ? target.SeatDisplayName
+                    : $"{target.SeatDisplayName}\n{target.TalentDisplayName} · 充能 {target.PublicCharge}";
                 var item = new Button
                 {
-                    text = $"{target.SeatDisplayName}\n{target.TalentDisplayName} · 充能 {target.PublicCharge}"
+                    text = buttonText
                 };
                 item.AddToClassList("floating-tile-item");
                 item.AddToClassList("selectable");
@@ -182,6 +185,16 @@ namespace MahjongGame.UI
         {
             _titleLabel.text = title;
             _scrollView.Clear();
+
+            if (tiles == null || tiles.Count == 0)
+            {
+                var emptyLabel = new Label("没有可展示的牌");
+                emptyLabel.AddToClassList("floating-panel-empty-hint");
+                emptyLabel.style.color = new Color(0.7f, 0.7f, 0.7f, 1f);
+                emptyLabel.style.alignSelf = Align.Center;
+                _scrollView.Add(emptyLabel);
+                return;
+            }
 
             for (int i = 0; i < tiles.Count; i++)
             {

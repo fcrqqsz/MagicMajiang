@@ -192,16 +192,31 @@ namespace MahjongGame.Core
             return (options ?? Array.Empty<TalentActionPanelOption>())
                 .Where(option => option?.Option != null
                                  && string.Equals(option.Option.TalentId, talentId, StringComparison.Ordinal)
-                                 && option.Option.TargetSeatIndex >= 0
-                                 && !string.IsNullOrWhiteSpace(option.Option.TargetTalentId))
+                                 && option.Option.TargetSeatIndex >= 0)
                 .Select(option =>
                 {
                     TalentActionOption authorized = option.Option;
-                    known.TryGetValue(
-                        authorized.TargetSeatIndex + ":" + authorized.TargetTalentId,
-                        out SnapshotKnownTalent publicTalent);
                     seats.TryGetValue(authorized.TargetSeatIndex, out RoomSnapshotSeat seat);
-                    if (publicTalent == null || seat == null) return null;
+                    if (seat == null) return null;
+
+                    if (!string.IsNullOrWhiteSpace(authorized.TargetTalentId))
+                    {
+                        known.TryGetValue(
+                            authorized.TargetSeatIndex + ":" + authorized.TargetTalentId,
+                            out SnapshotKnownTalent publicTalent);
+                        if (publicTalent == null) return null;
+
+                        return new TalentActionTargetPresentation
+                        {
+                            Option = CloneOption(authorized),
+                            SeatIndex = authorized.TargetSeatIndex,
+                            SeatDisplayName = string.IsNullOrWhiteSpace(seat.displayName)
+                                ? $"玩家 {authorized.TargetSeatIndex + 1}"
+                                : seat.displayName,
+                            TalentDisplayName = TalentRegistry.Instance.GetDisplayName(authorized.TargetTalentId),
+                            PublicCharge = Math.Max(0, publicTalent.lastPublicValue)
+                        };
+                    }
 
                     return new TalentActionTargetPresentation
                     {
@@ -210,8 +225,8 @@ namespace MahjongGame.Core
                         SeatDisplayName = string.IsNullOrWhiteSpace(seat.displayName)
                             ? $"玩家 {authorized.TargetSeatIndex + 1}"
                             : seat.displayName,
-                        TalentDisplayName = TalentRegistry.Instance.GetDisplayName(authorized.TargetTalentId),
-                        PublicCharge = Math.Max(0, publicTalent.lastPublicValue)
+                        TalentDisplayName = string.Empty,
+                        PublicCharge = 0
                     };
                 })
                 .Where(target => target != null)

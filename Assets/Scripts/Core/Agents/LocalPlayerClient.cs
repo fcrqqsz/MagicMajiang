@@ -227,6 +227,23 @@ namespace MahjongGame.Core.Agents
                     ToTiles(GetRiverTiles(snapshot.rivers, seat.seatIndex)));
             }
 
+            SnapshotPrivateTileReveal privateReveal = snapshot.privateSeat?.privateTileReveal;
+            if (privateReveal != null
+                && privateReveal.viewerSeatIndex == PlayerId
+                && privateReveal.roundNumber == snapshot.roundNumber)
+            {
+                OnPrivateTileReveal(new TalentPrivateTileReveal(
+                    privateReveal.talentId,
+                    privateReveal.viewerSeatIndex,
+                    privateReveal.targetSeatIndex,
+                    privateReveal.roundNumber,
+                    (privateReveal.tiles ?? Array.Empty<SnapshotRevealedTile>())
+                    .Select(tile => new TileData((Suit)tile.suit, tile.value, 0)
+                    {
+                        IsModified = tile.isModified
+                    })));
+            }
+
             var localSeat = (snapshot.seats ?? Array.Empty<RoomSnapshotSeat>()).FirstOrDefault(seat => seat?.seatIndex == PlayerId);
             var activeDecision = snapshot.activeDecision;
             long now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
@@ -801,6 +818,21 @@ namespace MahjongGame.Core.Agents
             {
                 FloatingTilePanelController.Instance.ShowTiles(
                     $"窥探 - 牌山顶部 {topTiles.Count} 张", topTiles, 8f);
+            }
+        }
+
+        public void OnPrivateTileReveal(TalentPrivateTileReveal reveal)
+        {
+            if (reveal == null) return;
+            if (FloatingTilePanelController.Instance != null)
+            {
+                string talentName = TalentRegistry.Instance.GetDisplayName(reveal.TalentId);
+                if (string.IsNullOrWhiteSpace(talentName)) talentName = "私下揭示";
+                string title = $"{talentName} - 玩家 {reveal.TargetSeatIndex + 1} 私下揭示";
+                FloatingTilePanelController.Instance.ShowTiles(
+                    title,
+                    reveal.Tiles ?? Array.Empty<TileData>(),
+                    8f);
             }
         }
     }

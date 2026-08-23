@@ -194,6 +194,7 @@ namespace MahjongGame.Core.Agents
         public void OnTimeout(MahjongGame.Core.TileData autoDiscardedTile) { }
         public void OnTalentInfo(MahjongGame.Core.ScoringOptions scoringOptions) { }
         public void OnPeekWallTiles(System.Collections.Generic.List<MahjongGame.Core.TileData> topTiles) { }
+        public void OnPrivateTileReveal(MahjongGame.Talents.TalentPrivateTileReveal reveal) { }
     }
 
     public sealed class SimpleAIClient : StubPlayerClient
