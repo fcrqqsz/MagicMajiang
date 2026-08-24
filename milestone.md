@@ -100,6 +100,11 @@
     *   [x] **褪色 (`fading_color`)**: 小品阶、成本 8、跨小局保留。每小局本家首次提交打出异化牌积攒 1 点【墨】（最多 2 点，墨满时仍消耗本局充能机会）；摸牌出牌阶段可主动消耗 1 点【墨】削减指定对手 1 点公开充能并准确同步剩余墨点。实现 `IPublicChargeTalent` 与 `IPublicChargeControlTalent`。
     *   [x] **化劲 (`redirect_force`)**: 中品阶、成本 12、小局重置。优先级 10（高于定心 0），每小局首次受到削减公开充能效果时优先触发化劲格挡并强化本小局胡牌 +4 post-legal 番；实现 `IPublicChargeDefenseTalent`。
     *   [x] 纯 C# TDD 完整覆盖充能边界、墨满机会消耗、控制削减、多层防御优先级链条、起胡门槛保持与跨小局备牌恢复。完整 `NetworkRegression` 与 `GameServerTelemetryRegression` 通过。
+*   [x] **万金油填槽天赋批次 (2026-08-24)**:
+    *   [x] 中品阶定调 (`set_the_tone`, 12) 与未雨绸缪 (`prepare_for_risk`, 12) 复用首次主决策类型化选择；定调匹配胡牌张花色奖励 +4 番，未雨绸缪按基础第三方荣和保险及所选防自摸/防放铳条件最多返还 8 分。
+    *   [x] 小品阶去芜 (`prune_the_excess`, 6)、候潮 (`bide_the_tide`, 4)、预判 (`foretell_outcome`, 6) 复用权威动作账本与 detached post-legal 归因，提供有条件的 +3/+2/+3 番且保持独立 8 番门槛。
+    *   [x] 小品阶障眼法 (`misdirection`, 8) 在任意本家主回合每局一次主动装备，下一张实际弃牌按数牌花色环或东南西北中发白顺序环变换；超时自动弃牌同样在进入权威牌河和响应窗口前应用。
+    *   [x] 未新增协议、UI、遥测或具体 talentId 服务分支；长期纯 C# 回归、完整 `NetworkRegression` 与真实 `GameServerTelemetryRegression` 覆盖选择授权、AI 默认、结算返还、组合归因、小局重置和自动弃牌顺序。
 
 ## 联机框架
 

@@ -49,9 +49,11 @@
 - 四席构筑锁定后，`Room` 恰好创建一个 `TalentMatchRuntime`，并供所有 `GameServer` 小局复用；`TalentManager` 与 `SessionTalentPolicy` 已删除
 - runtime 负责带类型的比赛/小局状态、生命周期、管道、事件、私有窥探、算分选项、揭示及小局结束效果
 - 覆盖牌山构建、摸牌、出牌、动作校验和算番钩子；`OnDraw`/`OnDiscard` 返回修改后的 `TileData`，形成管道链式调用
+- `OnActionCommitted` 只接收已经提交的权威动作与只读小局账本；候选、过期和被抢占动作不入账
+- `OnDiscard` 的最终结果先写入权威牌河，再作为对手响应窗口的唯一目标；超时自动弃牌同样经过完整天赋管道
 - 携带构筑为 6 个主槽（大×1 + 中×2 + 小×3）及 3 个备选槽；主槽可向下兼容装配
 - 异化值档位为 Low 40 / Standard 80 / High 120。服务端重建并验证构筑：总成本 = 牌库异化值 + 当前激活主天赋成本，未激活的三个备选不计成本；精确总值仅本家可见
-- 当前二十个天赋均由规则类实现：点金手、窥探、如龙、厚积、快人一步、初始资金、定心、截流、藏锋、轻装上阵、归色、异彩成章、乘势、褪色、化劲、合围、背水阵、点将、循迹、洞若观火
+- 当前二十六个天赋均由规则类实现：点金手、窥探、如龙、厚积、快人一步、初始资金、定心、截流、藏锋、轻装上阵、归色、异彩成章、乘势、褪色、化劲、合围、背水阵、点将、循迹、洞若观火、定调、未雨绸缪、去芜、候潮、预判、障眼法
 - 主动天赋使用服务端权威 `decisionId` 和目标投影；负面效果先经过目标席防御管道
 - 半庄/全庄第 4 小局后进入一次中场备牌，45 秒内从携带的 6+3 天赋中重新锁定生效集合；AI、断线和超时由服务端提交合法方案
 - 胡牌番数拆为基础番、天赋门槛/奖励/惩罚和最终番，最终值及逐项归因随权威结果与恢复快照下发
@@ -110,18 +112,13 @@ Assets/Scripts/
 │   ├── TalentMetadata.cs    # 生命周期、公开策略与备选限制元数据
 │   ├── TalentRuntimeState.cs # 跨小局的天赋状态
 │   ├── TalentRuntimeEvent.cs # 结构化公开/私有天赋事件
+│   ├── TalentActionModels.cs # 主动天赋目标、类型化选择、请求与结果
+│   ├── TalentActionFacts.cs # 已提交权威动作事实与小局只读账本
+│   ├── TalentImmutableFacts.cs # 起手与接受胡牌等不可变事实
+│   ├── TalentPrivateTileReveal.cs # 脱敏私有牌面揭示结果
 │   ├── TalentMatchRuntime.cs # Room 持有的跨小局生命周期、管道与揭示协调器
 │   ├── TalentDefinition.cs  # SO 元数据 (UI 图标/描述, 可选)
-│   └── Impl/                # 具体天赋实现
-│       ├── MidasTouchTalent.cs
-│       ├── PeekTalent.cs        # 窥探——发牌后显示牌山顶部4张
-│       ├── DragonAscentTalent.cs # 如龙——宽松清龙判定
-│       ├── DrawRewardTalent.cs   # 厚积——流局得分
-│       ├── HeadStartTalent.cs    # 快人一步——降低起胡门槛并加番
-│       ├── StartingCapitalTalent.cs # 初始资金
-│       ├── ComposureTalent.cs    # 定心——每小局首次负面效果无效
-│       ├── InterceptionTalent.cs # 截流——削减公开充能
-│       └── SheathedEdgeTalent.cs # 藏锋——消耗全部锋，每层+12番
+│   └── Impl/                # 26 个具体天赋规则类；完整索引见 struct.md
 └── Editor/
     └── TileConfigEditor.cs  # 编辑器扩展
 
@@ -245,7 +242,7 @@ Assets/UI/                   # UI Toolkit 面板
 - ~~超时取消机制~~ (已完成: CancellationToken + ServerGameState)
 - ~~Home 页卡组选择器~~ (已完成: DeckSelector 左右箭头循环切换)
 - ~~多局对战 UI 完善~~ (已完成: 风位显示、分数面板、GameMode 选择器)
-- ~~天赋系统重构~~（已完成：Room 持有跨小局 runtime、服务端异化预算、6+3 构筑与九天赋）
+- ~~天赋系统重构与玩法扩充~~（已完成：Room 持有跨小局 runtime、服务端异化预算、6+3 构筑与二十六天赋）
 - ~~天赋主动动作、中场备牌与战术 UI~~（已完成：独立备牌面板、HUD 三级反馈、番数归因、AI 与遥测）
 - ~~卡组预算检查器~~（已完成：固定表盘、三档直选、实时拆分、未保存离开保护）
 - ~~牌河指针~~ (已完成: Emission 呼吸灯高亮最新出牌)

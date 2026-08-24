@@ -57,6 +57,7 @@ TalentFoundationTests.Run(runner);
 TalentServiceFoundationTests.Run(runner);
 TalentResultAttributionTests.Run(runner);
 TalentActionTests.Run(runner);
+UniversalFillerTalentTests.Run(runner);
 TalentCommandClientTests.Run(runner);
 TalentPresentationTests.Run(runner);
 SideboardTests.Run(runner);

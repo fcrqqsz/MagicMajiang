@@ -19,6 +19,7 @@ await RealGameServerAutoTimeoutDiscardModifiedTileChargesFadingColor(failures);
 await RealGameServerRobKongDoesNotChargeGatherMomentumUntilKongActuallyResolves(failures);
 await RealGameServerRefreshesIndependentHuThresholdAfterCommittedMelds(failures);
 await RealGameServerExecutesPiercingInsightAndDeliversPrivateReveal(failures);
+await RealGameServerMisdirectionTransformsAutomaticDiscardBeforePublicResponse(failures);
 JsonLineSinkWritesEscapedCompactUtf8Records(failures);
 JsonLineFactoryFallsBackToNullWhenCreationFails(failures);
 
@@ -452,6 +453,79 @@ static async Task RealGameServerAutoTimeoutDiscardModifiedTileChargesFadingColor
     var fadingEntry = snapshotEntries.FirstOrDefault(e => e.TalentId == "fading_color");
     Check(discarded != null && discarded.IsModified && ink == 1 && fadingEntry != null && fadingEntry.PrivateValue == 1 && fadingEntry.IsRevealed,
         $"real GameServer auto timeout discard of modified tile must charge fading_color ink to 1 and reveal its public counter (discarded={discarded}, actual={ink})",
+        failures);
+}
+
+static async Task RealGameServerMisdirectionTransformsAutomaticDiscardBeforePublicResponse(
+    List<string> failures)
+{
+    var loadouts = Enumerable.Range(0, 4)
+        .ToDictionary(index => index, _ => new TalentSlotConfig());
+    loadouts[0].SlotTalentIds[3] = "misdirection";
+    var runtime = new TalentMatchRuntime(loadouts, TalentRegistry.Instance);
+    var session = new GameSession(GameMode.Single);
+    runtime.BeginMatch(session);
+
+    var debugHand = new List<TileData>();
+    for (int value = 1; value <= 9; value++)
+        debugHand.Add(new TileData(Suit.Man, value, 0));
+    for (int value = 1; value <= 4; value++)
+        debugHand.Add(new TileData(Suit.Wind, value, 0));
+
+    var wall = new ScriptedDrawWallService(
+        new TileData(Suit.Sou, 7, 0) { ID = "misdirection-timeout" });
+    var server = new GameServer(wall, runtime, new GameServerOptions
+    {
+        ActionTimeoutMs = 100,
+        ResponseTimeoutMs = 100,
+        UseDebugHand = true,
+        DebugHand = debugHand
+    });
+
+    TalentActionResult activation = null;
+    TileData observedDiscard = null;
+    TileData responseTarget = null;
+    var discardObserved = new TaskCompletionSource<bool>(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    var clients = Enumerable.Range(0, 4)
+        .Select(index => (IPlayerClient)new MisdirectionTimeoutClient(
+            index,
+            server,
+            result => activation = result,
+            tile =>
+            {
+                observedDiscard = tile;
+                responseTarget = server.ActiveDecision?.TargetTile;
+                discardObserved.TrySetResult(true);
+            }))
+        .ToList();
+    var configs = Enumerable.Range(0, 4)
+        .Select(_ => DeckConfig.CreateStandard())
+        .ToList();
+
+    server.StartGame(clients, configs, session);
+    await discardObserved.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+    var gameState = (ServerGameState)typeof(GameServer)
+        .GetField("_gameState", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+        .GetValue(server);
+    TileData riverTile = gameState.GetRiver(0).Single();
+    server.StopGame();
+
+    Check(activation?.Accepted == true
+          && activation.EffectApplied
+          && observedDiscard != null
+          && observedDiscard.TileSuit == Suit.Man
+          && observedDiscard.Value == 7
+          && observedDiscard.ID == "misdirection-timeout"
+          && observedDiscard.IsModified
+          && observedDiscard.SpecialEffectID == "misdirection"
+          && responseTarget != null
+          && responseTarget.TileSuit == Suit.Man
+          && responseTarget.Value == 7
+          && riverTile.TileSuit == Suit.Man
+          && riverTile.Value == 7,
+        "real GameServer must apply 障眼法 to an automatic discard before recording the river and opening the public response target",
         failures);
 }
 
@@ -1004,6 +1078,63 @@ sealed class TimeoutDiscardClient : IPlayerClient
         {
             _server.SubmitNetworkAction(PlayerId, decision.DecisionId, ClientAction.Skip(PlayerId), out _);
         }
+    }
+    public void OnAddedKongDeclared(int playerId, TileData targetTile) { }
+    public void OnActionResolved(int playerId, ClientActionType actionType, TileData targetTile, int[] chiCombinations = null) { }
+    public void OnDrawGame() { }
+    public void OnPlayerWin(int playerId, int totalFan, List<string> fanDetails, bool isSelfDraw,
+        WinKind winKind, int loserId, WinningHandSnapshot winningHand,
+        TalentFanBreakdownMessage talentFanBreakdown) { }
+    public void OnRoundStart(int roundNumber, WindDirection prevalentWind, WindDirection seatWind, int dealerIndex) { }
+    public void OnSessionEnd(int[] finalScores) { }
+    public void OnTimeout(TileData autoDiscardedTile) { }
+    public void OnTalentInfo(ScoringOptions scoringOptions) { }
+    public void OnPeekWallTiles(List<TileData> topTiles) { }
+    public void OnPrivateTileReveal(TalentPrivateTileReveal reveal) { }
+}
+
+sealed class MisdirectionTimeoutClient : IPlayerClient
+{
+    private readonly GameServer _server;
+    private readonly Action<TalentActionResult> _onActivated;
+    private readonly Action<TileData> _onDiscarded;
+
+    public MisdirectionTimeoutClient(
+        int playerId,
+        GameServer server,
+        Action<TalentActionResult> onActivated,
+        Action<TileData> onDiscarded)
+    {
+        PlayerId = playerId;
+        _server = server;
+        _onActivated = onActivated;
+        _onDiscarded = onDiscarded;
+    }
+
+    public int PlayerId { get; }
+    public CancellationToken TurnCancellationToken { get; set; }
+    public void OnGameStart(List<TileData> startingHand) { }
+    public void OnTileDrawn(TileData drawnTile, bool isKongReplacementDraw)
+    {
+        if (PlayerId != 0) return;
+        NetworkDecisionContext decision = _server.ActiveDecision;
+        _server.SubmitNetworkTalentAction(0, new TalentActionMessage
+        {
+            decisionId = decision.DecisionId,
+            talentId = "misdirection"
+        }, out TalentActionResult result);
+        _onActivated?.Invoke(result);
+    }
+    public void OnPlayerDrawn(int playerId) { }
+    public void OnTurnWithoutDraw() { }
+    public void OnWallCountChanged(int remainingCount) { }
+    public void OnOtherPlayerDiscarded(int playerId, TileData discardedTile)
+    {
+        if (PlayerId == 1 && playerId == 0)
+            _onDiscarded?.Invoke(discardedTile);
+        NetworkDecisionContext decision = _server.ActiveDecision;
+        if (decision != null && decision.Phase == NetworkDecisionPhase.Response)
+            _server.SubmitNetworkAction(PlayerId, decision.DecisionId, ClientAction.Skip(PlayerId), out _);
     }
     public void OnAddedKongDeclared(int playerId, TileData targetTile) { }
     public void OnActionResolved(int playerId, ClientActionType actionType, TileData targetTile, int[] chiCombinations = null) { }

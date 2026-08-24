@@ -136,6 +136,12 @@ WebSocketClient
     *   `CallTheMarkTalent.cs`: 点将——每局指定一名公开目标，下一次吃碰明杠来自目标时保留当局 +6 post-legal 番奖励。
     *   `FollowTheTrailTalent.cs`: 循迹——荣和时胡牌张与放铳者上一张弃牌同为相同数牌花色，奖励 +4 post-legal 番。
     *   `PiercingInsightTalent.cs`: 洞若观火——每小局一次，私下查看一名其他玩家当前暗手中的所有数牌。
+    *   `SetTheToneTalent.cs`: 定调——首次主决策选择万/饼/条，以所选花色数牌胡牌时奖励 +4 post-legal 番。
+    *   `PrepareForRiskTalent.cs`: 未雨绸缪——首次主决策选择防自摸或防放铳，并在基础保险或所选风险发生时返还 8 分。
+    *   `PruneTheExcessTalent.cs`: 去芜——当局提交第 3 张幺九牌或字牌弃牌后，合法胡牌奖励 +3 post-legal 番。
+    *   `BideTheTideTalent.cs`: 候潮——当局提交至少 6 次弃牌后，合法胡牌奖励 +2 post-legal 番。
+    *   `ForetellOutcomeTalent.cs`: 预判——首次主决策选择自摸或荣和，胡牌方式匹配时奖励 +3 post-legal 番。
+    *   `MisdirectionTalent.cs`: 障眼法——每局一次主动装备，使下一张权威弃牌按数牌花色环或字牌顺序环变换。
 
 #### 天赋定义规范
 
@@ -218,3 +224,7 @@ WebSocketClient
 *   **牌面图片工具**: `TileImageHelper.cs` 静态类，将 `Suit+Value` 映射为 `Resources` 路径，供 `WaitHintController`、`FloatingTilePanelController` 等共用。
 *   **听牌提示面板 (`WaitHintPanel`)**: `WaitHintPanel.uxml/uss` + `WaitHintController.cs`，横向显示听牌列表及最大番数。
 *   **复用模板**: `TileItemTemplate.uxml` 等小组件。
+
+### F. `Tests` (长期纯 C# 回归)
+*   **`NetworkRegression`**: 覆盖联机权威、恢复隐私、主动动作、备牌、AI、算番归因及全部天赋规则；`UniversalFillerTalentTests.cs` 长期保护定调、未雨绸缪、去芜、候潮、预判和障眼法的选择授权、计数、结算与组合行为。
+*   **`GameServerTelemetryRegression`**: 直接编译生产 `GameServer.cs`，验证真实小局生命周期、接受胡牌、杠后流程及自动弃牌；障眼法用例确保变换后的牌同时成为权威牌河记录与响应窗口目标。

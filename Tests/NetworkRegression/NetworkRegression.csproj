@@ -19,6 +19,7 @@
     <Compile Include="TalentServiceFoundationTests.cs" />
     <Compile Include="TalentResultAttributionTests.cs" />
     <Compile Include="TalentActionTests.cs" />
+    <Compile Include="UniversalFillerTalentTests.cs" />
     <Compile Include="TalentCommandClientTests.cs" />
     <Compile Include="TalentPresentationTests.cs" />
     <Compile Include="SideboardTests.cs" />
@@ -157,6 +158,12 @@
     <Compile Include="..\..\Assets\Scripts\Talent\TalentPrivateTileReveal.cs" Link="TalentPrivateTileReveal.cs" />
     <Compile Include="..\..\Assets\Scripts\Talent\Impl\FollowTheTrailTalent.cs" Link="FollowTheTrailTalent.cs" />
     <Compile Include="..\..\Assets\Scripts\Talent\Impl\PiercingInsightTalent.cs" Link="PiercingInsightTalent.cs" />
+    <Compile Include="..\..\Assets\Scripts\Talent\Impl\SetTheToneTalent.cs" Link="SetTheToneTalent.cs" />
+    <Compile Include="..\..\Assets\Scripts\Talent\Impl\PrepareForRiskTalent.cs" Link="PrepareForRiskTalent.cs" />
+    <Compile Include="..\..\Assets\Scripts\Talent\Impl\PruneTheExcessTalent.cs" Link="PruneTheExcessTalent.cs" />
+    <Compile Include="..\..\Assets\Scripts\Talent\Impl\BideTheTideTalent.cs" Link="BideTheTideTalent.cs" />
+    <Compile Include="..\..\Assets\Scripts\Talent\Impl\ForetellOutcomeTalent.cs" Link="ForetellOutcomeTalent.cs" />
+    <Compile Include="..\..\Assets\Scripts\Talent\Impl\MisdirectionTalent.cs" Link="MisdirectionTalent.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\Data\SavedDeck.cs" Link="SavedDeck.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\Data\PlayerProfile.cs" Link="PlayerProfile.cs" />
   </ItemGroup>

@@ -1,5 +1,5 @@
 麻将 Roguelike 项目进度快照 (Project Snapshot)
-日期: 2026-08-23 版本: Alpha - Strategy Talent Expansion 引擎: Unity (2022.3.61t9 / Tuanjie 1.6.8)
+日期: 2026-08-24 版本: Alpha - Strategy Talent Expansion 引擎: Unity (2022.3.61t9 / Tuanjie 1.6.8)
 
 > **文档约定**: 已完成的任务统一记录在 `milestone.md`，`plan.md` 仅保留待办与未来规划。
 
@@ -8,7 +8,12 @@
 *   **核心规则**: 以国标麻将 (MCR) 为基础，支持81番种计算。
 *   **特色玩法**: Roguelike 天赋系统、自定义 34 张牌库及异化值机制。
 
-2. 最近进展 (Recent Progress, snapshot 2026-08-23)
+2. 最近进展 (Recent Progress, snapshot 2026-08-24)
+*   **万金油填槽天赋完成 (2026-08-24)**:
+    *   新增中品阶 **定调 (`set_the_tone`)** 与 **未雨绸缪 (`prepare_for_risk`)**：前者公开选择数牌花色并在对应胡牌张上获得 +4 post-legal 番；后者公开选择防自摸/防放铳，并在第三方荣和的基础保险或所选风险发生时最多返还一次 8 分。
+    *   新增小品阶 **去芜 (`prune_the_excess`)**、**候潮 (`bide_the_tide`)** 与 **预判 (`foretell_outcome`)**：分别围绕第 3 张幺九/字牌弃牌、第 6 次弃牌及预先选择胡牌方式提供 +3/+2/+3 post-legal 番，均不改变 8 番起胡门槛。
+    *   新增小品阶 **障眼法 (`misdirection`)**：每小局一次，在任意本家主回合主动装备；下一张实际弃牌按万→饼→条或东→南→西→北→中→发→白循环变换，保持实体 ID 与原始归属，并在进入牌河及响应阶段前完成权威变换。
+    *   六个规则完全复用类型化选择、动作账本、post-legal 归因、`OnDiscard` 与小局结算分数增量；未新增协议、UI、专用服务分支或遥测字段。长期纯 C# 回归与真实 `GameServerTelemetryRegression` 覆盖 AI 默认选项、组合归因、自动弃牌权威顺序和小局重置。
 *   **通用私有牌面揭示能力与洞若观火完成 (2026-08-23)**:
     *   **通用私有牌面揭示 (Universal Private Tile Reveal)**: 服务端提供通用的私有牌面揭示机制，对牌数据做权威脱敏（仅保留花色、数值与修改标记，抹除全局 ID、归属与特效）；揭示结果对外保持 detached、只在本次主动动作新生成时投递，并严格按查看席位隔离；对应 `SeatMessageStream` 与 `RoomGameSnapshot.privateSeat.privateTileReveal` 支持本家断线恢复，小局结束立即清理。
     *   **协议升级为 v8**: 升级网络协议版本至 v8（拒绝 v7），新增 `SnapshotRevealedTile`, `PrivateTileRevealMessage`, `SnapshotPrivateTileReveal` 等 DTO，`ClientGameState` 原子投影并支持重连快照恢复。
