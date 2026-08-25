@@ -512,9 +512,11 @@ namespace MahjongGame.Core.Network
                 }
                 else if (action.ActionType == ClientActionType.Discard)
                 {
-                    TileData discardedTile = _gameState.GetHand(action.PlayerId)
-                        .FirstOrDefault(tile => tile.TileSuit == action.TargetTile.TileSuit
-                                                && tile.Value == action.TargetTile.Value);
+                    if (!_gameState.TryGetHandTile(action.PlayerId, action.TargetTile, out TileData discardedTile))
+                    {
+                        Debug.LogError($"[GameServer] Validated discard no longer resolves for player {action.PlayerId}.");
+                        continue;
+                    }
                     _gameState.RemoveTile(action.PlayerId, discardedTile);
                     discardedTile = _talentRuntime.ApplyDiscard(
                         new TalentDiscardContext(_session, action.PlayerId),
@@ -602,11 +604,16 @@ namespace MahjongGame.Core.Network
                                 Debug.LogError($"[GameServer] Could not consume claimed discard from player {_currentPlayerIndex}.");
                                 continue;
                             }
-                            _gameState.ApplyMeld(resolvedAction.PlayerId, resolvedAction.ActionType,
-                                _lastDiscardedTile, resolvedAction.ChiCombinations);
+                            Meld committedMeld = _gameState.ApplyMeld(
+                                resolvedAction.PlayerId,
+                                resolvedAction.ActionType,
+                                _lastDiscardedTile,
+                                resolvedAction.ChiCombinations);
                             resolvedAction = new ClientAction(resolvedAction.PlayerId, resolvedAction.ActionType,
                                 _lastDiscardedTile, resolvedAction.ChiCombinations);
-                            BroadcastAction(resolvedAction);
+                            BroadcastAction(
+                                resolvedAction,
+                                committedMeld?.Tiles ?? (IReadOnlyList<TileData>)Array.Empty<TileData>());
                             NotifyTilesBecamePublic(
                                 resolvedAction.PlayerId,
                                 handTilesBecomingPublic);
@@ -963,13 +970,13 @@ namespace MahjongGame.Core.Network
             {
                 case ClientActionType.Discard:
                     // 验证手牌中确实有这张牌
-                    if (!HandContainsTile(hand, action.TargetTile))
+                    if (!_gameState.TryGetHandTile(pid, action.TargetTile, out TileData authoritativeDiscard))
                     {
                         Debug.LogWarning($"[ServerValidation] 玩家{pid} 出牌验证失败: 手中没有 {action.TargetTile}，自动出牌");
                         var fallback = _gameState.GetAutoDiscardTile(pid, _lastDrawnTile);
                         return ClientAction.Discard(pid, fallback);
                     }
-                    break;
+                    return ClientAction.Discard(pid, authoritativeDiscard);
 
                 case ClientActionType.Hu:
                     // 验证自摸胡合法性
@@ -1013,7 +1020,14 @@ namespace MahjongGame.Core.Network
                         var fallback = _gameState.GetAutoDiscardTile(pid, _lastDrawnTile);
                         return ClientAction.Discard(pid, fallback);
                     }
-                    break;
+                    if (!_gameState.TryGetHandTile(pid, action.TargetTile, out TileData authoritativeAddedKong))
+                    {
+                        Debug.LogWarning($"[ServerValidation] 玩家{pid} 加杠实体牌验证失败，自动出牌");
+                        var fallback = _gameState.GetAutoDiscardTile(pid, _lastDrawnTile);
+                        return ClientAction.Discard(pid, fallback);
+                    }
+                    return new ClientAction(pid, ClientActionType.JiaGang,
+                        authoritativeAddedKong, action.ChiCombinations);
                 }
             }
 
@@ -1174,10 +1188,47 @@ namespace MahjongGame.Core.Network
 
         private void BroadcastAction(ClientAction action)
         {
+            BroadcastAction(action, GetResolvedMeldTiles(action));
+        }
+
+        private void BroadcastAction(
+            ClientAction action,
+            IReadOnlyList<TileData> resolvedMeldTiles)
+        {
+            resolvedMeldTiles ??= Array.Empty<TileData>();
             foreach (var client in _clients)
             {
-                client.OnActionResolved(action.PlayerId, action.ActionType, action.TargetTile, action.ChiCombinations);
+                if (client is IResolvedMeldPlayerClient resolvedClient)
+                    resolvedClient.OnActionResolved(action.PlayerId, action.ActionType,
+                        action.TargetTile, action.ChiCombinations, resolvedMeldTiles);
+                else
+                    client.OnActionResolved(action.PlayerId, action.ActionType,
+                        action.TargetTile, action.ChiCombinations);
             }
+        }
+
+        private IReadOnlyList<TileData> GetResolvedMeldTiles(ClientAction action)
+        {
+            if (action == null || action.TargetTile == null) return Array.Empty<TileData>();
+            MeldType? meldType = action.ActionType switch
+            {
+                ClientActionType.Chi => MeldType.Chi,
+                ClientActionType.Pon => MeldType.Pon,
+                ClientActionType.MingGan => MeldType.Kan_Exposed,
+                ClientActionType.AnGan => MeldType.Kan_Concealed,
+                ClientActionType.JiaGang => MeldType.Kan_Added,
+                _ => null
+            };
+            if (!meldType.HasValue) return Array.Empty<TileData>();
+            Meld meld = _gameState.GetMelds(action.PlayerId).LastOrDefault(candidate =>
+                candidate != null
+                && candidate.Type == meldType.Value
+                && candidate.FirstTile.TileSuit == action.TargetTile.TileSuit
+                && candidate.FirstTile.Value == action.TargetTile.Value
+                && (action.ActionType != ClientActionType.JiaGang
+                    || string.IsNullOrWhiteSpace(action.TargetTile.ID)
+                    || candidate.Tiles.Any(tile => tile.ID == action.TargetTile.ID)));
+            return meld?.Tiles ?? (IReadOnlyList<TileData>)Array.Empty<TileData>();
         }
 
         private void SendPrivatePeekResults()
@@ -1219,6 +1270,13 @@ namespace MahjongGame.Core.Network
                 ClientActionType.JiaGang => 1,
                 _ => 0
             };
+            if (action.ActionType == ClientActionType.JiaGang
+                && !string.IsNullOrWhiteSpace(targetTile.ID))
+            {
+                TileData exact = hand.FirstOrDefault(tile => tile.ID == targetTile.ID);
+                if (exact != null) selected.Add(exact);
+                return selected;
+            }
             for (int index = hand.Count - 1; index >= 0 && selected.Count < count; index--)
             {
                 TileData tile = hand[index];

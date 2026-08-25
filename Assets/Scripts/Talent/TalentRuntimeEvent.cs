@@ -38,6 +38,7 @@ namespace MahjongGame.Talents
         public bool IsActive { get; set; }
         public bool IsRevealed { get; set; }
         public int PrivateValue { get; set; }
+        public string PrivateStatusKey { get; set; }
         public string LastPublicEventType { get; set; }
         public int LastPublicValue { get; set; }
     }

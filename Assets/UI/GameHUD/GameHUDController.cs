@@ -31,6 +31,7 @@ namespace MahjongGame.UI
         private Button _ownTalentCollapsedButton;
         private VisualElement _ownTalentDrawer;
         private readonly VisualElement[] _seatTalentRows = new VisualElement[4];
+        private readonly Label[] _seatTalentPlayerLabels = new Label[4];
         private readonly Button[] _seatTalentMoreButtons = new Button[4];
         private readonly Action[] _seatTalentMoreClicked = new Action[4];
         private readonly VisualElement[] _seatTalentDrawers = new VisualElement[4];
@@ -42,10 +43,12 @@ namespace MahjongGame.UI
         private VisualElement _expandedTalentDrawer;
         private IVisualElementScheduledItem _toastHideSchedule;
         private RemoteServerProxy _serverProxy;
+        private ClientRoomService _roomService;
         private RoomGameSnapshot _talentSnapshot;
         private readonly List<TalentRuntimeEventMessage> _acceptedPublicTalentEvents = new List<TalentRuntimeEventMessage>();
         private readonly TalentFeedbackHistory _talentFeedbackHistory = new TalentFeedbackHistory();
         private readonly TalentTransientPresentationState _talentTransientState = new TalentTransientPresentationState();
+        private readonly TalentObservationState _talentObservationState = new TalentObservationState();
         private Tweener _talentChipTween;
         private Tweener _talentToastTween;
         private VisualElement _talentPulsedChip;
@@ -104,6 +107,7 @@ namespace MahjongGame.UI
 
         void OnDestroy()
         {
+            GameManager.Instance?.playerHandController?.SetTalentObservationMode(TalentObservationMode.None);
             UnbindTalentElementCallbacks();
             UnbindServerProxy(_serverProxy);
             _toastHideSchedule?.Pause();
@@ -127,6 +131,7 @@ namespace MahjongGame.UI
             for (int slot = 0; slot < 4; slot++)
             {
                 _seatTalentRows[slot] = _root.Q<VisualElement>($"Seat{slot}KnownTalents");
+                _seatTalentPlayerLabels[slot] = _root.Q<Label>($"Seat{slot}TalentPlayerName");
                 _seatTalentMoreButtons[slot] = _root.Q<Button>($"Seat{slot}KnownTalentMore");
                 _seatTalentDrawers[slot] = _root.Q<VisualElement>($"Seat{slot}KnownTalentDrawer");
                 int capturedSlot = slot;
@@ -168,6 +173,9 @@ namespace MahjongGame.UI
             _acceptedPublicTalentEvents.Clear();
             _serverProxy.TalentRuntimeEventReceived += HandleTalentRuntimeEvent;
             _serverProxy.TalentActionsChanged += HandleTalentActionsChanged;
+            _roomService = NetworkManager.Instance?.RoomService;
+            if (_roomService != null)
+                _roomService.SeatSnapshotChanged += HandleSeatSnapshotChanged;
             RebuildTalentHudFromClientState();
         }
 
@@ -176,8 +184,14 @@ namespace MahjongGame.UI
             if (proxy == null || !ReferenceEquals(_serverProxy, proxy)) return;
             _serverProxy.TalentRuntimeEventReceived -= HandleTalentRuntimeEvent;
             _serverProxy.TalentActionsChanged -= HandleTalentActionsChanged;
+            if (_roomService != null)
+                _roomService.SeatSnapshotChanged -= HandleSeatSnapshotChanged;
+            _roomService = null;
             _serverProxy = null;
         }
+
+        private void HandleSeatSnapshotChanged(RoomSeatMessage[] seats) =>
+            RebuildTalentHudFromClientState();
 
         private void HandleTalentActionsChanged(long decisionId, IReadOnlyList<MahjongGame.Talents.TalentActionOption> actions)
         {
@@ -221,22 +235,10 @@ namespace MahjongGame.UI
 
             if (seatIndex == localSeatIndex) return "你";
 
-            if (snapshot?.seats != null && seatIndex < snapshot.seats.Length)
-            {
-                var seat = snapshot.seats[seatIndex];
-                if (seat != null && seat.isOccupied && !seat.isAi && !string.IsNullOrWhiteSpace(seat.displayName))
-                    return seat.displayName;
-            }
-
-            var roomSeats = NetworkManager.Instance?.RoomService?.Seats;
-            if (roomSeats != null && seatIndex < roomSeats.Length)
-            {
-                var seat = roomSeats[seatIndex];
-                if (seat != null && seat.isOccupied && !seat.isAi && !string.IsNullOrWhiteSpace(seat.displayName))
-                    return seat.displayName;
-            }
-
-            return $"AI {seatIndex + 1}";
+            return PlayerDisplayNamePolicy.Resolve(
+                snapshot,
+                seatIndex,
+                NetworkManager.Instance?.RoomService?.Seats);
         }
 
         private void RebuildTalentHudFromClientState()
@@ -249,6 +251,11 @@ namespace MahjongGame.UI
             }
         }
 
+        public void RefreshTalentHudStatus()
+        {
+            RebuildTalentHudFromClientState();
+        }
+
         private void RenderTalentHud(RoomGameSnapshot snapshot)
         {
             if (snapshot == null || _ownTalentBar == null) return;
@@ -258,7 +265,8 @@ namespace MahjongGame.UI
             TalentHudView view = TalentHudProjectionPolicy.Build(
                 snapshot,
                 localSeatIndex,
-                _acceptedPublicTalentEvents);
+                _acceptedPublicTalentEvents,
+                NetworkManager.Instance?.RoomService?.Seats);
 
             RenderTalentItems(_ownTalentBar, view.OwnVisible, isOwn: true);
             RenderTalentItems(_ownTalentDrawer, view.OwnCollapsed, isOwn: true);
@@ -268,6 +276,11 @@ namespace MahjongGame.UI
             {
                 _seatTalentRows[slot]?.Clear();
                 _seatTalentDrawers[slot]?.Clear();
+                if (_seatTalentPlayerLabels[slot] != null)
+                {
+                    _seatTalentPlayerLabels[slot].text = string.Empty;
+                    _seatTalentPlayerLabels[slot].style.display = DisplayStyle.None;
+                }
                 ConfigureMoreButton(_seatTalentMoreButtons[slot], 0);
             }
 
@@ -275,6 +288,11 @@ namespace MahjongGame.UI
             {
                 int slot = PlayerIndexToUISlot(pair.Key);
                 if (slot == 0) continue;
+                if (_seatTalentPlayerLabels[slot] != null)
+                {
+                    _seatTalentPlayerLabels[slot].text = pair.Value.PlayerDisplayName;
+                    _seatTalentPlayerLabels[slot].style.display = DisplayStyle.Flex;
+                }
                 RenderTalentItems(_seatTalentRows[slot], pair.Value.Visible, isOwn: false);
                 RenderTalentItems(_seatTalentDrawers[slot], pair.Value.Expanded, isOwn: false);
                 ConfigureMoreButton(_seatTalentMoreButtons[slot], pair.Value.CollapsedCount);
@@ -325,15 +343,53 @@ namespace MahjongGame.UI
             Label valueLabel = chip.Q<Label>("ValueLabel");
             Label consumedMarker = chip.Q<Label>("ConsumedMarker");
             if (nameLabel != null) nameLabel.text = item.DisplayName;
-            if (valueLabel != null) valueLabel.text = item.ShowValue ? item.Value.ToString() : string.Empty;
+            if (valueLabel != null)
+            {
+                valueLabel.text = !string.IsNullOrWhiteSpace(item.StatusText)
+                    ? item.StatusText
+                    : item.ShowValue ? item.Value.ToString() : string.Empty;
+            }
             if (consumedMarker != null) consumedMarker.style.display = DisplayStyle.None;
 
             SetClass(chip, "talent-chip--active", item.ShowActiveState && isOwn && item.IsActive);
             SetClass(chip, "talent-chip--inactive", item.ShowActiveState && isOwn && !item.IsActive);
             SetClass(chip, "talent-chip--known", !isOwn);
+            bool canInspect = isOwn && item.IsActive && item.IsInspectable;
+            SetClass(chip, "talent-chip--inspectable", canInspect);
+            SetClass(chip, "talent-chip--observing",
+                canInspect && string.Equals(
+                    _talentObservationState.ActiveTalentId,
+                    item.TalentId,
+                    StringComparison.Ordinal));
+            if (canInspect)
+            {
+                chip.pickingMode = PickingMode.Position;
+                chip.AddManipulator(new Clickable(() => ToggleTalentObservation(item.TalentId)));
+            }
             if (item.ShouldLogWarning)
                 Debug.LogWarning("[GameHUD] Unknown active own talent rendered with fallback copy.");
             return instanceRoot;
+        }
+
+        private void ToggleTalentObservation(string talentId)
+        {
+            _talentObservationState.Toggle(talentId);
+            GameManager.Instance?.playerHandController?
+                .SetTalentObservationMode(_talentObservationState.ActiveMode);
+            RebuildTalentHudFromClientState();
+        }
+
+        public void ResetTalentObservationForRoundBoundary()
+        {
+            ResetTalentObservationForRoundBoundary(true);
+        }
+
+        private void ResetTalentObservationForRoundBoundary(bool rebuildHud)
+        {
+            _talentObservationState.ResetForRoundBoundary();
+            GameManager.Instance?.playerHandController?
+                .SetTalentObservationMode(TalentObservationMode.None);
+            if (rebuildHud) RebuildTalentHudFromClientState();
         }
 
         private static void ConfigureMoreButton(Button button, int collapsedCount)
@@ -533,6 +589,7 @@ namespace MahjongGame.UI
         /// <summary>Cancels transient HUD state before applying an authoritative recovery projection.</summary>
         public void ResetForRecovery()
         {
+            ResetTalentObservationForRoundBoundary(false);
             StopTimer();
             _pulseTween?.Kill();
             _pulseTween = null;

@@ -102,6 +102,12 @@ namespace MahjongGame.Talents.Impl
         public override int GetSnapshotPrivateValue(TalentRuntimeState state) =>
             state.GetCounter(RemainingKey, TalentStateScope.Round);
 
+        public override string GetSnapshotPrivateStatusKey(TalentRuntimeState state)
+        {
+            if (!state.GetFlag(ChosenKey, TalentStateScope.Round)) return null;
+            return GetChoiceId((Suit)state.GetCounter(TargetSuitKey, TalentStateScope.Round));
+        }
+
         private static TalentChoiceSet CreateSuitChoice(Suit defaultSuit) =>
             new TalentChoiceSet(
                 TalentChoiceKind.Suit,

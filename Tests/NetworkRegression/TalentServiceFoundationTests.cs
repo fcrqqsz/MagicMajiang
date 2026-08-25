@@ -14,6 +14,7 @@ internal static class TalentServiceFoundationTests
         CommittedActionsRouteOnceAndBuildAnImmutableRoundLedger(runner);
         GenericChoicesRejectForgedIdsBeforeRuleMutation(runner);
         GenericChoicesRoundTripThroughPrivateProtocolAndAiDefault(runner);
+        UnityDefaultChoiceObjectPreservesDirectTalentAction(runner);
         InitialHandHookOwnsImmutablePrivateFactsAndStrictLifecycle(runner);
         InitialHandMutationsAreStagedAndAtomicallyCommitted(runner);
     }
@@ -215,6 +216,30 @@ internal static class TalentServiceFoundationTests
                      && restoredTileOption.Choice.Options[0].Tile.IsModified
                      && restoredTileOption.Choice.Options[0].Tile.SpecialEffectId == "future_mutation",
             "tile choices preserve complete immutable physical-tile identity across recovery");
+    }
+
+    private static void UnityDefaultChoiceObjectPreservesDirectTalentAction(
+        RegressionRunner runner)
+    {
+        TalentActionOption restored = TalentActionSnapshotCodec.FromSnapshot(
+            new SnapshotTalentActionOption
+            {
+                talentId = "piercing_insight",
+                targetSeatIndex = 2,
+                choice = new SnapshotTalentChoiceSet
+                {
+                    kind = 0,
+                    promptKey = string.Empty,
+                    defaultChoiceId = string.Empty,
+                    options = Array.Empty<SnapshotTalentChoiceOption>()
+                }
+            });
+
+        runner.Check(restored != null
+                     && restored.TalentId == "piercing_insight"
+                     && restored.TargetSeatIndex == 2
+                     && restored.Choice == null,
+            "Unity's default empty choice object preserves a direct target talent action instead of dropping its button");
     }
 
     private static void GenericChoicesRejectForgedIdsBeforeRuleMutation(

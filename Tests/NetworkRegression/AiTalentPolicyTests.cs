@@ -542,6 +542,25 @@ internal static class AiTalentPolicyTests
 
         runner.Check(allLegal,
             "Room AI fill locks preset-legal archetype loadouts instead of empty standard placeholders");
+
+        NetworkMessageEnvelope[] messages = endpoint.SentMessages
+            .Select(MessageSerializer.DeserializeEnvelope)
+            .Where(envelope => envelope != null)
+            .ToArray();
+        RoomSeatMessage[] aiSeatUpdates = messages
+            .Where(envelope => envelope.type == "RoomSeatUpdated")
+            .Select(envelope => MessageSerializer.DeserializePayload<RoomSeatUpdatedMessage>(envelope.data)?.seat)
+            .Where(seat => seat?.isAi == true)
+            .ToArray();
+        int lastAiUpdateIndex = Array.FindLastIndex(messages, envelope =>
+            envelope.type == "RoomSeatUpdated"
+            && MessageSerializer.DeserializePayload<RoomSeatUpdatedMessage>(envelope.data)?.seat?.isAi == true);
+        int roomReadyIndex = Array.FindIndex(messages, envelope => envelope.type == "RoomReady");
+        runner.Check(aiSeatUpdates.Select(seat => seat.displayName).SequenceEqual(
+                         new[] { "AI 2", "AI 3", "AI 4" })
+                     && lastAiUpdateIndex >= 0
+                     && roomReadyIndex > lastAiUpdateIndex,
+            "AI fill broadcasts every generated AI identity before clients enter the game scene");
     }
 
     private static void SideboardRetainsLockedAndCountersPublicThreats(RegressionRunner runner)

@@ -16,6 +16,10 @@ internal static class TalentPresentationTests
         RunTalentResultPresentationPolicyTests(runner);
         RunTalentActionPanelPolicyTests(runner);
         RunLayeredTalentHudPolicyTests(runner);
+        RunLiveSeatNameProjectionTests(runner);
+        RunTalentHudStatusProjectionTests(runner);
+        RunTalentObservationPolicyTests(runner);
+        RunTalentChipStatusPolicyTests(runner);
         RunTalentEventPresentationPolicyTests(runner);
         RunDeckEditorDraftPresentationPolicyTests(runner);
         RunTalentPickerDuplicateTests(runner);
@@ -23,6 +27,289 @@ internal static class TalentPresentationTests
         RunLoadoutPresetTests(runner);
         RunServerAdmissionTests(runner);
         RunClientCommandTests(runner);
+    }
+
+    private static void RunLiveSeatNameProjectionTests(RegressionRunner runner)
+    {
+        WebSocketClient.ResetForTests();
+        using var service = new ClientRoomService(
+            "ws://test",
+            new InMemoryClientReconnectTicketStore());
+        WebSocketClient.Instance.Receive(MessageSerializer.Serialize(
+            "RoomJoined",
+            1,
+            new RoomJoinedMessage
+            {
+                roomId = "live-seat-names",
+                streamId = "live-seat-stream",
+                seatIndex = 0,
+                seats = new[]
+                {
+                    new RoomSeatMessage
+                    {
+                        seatIndex = 0,
+                        isOccupied = true,
+                        displayName = "Local Player"
+                    },
+                    null,
+                    null,
+                    null
+                }
+            }));
+        WebSocketClient.Instance.Receive(MessageSerializer.Serialize(
+            "PlayerJoined",
+            2,
+            new PlayerJoinedMessage
+            {
+                roomId = "live-seat-names",
+                seat = new RoomSeatMessage
+                {
+                    seatIndex = 1,
+                    isOccupied = true,
+                    displayName = "Alice"
+                }
+            }));
+        WebSocketClient.Instance.Receive(MessageSerializer.Serialize(
+            "RoomSeatUpdated",
+            3,
+            new RoomSeatUpdatedMessage
+            {
+                roomId = "live-seat-names",
+                seat = new RoomSeatMessage
+                {
+                    seatIndex = 2,
+                    isOccupied = true,
+                    isAi = true,
+                    displayName = string.Empty
+                }
+            }));
+
+        RoomGameSnapshot snapshot = service.GameState.Snapshot;
+        runner.Check(PlayerDisplayNamePolicy.Resolve(snapshot, 1) == "Alice"
+                     && PlayerDisplayNamePolicy.Resolve(snapshot, 2) == "AI 3",
+            "live room seat updates project human nicknames and stable AI labels into game presentation");
+
+        var roomSeats = new[]
+        {
+            new RoomSeatMessage { seatIndex = 0, isOccupied = true, displayName = "Local Player" },
+            new RoomSeatMessage { seatIndex = 1, isOccupied = true, displayName = "Alice" },
+            new RoomSeatMessage { seatIndex = 2, isOccupied = true, isAi = true, displayName = "AI 3" },
+            new RoomSeatMessage { seatIndex = 3 }
+        };
+        var incrementalSnapshot = new RoomGameSnapshot
+        {
+            requestingSeatIndex = 0,
+            seats = Enumerable.Range(0, 4)
+                .Select(seatIndex => new RoomSnapshotSeat { seatIndex = seatIndex })
+                .ToArray(),
+            knownTalents = new[]
+            {
+                new SnapshotKnownTalent
+                    { ownerSeatIndex = 1, talentId = "peek", isKnown = true },
+                new SnapshotKnownTalent
+                    { ownerSeatIndex = 2, talentId = "peek", isKnown = true }
+            }
+        };
+        var resolveWithRoomSeats = typeof(PlayerDisplayNamePolicy).GetMethod(
+            "Resolve",
+            new[] { typeof(RoomGameSnapshot), typeof(int), typeof(RoomSeatMessage[]) });
+        string fallbackHumanName = resolveWithRoomSeats?.Invoke(
+            null,
+            new object[] { incrementalSnapshot, 1, roomSeats }) as string;
+        string fallbackAiName = resolveWithRoomSeats?.Invoke(
+            null,
+            new object[] { incrementalSnapshot, 2, roomSeats }) as string;
+        runner.Check(fallbackHumanName == "Alice" && fallbackAiName == "AI 3",
+            "player display resolution falls back to the current room seat directory");
+
+        var buildWithRoomSeats = typeof(TalentHudProjectionPolicy).GetMethod(
+            "Build",
+            new[]
+            {
+                typeof(RoomGameSnapshot),
+                typeof(int),
+                typeof(IEnumerable<TalentRuntimeEventMessage>),
+                typeof(RoomSeatMessage[])
+            });
+        TalentHudView fallbackView = buildWithRoomSeats?.Invoke(
+            null,
+            new object[]
+            {
+                incrementalSnapshot,
+                0,
+                Array.Empty<TalentRuntimeEventMessage>(),
+                roomSeats
+            }) as TalentHudView;
+        runner.Check(fallbackView != null
+                     && fallbackView.Seats[1].PlayerDisplayName == "Alice"
+                     && fallbackView.Seats[2].PlayerDisplayName == "AI 3",
+            "talent HUD summaries consume the room seat directory when the incremental game snapshot has no names");
+    }
+
+    private static void RunTalentHudStatusProjectionTests(RegressionRunner runner)
+    {
+        var snapshot = new RoomGameSnapshot
+        {
+            seats = new[]
+            {
+                new RoomSnapshotSeat { seatIndex = 0, displayName = "Local Player" },
+                new RoomSnapshotSeat { seatIndex = 1, displayName = "North Player" },
+                new RoomSnapshotSeat { seatIndex = 2, displayName = "West Player" },
+                new RoomSnapshotSeat { seatIndex = 3, displayName = "East Player" }
+            },
+            privateSeat = new SnapshotPrivateSeat
+            {
+                concealedHand = new[]
+                {
+                    new SimpleTileData(new TileData(Suit.Man, 2, 0) { IsModified = true }, true),
+                    new SimpleTileData(new TileData(Suit.Pin, 3, 0) { IsModified = true }, true),
+                    new SimpleTileData(new TileData(Suit.Sou, 4, 0), true)
+                },
+                melds = new[]
+                {
+                    new SnapshotMeld
+                    {
+                        meldType = (int)MeldType.Pon,
+                        tiles = new[]
+                        {
+                            new SimpleTileData(new TileData(Suit.Wind, 1, 0) { IsModified = true }, true),
+                            new SimpleTileData(new TileData(Suit.Wind, 1, 0), true),
+                            new SimpleTileData(new TileData(Suit.Wind, 1, 0), true)
+                        }
+                    }
+                },
+                ownTalents = new[]
+                {
+                    new SnapshotOwnTalent { talentId = "chromatic_composition", isActive = true },
+                    new SnapshotOwnTalent { talentId = "fading_color", isActive = true, privateValue = 1 },
+                    new SnapshotOwnTalent { talentId = "interception", isActive = true, privateValue = 3 },
+                    new SnapshotOwnTalent
+                        { talentId = "set_the_tone", isActive = true, privateStatusKey = "pin" },
+                    new SnapshotOwnTalent
+                    {
+                        talentId = "call_the_mark",
+                        isActive = true,
+                        privateValue = 3,
+                        privateStatusKey = "pending"
+                    }
+                }
+            }
+        };
+
+        TalentHudView view = TalentHudProjectionPolicy.Build(snapshot, 0);
+        runner.Check(view.OwnVisible.Single(item => item.TalentId == "chromatic_composition").StatusText
+                     == "异化 3/4",
+            "own chromatic chip counts modified physical tiles across concealed hand and melds");
+        runner.Check(view.OwnVisible.Single(item => item.TalentId == "fading_color").StatusText == "墨 1/2"
+                     && view.OwnVisible.Single(item => item.TalentId == "set_the_tone").StatusText == "饼",
+            "own HUD projection formats private progress and selected mode as local display text");
+        runner.Check(view.OwnVisible.Single(item => item.TalentId == "call_the_mark").StatusText
+                     == "目标 West Player",
+            "点将 pending chip resolves its authoritative target seat to the player's display name");
+        TalentHudItem legacyCounter = view.OwnVisible.Single(item => item.TalentId == "interception");
+        runner.Check(legacyCounter.StatusText == string.Empty
+                     && legacyCounter.ShowValue
+                     && legacyCounter.Value == 3,
+            "new status formatting preserves existing raw counters for talents without dedicated copy");
+        runner.Check(view.OwnVisible.Where(item => item.TalentId == "chromatic_composition"
+                                                   || item.TalentId == "fading_color")
+                         .All(item => item.IsInspectable)
+                     && !view.OwnVisible.Single(item => item.TalentId == "set_the_tone").IsInspectable
+                     && !legacyCounter.IsInspectable,
+            "only talents backed by a tile observation predicate expose clickable inspection");
+    }
+
+    private static void RunTalentObservationPolicyTests(RegressionRunner runner)
+    {
+        var state = new TalentObservationState();
+        state.Toggle("chromatic_composition");
+        runner.Check(state.ActiveTalentId == "chromatic_composition"
+                     && state.ActiveMode == TalentObservationMode.AlienatedTiles,
+            "clicking an inspectable own talent enables its local observation mode");
+
+        state.Toggle("fading_color");
+        runner.Check(state.ActiveTalentId == "fading_color"
+                     && state.ActiveMode == TalentObservationMode.AlienatedTiles,
+            "another talent can reuse the alienated-tile observation predicate");
+
+        state.Toggle("fading_color");
+        runner.Check(state.ActiveTalentId == null
+                     && state.ActiveMode == TalentObservationMode.None,
+            "clicking the active observation chip disables observation");
+
+        state.Toggle("prune_the_excess");
+        state.ResetForRoundBoundary();
+        runner.Check(state.ActiveTalentId == null
+                     && state.ActiveMode == TalentObservationMode.None,
+            "a round boundary clears local observation instead of carrying it forward");
+
+        var alienated = new TileData(Suit.Man, 5, 0) { IsModified = true };
+        var ordinary = new TileData(Suit.Man, 5, 0);
+        var terminal = new TileData(Suit.Sou, 9, 0);
+        var honor = new TileData(Suit.Wind, 1, 0);
+        runner.Check(TalentObservationPolicy.Matches(TalentObservationMode.AlienatedTiles, alienated)
+                     && !TalentObservationPolicy.Matches(TalentObservationMode.AlienatedTiles, ordinary),
+            "alienated observation matches only authoritative modified tile data");
+        runner.Check(TalentObservationPolicy.Matches(TalentObservationMode.TerminalOrHonorTiles, terminal)
+                     && TalentObservationPolicy.Matches(TalentObservationMode.TerminalOrHonorTiles, honor)
+                     && !TalentObservationPolicy.Matches(TalentObservationMode.TerminalOrHonorTiles, ordinary),
+            "prune observation matches terminals and honors without changing tile data");
+
+        var publicTile = new SimpleTileData(alienated);
+        var wireTile = new SimpleTileData(alienated, true);
+        TileData restored = wireTile.ToTileData();
+        runner.Check(!publicTile.isModified
+                     && string.IsNullOrEmpty(publicTile.instanceId)
+                     && wireTile.isModified
+                     && wireTile.instanceId == alienated.ID
+                     && restored != null
+                     && restored.ID == alienated.ID
+                     && restored.IsModified,
+            "only owner-private tile projections preserve physical identity and the modified marker");
+
+        var clientState = new ClientGameState();
+        clientState.ApplySnapshot(new RoomGameSnapshot
+        {
+            requestingSeatIndex = 0,
+            scores = new int[4],
+            seats = Enumerable.Range(0, 4)
+                .Select(index => new RoomSnapshotSeat { seatIndex = index }).ToArray(),
+            privateSeat = new SnapshotPrivateSeat
+            {
+                seatIndex = 0,
+                concealedHand = new[] { wireTile },
+                ownTalents = Array.Empty<SnapshotOwnTalent>(),
+                availableTalentActions = Array.Empty<SnapshotTalentActionOption>()
+            },
+            knownTalents = Array.Empty<SnapshotKnownTalent>(),
+            rivers = Enumerable.Range(0, 4).Select(index => new SeatRiverSnapshot
+                { seatIndex = index, tiles = Array.Empty<SimpleTileData>() }).ToArray(),
+            sideboard = new SnapshotSideboardState { seatLocked = new bool[4] }
+        }, 0);
+        runner.Check(clientState.Snapshot.privateSeat.concealedHand.Single().isModified,
+            "client state cloning retains the modified marker before Unity rebuilds the local hand");
+    }
+
+    private static void RunTalentChipStatusPolicyTests(RegressionRunner runner)
+    {
+        runner.Check(TalentChipStatusPolicy.Build("chromatic_composition", 0, null, 3) == "异化 3/4"
+                     && TalentChipStatusPolicy.Build("chromatic_composition", 0, null, 5) == "异化 5 +15番",
+            "chromatic composition shows current physical count, threshold and earned bonus");
+        runner.Check(TalentChipStatusPolicy.Build("fading_color", 1, null, 0) == "墨 1/2"
+                     && TalentChipStatusPolicy.Build("prune_the_excess", 2, null, 0) == "弃牌 2/3"
+                     && TalentChipStatusPolicy.Build("bide_the_tide", 4, null, 0) == "弃牌 4/6"
+                     && TalentChipStatusPolicy.Build("last_stand_formation", 1, null, 0) == "副露 1/2",
+            "counter talents render bounded progress instead of unexplained raw integers");
+        runner.Check(TalentChipStatusPolicy.Build("set_the_tone", 0, "pin", 0) == "饼"
+                     && TalentChipStatusPolicy.Build("foretell_outcome", 0, "ron", 0) == "荣和"
+                     && TalentChipStatusPolicy.Build("prepare_for_risk", 0, "protect_ron", 0) == "防放铳"
+                     && TalentChipStatusPolicy.Build("suit_convergence", 1, "sou", 0) == "条 剩1次",
+            "choice talents render their authoritative private mode without redundant selected copy");
+        runner.Check(TalentChipStatusPolicy.Build("call_the_mark", 6, "success", 0) == "成功"
+                     && TalentChipStatusPolicy.Build("call_the_mark", -1, "failed", 0) == "失败",
+            "点将 resolved chip uses explicit success and failure copy instead of numeric state");
+        runner.Check(TalentChipStatusPolicy.Build("peek", 0, null, 0) == string.Empty,
+            "talents without useful progress keep a compact name-only chip");
     }
 
     private static void RunTalentResultPresentationPolicyTests(RegressionRunner runner)
@@ -247,16 +534,58 @@ internal static class TalentPresentationTests
         TalentActionOption chosenSuit = TalentActionPanelPolicy.SelectChoice(
             choosing.Options.Single().Option,
             "pin");
+        TalentActionOption canonicalChosenSuit = TalentActionPanelPolicy.SelectAuthorizedChoice(
+            choosing,
+            "generic_suit_choice",
+            "pin");
         TalentActionPanelState choiceCancelled = TalentActionPanelPolicy.CancelChoiceSelection(choosing);
         runner.Check(choosing.ChoiceSelection == "generic_suit_choice"
                      && choosing.BaseActions.CanDiscard
                      && chosenSuit.SelectedChoiceId == "pin"
+                     && canonicalChosenSuit.SelectedChoiceId == "pin"
+                     && canonicalChosenSuit.TargetSeatIndex == -1
+                     && canonicalChosenSuit.TargetTalentId == null
                      && suitChoice.SelectedChoiceId == null,
-            "generic choice selection preserves base actions and returns a copied selected option");
+            "generic choice selection resolves a canonical current option without stale target metadata");
         runner.Check(choiceCancelled.ChoiceSelection == null
                      && choiceCancelled.IsOpen
                      && choiceCancelled.Options.All(option => !option.IsPending),
             "cancelling a generic choice returns to the authoritative talent action list");
+
+        var queuedChoices = new[]
+        {
+            new TalentActionOption { TalentId = "suit_convergence", Choice = suitChoice.Choice },
+            new TalentActionOption { TalentId = "prepare_for_risk", Choice = suitChoice.Choice },
+            new TalentActionOption { TalentId = "foretell_outcome", Choice = suitChoice.Choice }
+        };
+        TalentActionPanelState queuedChoiceState = TalentActionPanelPolicy.Open(
+            74,
+            new BaseActionAvailability { CanDiscard = true },
+            queuedChoices);
+        string firstAutomaticChoice = TalentActionPanelPolicy.GetNextAutomaticChoice(
+            queuedChoiceState,
+            Array.Empty<string>());
+        string afterFirstDismissed = TalentActionPanelPolicy.GetNextAutomaticChoice(
+            queuedChoiceState,
+            new[] { "suit_convergence" });
+        runner.Check(firstAutomaticChoice == "suit_convergence"
+                     && afterFirstDismissed == "prepare_for_risk",
+            "simultaneous first-main-turn choices auto-open one at a time in authoritative option order");
+
+        TalentActionPanelState pendingChoiceState = TalentActionPanelPolicy.BeginSubmit(
+            queuedChoiceState,
+            "suit_convergence");
+        TalentActionPanelState acceptedRefresh = TalentActionPanelPolicy.Open(
+            74,
+            new BaseActionAvailability { CanDiscard = true },
+            queuedChoices.Skip(1));
+        runner.Check(TalentActionPanelPolicy.GetNextAutomaticChoice(
+                         pendingChoiceState,
+                         Array.Empty<string>()) == null
+                     && TalentActionPanelPolicy.GetNextAutomaticChoice(
+                         acceptedRefresh,
+                         Array.Empty<string>()) == "prepare_for_risk",
+            "the automatic queue waits for authoritative acceptance before advancing to the next unresolved choice");
 
         var targetSnapshot = new RoomGameSnapshot
         {
@@ -300,12 +629,39 @@ internal static class TalentPresentationTests
             && targets[0].TalentDisplayName == "藏锋"
             && targets[0].PublicCharge == 3,
             "target presentation joins only active server-option-authorized public talent data");
+
+        TalentActionPanelState playerTargetState = TalentActionPanelPolicy.Open(
+            75,
+            new BaseActionAvailability(),
+            new[]
+            {
+                new TalentActionOption { TalentId = "call_the_mark", TargetSeatIndex = 1 },
+                new TalentActionOption { TalentId = "call_the_mark", TargetSeatIndex = 3 }
+            });
+        targetSnapshot.seats = targetSnapshot.seats.Concat(new[]
+        {
+            new RoomSnapshotSeat { seatIndex = 3, displayName = string.Empty }
+        }).ToArray();
+        IReadOnlyList<TalentActionTargetPresentation> playerTargets =
+            TalentActionPanelPolicy.BuildAuthorizedTargets(
+                playerTargetState.Options,
+                "call_the_mark",
+                targetSnapshot);
+        runner.Check(playerTargets.Count == 2
+                     && playerTargets.Single(target => target.SeatIndex == 1).SeatDisplayName == "North Player"
+                     && playerTargets.Single(target => target.SeatIndex == 3).SeatDisplayName == "未知玩家",
+            "all player-target selectors display nicknames and never expose seat-number fallbacks");
     }
 
     private static void RunLayeredTalentHudPolicyTests(RegressionRunner runner)
     {
         var snapshot = new RoomGameSnapshot
         {
+            seats = new[]
+            {
+                new RoomSnapshotSeat { seatIndex = 1, displayName = "North Player" },
+                new RoomSnapshotSeat { seatIndex = 2, displayName = "West Player" }
+            },
             privateSeat = new SnapshotPrivateSeat
             {
                 ownTalents = new[]
@@ -358,6 +714,11 @@ internal static class TalentPresentationTests
             "a hidden registered opponent talent changes neither visible ordering nor the authorized +N count");
         runner.Check(view.Seats[2].Visible.Count == 1 && view.Seats[2].CollapsedCount == 0,
             "each opponent summary is limited to server-authorized known talents only");
+        var playerNameProperty = typeof(TalentSeatSummary).GetProperty("PlayerDisplayName");
+        runner.Check(playerNameProperty != null
+                     && (string)playerNameProperty.GetValue(view.Seats[1]) == "North Player"
+                     && view.Seats[1].Visible.All(item => item.DisplayName != "North Player"),
+            "opponent summaries expose a separate player nickname while talent chip text remains unchanged");
 
         TalentHudView pinned = TalentHudProjectionPolicy.Build(new RoomGameSnapshot
         {
@@ -715,8 +1076,8 @@ internal static class TalentPresentationTests
 
     private static void RunLoadoutPresetTests(RegressionRunner runner)
     {
-        runner.Check(NetworkProtocol.IsSupported(8) && !NetworkProtocol.IsSupported(7),
-            "protocol v8 rejects protocol v7 before room loadout admission");
+        runner.Check(NetworkProtocol.IsSupported(9) && !NetworkProtocol.IsSupported(8),
+            "protocol v9 rejects protocol v8 before room loadout admission");
 
         var legacy = new SavedDeck { Config = DeckConfig.CreateStandard(), Talents = new TalentSlotConfig() };
         legacy.Normalize();
@@ -801,14 +1162,15 @@ internal static class TalentPresentationTests
         using var manager = new RoomManager(4, true, connections, messageCacheSize: 8);
 
         var legacyProtocolEndpoint = new GameEndpoint();
-        legacyProtocolEndpoint.Connect("protocol-v7", 1);
-        legacyProtocolEndpoint.Receive("protocol-v7", 1, MessageSerializer.Serialize("Hello", 0,
-            new HelloMessage { protocolVersion = 7, username = "Legacy" }));
+        legacyProtocolEndpoint.Connect("protocol-v8", 1);
+        legacyProtocolEndpoint.Receive("protocol-v8", 1, MessageSerializer.Serialize("Hello", 0,
+            new HelloMessage { protocolVersion = 8, username = "Legacy" }));
         RoomErrorMessage protocolError = GetLastRoomError(legacyProtocolEndpoint);
-        connections.TryGet("protocol-v7", out ConnectionRegistry.ConnectionRecord legacyRecord);
+        connections.TryGet("protocol-v8", out ConnectionRegistry.ConnectionRecord legacyRecord);
         runner.Check(protocolError.code == NetworkErrorCodes.ProtocolMismatch
+            && protocolError.message.Contains("version 9", StringComparison.Ordinal)
             && legacyRecord != null && !legacyRecord.IsAuthenticated,
-            "protocol v7 fails during Hello before room admission");
+            "protocol v8 fails during Hello before room admission");
 
         GameEndpoint host = ConnectAuthenticated("preset-host", "Host");
 

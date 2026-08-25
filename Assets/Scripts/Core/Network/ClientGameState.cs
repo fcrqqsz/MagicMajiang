@@ -78,6 +78,25 @@ namespace MahjongGame.Core.Network
             return true;
         }
 
+        /// <summary>Projects the latest public room seat directory into the live game snapshot.</summary>
+        public void ApplyRoomSeats(RoomSeatMessage[] seats)
+        {
+            var next = CloneSnapshot(_snapshot) ?? CreateEmptySnapshot();
+            RoomSeatMessage[] sources = seats ?? Array.Empty<RoomSeatMessage>();
+            for (int seatIndex = 0; seatIndex < 4; seatIndex++)
+            {
+                RoomSeatMessage source = sources.FirstOrDefault(seat =>
+                    seat != null && seat.seatIndex == seatIndex);
+                RoomSnapshotSeat target = GetSeat(next, seatIndex);
+                target.isOccupied = source?.isOccupied ?? false;
+                target.isAi = source?.isAi ?? false;
+                target.isOnline = source?.isOnline ?? false;
+                target.controller = source?.controlState;
+                target.displayName = source?.displayName;
+            }
+            _snapshot = next;
+        }
+
         public bool ApplySnapshot(RoomGameSnapshot snapshot, int baselineSequence)
         {
             if (snapshot == null || baselineSequence < 0) return false;
@@ -142,7 +161,23 @@ namespace MahjongGame.Core.Network
                 {
                     var message = MessageSerializer.DeserializePayload<GameStartMessage>(envelope.data);
                     if (message == null) return;
-                    EnsurePrivateSeat(snapshot).concealedHand = CloneTiles(message.tiles);
+                    SnapshotPrivateSeat privateSeat = EnsurePrivateSeat(snapshot);
+                    privateSeat.concealedHand = CloneTiles(message.tiles);
+                    privateSeat.melds = Array.Empty<SnapshotMeld>();
+                    privateSeat.peekWallTiles = Array.Empty<SimpleTileData>();
+                    privateSeat.privateTileReveal = null;
+                    foreach (RoomSnapshotSeat seat in snapshot.seats ?? Array.Empty<RoomSnapshotSeat>())
+                    {
+                        if (seat == null) continue;
+                        seat.publicMelds = Array.Empty<SnapshotMeld>();
+                        seat.concealedTileCount = seat.seatIndex == snapshot.requestingSeatIndex
+                            ? privateSeat.concealedHand.Length
+                            : 13;
+                    }
+                    snapshot.rivers = CreateEmptyRivers();
+                    snapshot.activeDecision = null;
+                    snapshot.mainTurnDrawnTile = null;
+                    snapshot.result = null;
                     return;
                 }
                 case "TalentInfo":
@@ -285,7 +320,7 @@ namespace MahjongGame.Core.Network
                     EnsureRivers(snapshot);
                     var river = GetRiver(snapshot, message.playerId);
                     river.tiles = (river.tiles ?? Array.Empty<SimpleTileData>())
-                        .Append(CloneTile(message.tile)).Where(tile => tile != null).ToArray();
+                        .Append(ClonePublicTile(message.tile)).Where(tile => tile != null).ToArray();
                     snapshot.mainTurnDrawnTile = null;
                     var seat = GetSeat(snapshot, message.playerId);
                     if (seat != null && seat.concealedTileCount > 0) seat.concealedTileCount--;
@@ -438,7 +473,7 @@ namespace MahjongGame.Core.Network
                 sourceSeatIndex = -1,
                 isConcealed = actionType == ClientActionType.AnGan,
                 tileCount = GetMeldTileCount(actionType),
-                tiles = BuildResolvedMeldTiles(message)
+                tiles = BuildResolvedMeldTiles(message, includeOwnerPrivateState: false)
             };
             seat.publicMelds = AddOrUpgradeMeld(seat.publicMelds, meld, actionType, message.tile);
             int consumedTileCount = GetConsumedHandTileCount(actionType);
@@ -446,7 +481,12 @@ namespace MahjongGame.Core.Network
 
             if (message.playerId != snapshot.requestingSeatIndex) return;
             var privateSeat = EnsurePrivateSeat(snapshot);
-            if (actionType == ClientActionType.Chi && message.chiCombinations?.Length == 2)
+            if (message.meldTiles?.Any(tile => !string.IsNullOrWhiteSpace(tile?.instanceId)) == true)
+            {
+                foreach (SimpleTileData tile in message.meldTiles)
+                    RemovePrivateTiles(privateSeat, tile, 1);
+            }
+            else if (actionType == ClientActionType.Chi && message.chiCombinations?.Length == 2)
             {
                 RemovePrivateTiles(privateSeat, new SimpleTileData
                 {
@@ -467,7 +507,15 @@ namespace MahjongGame.Core.Network
             {
                 RemovePrivateTiles(privateSeat, message.tile, consumedTileCount);
             }
-            privateSeat.melds = AddOrUpgradeMeld(privateSeat.melds, meld, actionType, message.tile);
+            var privateMeld = new SnapshotMeld
+            {
+                meldType = meld.meldType,
+                sourceSeatIndex = meld.sourceSeatIndex,
+                isConcealed = meld.isConcealed,
+                tileCount = meld.tileCount,
+                tiles = BuildResolvedMeldTiles(message, includeOwnerPrivateState: true)
+            };
+            privateSeat.melds = AddOrUpgradeMeld(privateSeat.melds, privateMeld, actionType, message.tile);
         }
 
         private static SnapshotMeld[] AddOrUpgradeMeld(SnapshotMeld[] melds, SnapshotMeld meld, ClientActionType actionType, SimpleTileData targetTile)
@@ -475,10 +523,15 @@ namespace MahjongGame.Core.Network
             var next = CloneMelds(melds);
             if (actionType == ClientActionType.JiaGang)
             {
+                bool hasExactMeldIdentity = meld?.tiles?.Any(tile =>
+                    !string.IsNullOrWhiteSpace(tile?.instanceId)) == true;
                 var matchingPon = next.FirstOrDefault(existing => existing != null
                     && existing.meldType == (int)MeldType.Pon
                     && existing.tiles != null
-                    && existing.tiles.Any(tile => SameTile(tile, targetTile)));
+                    && (hasExactMeldIdentity
+                        ? existing.tiles.Any(existingTile => meld.tiles.Any(
+                            committedTile => SamePhysicalTile(existingTile, committedTile)))
+                        : existing.tiles.Any(tile => SameTile(tile, targetTile))));
                 if (matchingPon != null)
                 {
                     matchingPon.meldType = (int)MeldType.Kan_Added;
@@ -551,8 +604,19 @@ namespace MahjongGame.Core.Network
             return actionType == ClientActionType.Chi || actionType == ClientActionType.Pon ? 3 : 4;
         }
 
-        private static SimpleTileData[] BuildResolvedMeldTiles(ActionResolvedMessage message)
+        private static SimpleTileData[] BuildResolvedMeldTiles(
+            ActionResolvedMessage message,
+            bool includeOwnerPrivateState)
         {
+            if (message.meldTiles?.Length > 0)
+            {
+                return message.meldTiles
+                    .Select(tile => includeOwnerPrivateState
+                        ? CloneTile(tile)
+                        : ClonePublicTile(tile))
+                    .Where(tile => tile != null)
+                    .ToArray();
+            }
             var actionType = (ClientActionType)message.actionType;
             if (actionType == ClientActionType.Chi && message.chiCombinations?.Length == 2 && message.tile != null)
             {
@@ -663,15 +727,36 @@ namespace MahjongGame.Core.Network
 
         private static bool SameTile(SimpleTileData left, SimpleTileData right)
         {
-            return left != null && right != null && left.suit == right.suit && left.value == right.value;
+            if (left == null || right == null) return false;
+            if (!string.IsNullOrWhiteSpace(left.instanceId)
+                && !string.IsNullOrWhiteSpace(right.instanceId))
+                return string.Equals(left.instanceId, right.instanceId, StringComparison.Ordinal);
+            return left.suit == right.suit && left.value == right.value;
         }
+
+        private static bool SamePhysicalTile(SimpleTileData left, SimpleTileData right) =>
+            left != null
+            && right != null
+            && !string.IsNullOrWhiteSpace(left.instanceId)
+            && string.Equals(left.instanceId, right.instanceId, StringComparison.Ordinal);
 
         private static int[] CloneInts(int[] values) => values?.ToArray() ?? Array.Empty<int>();
         private static SimpleTileData CloneTile(SimpleTileData tile) => tile == null ? null : new SimpleTileData
         {
+            instanceId = tile.instanceId,
             suit = tile.suit,
             value = tile.value,
             ownerId = tile.ownerId,
+            isModified = tile.isModified,
+            isValid = tile.isValid
+        };
+        private static SimpleTileData ClonePublicTile(SimpleTileData tile) => tile == null ? null : new SimpleTileData
+        {
+            suit = tile.suit,
+            value = tile.value,
+            ownerId = tile.ownerId,
+            isModified = false,
+            instanceId = null,
             isValid = tile.isValid
         };
         private static SimpleTileData[] CloneTiles(SimpleTileData[] tiles) => (tiles ?? Array.Empty<SimpleTileData>()).Select(CloneTile).ToArray();
@@ -708,7 +793,10 @@ namespace MahjongGame.Core.Network
             return river == null ? null : new SeatRiverSnapshot
             {
                 seatIndex = river.seatIndex,
-                tiles = CloneTiles(river.tiles)
+                tiles = (river.tiles ?? Array.Empty<SimpleTileData>())
+                    .Select(ClonePublicTile)
+                    .Where(tile => tile != null)
+                    .ToArray()
             };
         }
 
@@ -724,7 +812,7 @@ namespace MahjongGame.Core.Network
                 controller = seat.controller,
                 displayName = seat.displayName,
                 concealedTileCount = seat.concealedTileCount,
-                publicMelds = CloneMelds(seat.publicMelds)
+                publicMelds = ClonePublicMelds(seat.publicMelds)
             };
         }
 
@@ -766,7 +854,8 @@ namespace MahjongGame.Core.Network
             {
                 talentId = talent.talentId,
                 isActive = talent.isActive,
-                privateValue = talent.privateValue
+                privateValue = talent.privateValue,
+                privateStatusKey = talent.privateStatusKey
             }).ToArray();
 
         private static SnapshotTalentActionOption[] CloneTalentActionOptions(SnapshotTalentActionOption[] options) =>
@@ -827,6 +916,21 @@ namespace MahjongGame.Core.Network
             }).ToArray();
         }
 
+        private static SnapshotMeld[] ClonePublicMelds(SnapshotMeld[] melds)
+        {
+            return (melds ?? Array.Empty<SnapshotMeld>()).Select(meld => meld == null ? null : new SnapshotMeld
+            {
+                meldType = meld.meldType,
+                sourceSeatIndex = meld.sourceSeatIndex,
+                isConcealed = meld.isConcealed,
+                tileCount = meld.tileCount,
+                tiles = (meld.tiles ?? Array.Empty<SimpleTileData>())
+                    .Select(ClonePublicTile)
+                    .Where(tile => tile != null)
+                    .ToArray()
+            }).ToArray();
+        }
+
         private static SnapshotDecision CloneDecision(SnapshotDecision decision)
         {
             if (decision == null) return null;
@@ -836,7 +940,7 @@ namespace MahjongGame.Core.Network
                 phase = decision.phase,
                 actingSeatIndex = decision.actingSeatIndex,
                 discardingSeatIndex = decision.discardingSeatIndex,
-                targetTile = CloneTile(decision.targetTile),
+                targetTile = ClonePublicTile(decision.targetTile),
                 eligibleSeats = CloneInts(decision.eligibleSeats),
                 submittedSeats = CloneInts(decision.submittedSeats),
                 controllerSeatIndex = decision.controllerSeatIndex,

@@ -58,6 +58,19 @@
     flex-direction: column;
 }
 
+.talent-player-name {
+    display: none;
+    max-width: 160px;
+    margin-bottom: 3px;
+    padding-left: 7px;
+    padding-right: 7px;
+    color: #E8E1CB;
+    font-size: 14px;
+    -unity-font-style: bold;
+    -unity-text-align: middle-center;
+    -unity-font-definition: url('project://database/Assets/Font/MSYH_UITK.asset');
+}
+
 .talent-more-button {
     min-width: 42px;
     height: 28px;

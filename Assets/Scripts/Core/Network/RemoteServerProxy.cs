@@ -68,7 +68,9 @@ namespace MahjongGame.Core.Network
             {
                 decisionId = _activeDecisionId,
                 actionType = (int)action.ActionType,
-                targetTile = action.TargetTile != null ? new SimpleTileData(action.TargetTile) : null,
+                targetTile = action.TargetTile != null
+                    ? new SimpleTileData(action.TargetTile) { instanceId = action.TargetTile.ID }
+                    : null,
                 chiCombinations = action.ChiCombinations,
                 totalFan = action.TotalFan,
                 fanDetails = action.FanDetails?.ToArray()
@@ -119,6 +121,7 @@ namespace MahjongGame.Core.Network
                 case "GameStart":
                     var startMsg = MessageSerializer.DeserializePayload<GameStartMessage>(envelope.data);
                     _localClient.OnGameStart(startMsg.tiles.Select(t => t.ToTileData()).ToList());
+                    GameHUDController.Instance?.RefreshTalentHudStatus();
                     break;
                 case "PeekWall":
                     var peekMsg = MessageSerializer.DeserializePayload<PeekWallMessage>(envelope.data);
@@ -155,6 +158,7 @@ namespace MahjongGame.Core.Network
                     _localClient.OnTileDrawn(
                         drawnMsg.tile?.ToTileData(),
                         drawnMsg.decision?.isKongReplacementDraw ?? false);
+                    GameHUDController.Instance?.RefreshTalentHudStatus();
                     break;
                 case "PlayerDrew":
                     var pDrewMsg = MessageSerializer.DeserializePayload<PlayerDrewMessage>(envelope.data);
@@ -187,7 +191,21 @@ namespace MahjongGame.Core.Network
                 case "ActionResolved":
                     var resolvedMsg = MessageSerializer.DeserializePayload<ActionResolvedMessage>(envelope.data);
                     ClearTalentActionsPresentation();
-                    _localClient.OnActionResolved(resolvedMsg.playerId, (ClientActionType)resolvedMsg.actionType, resolvedMsg.tile?.ToTileData(), resolvedMsg.chiCombinations);
+                    var resolvedMeldTiles = (resolvedMsg.meldTiles ?? System.Array.Empty<SimpleTileData>())
+                        .Select(tile => tile?.ToTileData())
+                        .Where(tile => tile != null)
+                        .ToArray();
+                    if (_localClient is Agents.IResolvedMeldPlayerClient resolvedClient)
+                        resolvedClient.OnActionResolved(resolvedMsg.playerId,
+                            (ClientActionType)resolvedMsg.actionType,
+                            resolvedMsg.tile?.ToTileData(),
+                            resolvedMsg.chiCombinations,
+                            resolvedMeldTiles);
+                    else
+                        _localClient.OnActionResolved(resolvedMsg.playerId,
+                            (ClientActionType)resolvedMsg.actionType,
+                            resolvedMsg.tile?.ToTileData(),
+                            resolvedMsg.chiCombinations);
                     break;
                 case "Timeout":
                     var timeoutMsg = MessageSerializer.DeserializePayload<TimeoutMessage>(envelope.data);

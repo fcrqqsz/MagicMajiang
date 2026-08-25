@@ -73,6 +73,14 @@ namespace MahjongGame.Talents.Impl
             return matched ? 3 : 0;
         }
 
+        public override string GetSnapshotPrivateStatusKey(TalentRuntimeState state)
+        {
+            if (!state.GetFlag(ChosenKey, TalentStateScope.Round)) return null;
+            return state.GetCounter(ModeKey, TalentStateScope.Round) == SelfDrawMode
+                ? "self_draw"
+                : "ron";
+        }
+
         private static bool TryParseMode(string choiceId, out int mode)
         {
             switch (choiceId)

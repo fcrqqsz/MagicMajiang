@@ -72,7 +72,7 @@ WebSocketClient
   -> Hand / River / HUD / Result presentation
 ```
 
-协议版本为 v8，携带构筑 schema 为 v3。username 目前仅作为开发期身份桥接，经 `IAccountAuthenticator` 规范化为稳定 `playerId`；它不是正式鉴权。`Room` 锁定四席构筑后重建并验证 Low 40 / Standard 80 / High 120 异化值预算，公开消息只携带档位而非其他玩家精确总值。主动天赋、基础动作和备牌提交都使用权威 `decisionId`；类型化天赋选择集合仅进入本家私有快照，客户端只回传所选 `choiceId`，runtime 在执行前重新生成授权集合。半庄/全庄第 4 小局后恰好开放一次备牌阶段。断线时物理 endpoint 与逻辑席位分离，席位可进入 `OfflineReserved` / `AiControlled`，并只在安全决策边界切换控制者。重连使用 `{roomId, streamId}` 和已认证身份定位席位，当前始终请求完整权威快照；Dedicated Server 重启不恢复房间。
+协议版本为 v9，携带构筑 schema 为 v3。本家私有牌投影携带不透明实体 ID 与异化标记，公共牌河和副露会清洗这些字段。username 目前仅作为开发期身份桥接，经 `IAccountAuthenticator` 规范化为稳定 `playerId`；它不是正式鉴权。`Room` 锁定四席构筑后重建并验证 Low 40 / Standard 80 / High 120 异化值预算，公开消息只携带档位而非其他玩家精确总值。主动天赋、基础动作和备牌提交都使用权威 `decisionId`；类型化天赋选择集合仅进入本家私有快照，客户端只回传所选 `choiceId`，runtime 在执行前重新生成授权集合。半庄/全庄第 4 小局后恰好开放一次备牌阶段。断线时物理 endpoint 与逻辑席位分离，席位可进入 `OfflineReserved` / `AiControlled`，并只在安全决策边界切换控制者。重连使用 `{roomId, streamId}` 和已认证身份定位席位，当前始终请求完整权威快照；Dedicated Server 重启不恢复房间。
 *   **表现层控制器 (MonoBehaviour)**:
     *   `HandController.cs`: 管理 3D 手牌生成、布局、DoTween 动画及交互。含 `ForceRemoveTile()` 超时出牌专用方法。
     *   `RiverController.cs`: 管理牌河的 3D 排布。

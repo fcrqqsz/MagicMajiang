@@ -35,6 +35,9 @@ namespace MahjongGame.Talents.Impl
         public override int GetPostLegalFanBonus(TalentWinContext context) =>
             context.State.GetFlag(TriggeredKey, TalentStateScope.Round) ? 3 : 0;
 
+        public override int GetSnapshotPrivateValue(TalentRuntimeState state) =>
+            System.Math.Min(3, state.GetCounter(QualifyingDiscardCountKey, TalentStateScope.Round));
+
         private static bool IsQualifying(TalentTileFacts tile)
         {
             if (tile == null) return false;

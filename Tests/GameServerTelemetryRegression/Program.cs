@@ -18,6 +18,8 @@ await RealGameServerMarksAndScoresEveryCommittedKongReplacementDraw(failures);
 await RealGameServerAutoTimeoutDiscardModifiedTileChargesFadingColor(failures);
 await RealGameServerRobKongDoesNotChargeGatherMomentumUntilKongActuallyResolves(failures);
 await RealGameServerRefreshesIndependentHuThresholdAfterCommittedMelds(failures);
+await RealGameServerBroadcastsExactNewChiMeld(failures);
+await RealGameServerAdvancesFirstDecisionChoicesAndKeepsInsightAvailable(failures);
 await RealGameServerExecutesPiercingInsightAndDeliversPrivateReveal(failures);
 await RealGameServerMisdirectionTransformsAutomaticDiscardBeforePublicResponse(failures);
 JsonLineSinkWritesEscapedCompactUtf8Records(failures);
@@ -650,6 +652,16 @@ static async Task RealGameServerExecutesPiercingInsightAndDeliversPrivateReveal(
     Check(decisionId > 0 && server.ActiveDecision.ActingSeatIndex == 0,
         "real GameServer opens active main turn decision for seat 0", failures);
 
+    IReadOnlyList<TalentActionOption> availableActions =
+        server.GetAvailableTalentActionsSnapshot(0);
+    Check(availableActions.Count(option => option.TalentId == "piercing_insight") == 3
+          && availableActions.Where(option => option.TalentId == "piercing_insight")
+              .Select(option => option.TargetSeatIndex)
+              .OrderBy(index => index)
+              .SequenceEqual(new[] { 1, 2, 3 }),
+        "real GameServer exposes piercing_insight with every legal opponent target during the owner's main turn",
+        failures);
+
     var gameState = (ServerGameState)typeof(GameServer)
         .GetField("_gameState", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
         .GetValue(server);
@@ -695,6 +707,142 @@ static async Task RealGameServerExecutesPiercingInsightAndDeliversPrivateReveal(
         "an unrelated accepted talent action does not resend the previous private reveal", failures);
 
     server.StopGame();
+}
+
+static async Task RealGameServerAdvancesFirstDecisionChoicesAndKeepsInsightAvailable(
+    List<string> failures)
+{
+    var loadouts = Enumerable.Range(0, 4)
+        .ToDictionary(index => index, _ => new TalentSlotConfig());
+    loadouts[0].SlotTalentIds[0] = "piercing_insight";
+    loadouts[0].SlotTalentIds[1] = "prepare_for_risk";
+    loadouts[0].SlotTalentIds[3] = "foretell_outcome";
+    var runtime = new TalentMatchRuntime(loadouts, TalentRegistry.Instance);
+    var session = new GameSession(GameMode.Single);
+    runtime.BeginMatch(session);
+
+    GameServer server = null;
+    var clients = Enumerable.Range(0, 4)
+        .Select(index => (IPlayerClient)new InsightTestClient(index, () => server, _ => { }))
+        .ToList();
+    server = new GameServer(
+        new ScriptedDrawWallService(KongFixtures.Tile(Suit.Man, 9, 0)),
+        runtime,
+        new GameServerOptions
+        {
+            ActionTimeoutMs = 2000,
+            ResponseTimeoutMs = 1000,
+            UseDebugHand = true,
+            DebugHand = Enumerable.Range(0, 13)
+                .Select(_ => KongFixtures.Tile(Suit.Pin, 1, 0))
+                .ToList()
+        });
+    server.StartGame(
+        clients,
+        Enumerable.Range(0, 4).Select(_ => DeckConfig.CreateStandard()).ToList(),
+        session);
+    await Task.Delay(50);
+
+    long decisionId = server.ActiveDecision?.DecisionId ?? 0;
+    IReadOnlyList<TalentActionOption> initial = server.GetAvailableTalentActionsSnapshot(0);
+    bool prepareAccepted = server.SubmitNetworkTalentAction(0, new TalentActionMessage
+    {
+        decisionId = decisionId,
+        talentId = "prepare_for_risk",
+        targetSeatIndex = -1,
+        targetTalentId = "",
+        selectedChoiceId = "self_draw"
+    }, out TalentActionResult prepareResult);
+    IReadOnlyList<TalentActionOption> afterPrepare = server.GetAvailableTalentActionsSnapshot(0);
+    string prepareStatus = runtime.GetSnapshotEntries()
+        .Single(entry => entry.OwnerSeatIndex == 0 && entry.TalentId == "prepare_for_risk")
+        .PrivateStatusKey;
+
+    bool foretellAccepted = server.SubmitNetworkTalentAction(0, new TalentActionMessage
+    {
+        decisionId = decisionId,
+        talentId = "foretell_outcome",
+        targetSeatIndex = -1,
+        targetTalentId = "",
+        selectedChoiceId = "ron"
+    }, out TalentActionResult foretellResult);
+    IReadOnlyList<TalentActionOption> afterForetell = server.GetAvailableTalentActionsSnapshot(0);
+    string foretellStatus = runtime.GetSnapshotEntries()
+        .Single(entry => entry.OwnerSeatIndex == 0 && entry.TalentId == "foretell_outcome")
+        .PrivateStatusKey;
+    server.StopGame();
+
+    Check(initial.Count(option => option.TalentId == "prepare_for_risk") == 1
+          && initial.Count(option => option.TalentId == "foretell_outcome") == 1
+          && initial.Count(option => option.TalentId == "piercing_insight") == 3,
+        "first main decision exposes both queued choices and the independent piercing insight targets",
+        failures);
+    Check(prepareAccepted && prepareResult.Accepted
+          && prepareStatus == "protect_self_draw"
+          && afterPrepare.All(option => option.TalentId != "prepare_for_risk")
+          && afterPrepare.Count(option => option.TalentId == "foretell_outcome") == 1,
+        "accepted prepare_for_risk records chip status and advances to foretell_outcome",
+        failures);
+    Check(foretellAccepted && foretellResult.Accepted
+          && foretellStatus == "ron"
+          && afterForetell.All(option => option.TalentId != "foretell_outcome")
+          && afterForetell.Count(option => option.TalentId == "piercing_insight") == 3,
+        "accepted foretell_outcome records chip status while piercing insight remains independently available",
+        failures);
+}
+
+static async Task RealGameServerBroadcastsExactNewChiMeld(List<string> failures)
+{
+    var loadouts = Enumerable.Range(0, 4)
+        .ToDictionary(index => index, _ => new TalentSlotConfig());
+    var runtime = new TalentMatchRuntime(loadouts, TalentRegistry.Instance);
+    var session = new GameSession(GameMode.Single);
+    runtime.BeginMatch(session);
+
+    var flow = new ExactChiFlow();
+    GameServer server = null;
+    Func<GameServer> serverProvider = () => server;
+    var clients = Enumerable.Range(0, 4)
+        .Select(index => (IPlayerClient)new ExactChiClient(index, serverProvider, flow))
+        .ToList();
+    server = new GameServer(
+        new ScriptedDrawWallService(KongFixtures.Tile(Suit.Man, 9, 0)),
+        runtime,
+        new GameServerOptions
+        {
+            ActionTimeoutMs = 1000,
+            ResponseTimeoutMs = 1000,
+            UseDebugHand = true,
+            DebugHand = Enumerable.Range(0, 13)
+                .Select(_ => KongFixtures.Tile(Suit.Sou, 1, 0))
+                .ToList()
+        });
+
+    server.StartGame(
+        clients,
+        Enumerable.Range(0, 4).Select(_ => DeckConfig.CreateStandard()).ToList(),
+        session);
+
+    IReadOnlyList<TileData> resolvedMeld =
+        await flow.ResolvedMeld.Task.WaitAsync(TimeSpan.FromSeconds(5));
+    ServerGameState state = (ServerGameState)typeof(GameServer)
+        .GetField("_gameState", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+        .GetValue(server);
+    List<TileData> remainingHand = state.GetHand(1);
+    server.StopGame();
+
+    string[] resolvedIds = resolvedMeld.Select(tile => tile.ID).OrderBy(id => id).ToArray();
+    string[] expectedIds = new[] { flow.DiscardedFour.ID, flow.HandTwo.ID, flow.HandThree.ID }
+        .OrderBy(id => id)
+        .ToArray();
+    Check(resolvedMeld.Select(tile => tile.Value).OrderBy(value => value)
+              .SequenceEqual(new[] { 2, 3, 4 })
+          && resolvedIds.SequenceEqual(expectedIds),
+        "real GameServer broadcasts the exact newly committed 234 chi instead of an older 456 meld sharing target 4",
+        failures);
+    Check(remainingHand.All(tile => tile.ID != flow.HandTwo.ID && tile.ID != flow.HandThree.ID),
+        "real GameServer removes the two consumed physical hand tiles when the 234 chi commits",
+        failures);
 }
 
 sealed class DeterministicWallService : IWallService
@@ -1286,4 +1434,102 @@ sealed class InsightTestClient : IPlayerClient
     public void OnTalentInfo(ScoringOptions scoringOptions) { }
     public void OnPeekWallTiles(List<TileData> topTiles) { }
     public void OnPrivateTileReveal(TalentPrivateTileReveal reveal) => _revealCallback?.Invoke(reveal);
+}
+
+sealed class ExactChiFlow
+{
+    public TileData DiscardedFour { get; } = new(Suit.Pin, 4, 0);
+    public TileData OldClaimedFour { get; } = new(Suit.Pin, 4, 0);
+    public TileData OldHandFive { get; } = new(Suit.Pin, 5, 1);
+    public TileData OldHandSix { get; } = new(Suit.Pin, 6, 1);
+    public TileData HandTwo { get; } = new(Suit.Pin, 2, 1);
+    public TileData HandThree { get; } = new(Suit.Pin, 3, 1);
+    public TaskCompletionSource<IReadOnlyList<TileData>> ResolvedMeld { get; } =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
+}
+
+sealed class ExactChiClient : IPlayerClient, IResolvedMeldPlayerClient
+{
+    private readonly Func<GameServer> _serverProvider;
+    private readonly ExactChiFlow _flow;
+
+    public ExactChiClient(int playerId, Func<GameServer> serverProvider, ExactChiFlow flow)
+    {
+        PlayerId = playerId;
+        _serverProvider = serverProvider;
+        _flow = flow;
+    }
+
+    public int PlayerId { get; }
+    public CancellationToken TurnCancellationToken { get; set; }
+
+    public void OnGameStart(List<TileData> startingHand) { }
+
+    public void OnTileDrawn(TileData drawnTile, bool isKongReplacementDraw)
+    {
+        if (PlayerId != 0) return;
+
+        GameServer server = _serverProvider();
+        ServerGameState state = (ServerGameState)typeof(GameServer)
+            .GetField("_gameState", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+            .GetValue(server);
+        state.InitHand(0, new List<TileData> { _flow.DiscardedFour });
+        state.InitHand(1, new List<TileData>
+        {
+            _flow.OldHandFive,
+            _flow.OldHandSix,
+            _flow.HandTwo,
+            _flow.HandThree
+        });
+        state.ApplyMeld(
+            1,
+            ClientActionType.Chi,
+            _flow.OldClaimedFour,
+            new[] { 5, 6 });
+
+        NetworkDecisionContext decision = server.ActiveDecision;
+        server.SubmitNetworkAction(
+            0,
+            decision.DecisionId,
+            ClientAction.Discard(0, _flow.DiscardedFour),
+            out _);
+    }
+
+    public void OnOtherPlayerDiscarded(int playerId, TileData discardedTile)
+    {
+        if (PlayerId == playerId) return;
+        GameServer server = _serverProvider();
+        NetworkDecisionContext decision = server.ActiveDecision;
+        ClientAction response = PlayerId == 1
+            ? new ClientAction(1, ClientActionType.Chi, discardedTile, new[] { 2, 3 })
+            : ClientAction.Skip(PlayerId);
+        server.SubmitNetworkAction(PlayerId, decision.DecisionId, response, out _);
+    }
+
+    public void OnActionResolved(
+        int playerId,
+        ClientActionType actionType,
+        TileData targetTile,
+        int[] chiCombinations,
+        IReadOnlyList<TileData> resolvedMeldTiles)
+    {
+        if (playerId == 1 && actionType == ClientActionType.Chi)
+            _flow.ResolvedMeld.TrySetResult(resolvedMeldTiles.ToArray());
+    }
+
+    public void OnPlayerDrawn(int playerId) { }
+    public void OnTurnWithoutDraw() { }
+    public void OnWallCountChanged(int remainingCount) { }
+    public void OnAddedKongDeclared(int playerId, TileData targetTile) { }
+    public void OnActionResolved(int playerId, ClientActionType actionType, TileData targetTile, int[] chiCombinations = null) { }
+    public void OnDrawGame() { }
+    public void OnPlayerWin(int playerId, int totalFan, List<string> fanDetails, bool isSelfDraw,
+        WinKind winKind, int loserId, WinningHandSnapshot winningHand,
+        TalentFanBreakdownMessage talentFanBreakdown) { }
+    public void OnRoundStart(int roundNumber, WindDirection prevalentWind, WindDirection seatWind, int dealerIndex) { }
+    public void OnSessionEnd(int[] finalScores) { }
+    public void OnTimeout(TileData autoDiscardedTile) { }
+    public void OnTalentInfo(ScoringOptions scoringOptions) { }
+    public void OnPeekWallTiles(List<TileData> topTiles) { }
+    public void OnPrivateTileReveal(TalentPrivateTileReveal reveal) { }
 }

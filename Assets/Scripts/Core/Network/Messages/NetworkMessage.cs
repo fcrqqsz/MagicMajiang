@@ -327,9 +327,13 @@ namespace MahjongGame.Core.Network.Messages
     [Serializable]
     public class SimpleTileData
     {
+        // Opaque physical identity, present only in owner-private projections
+        // and that owner's action requests.
+        public string instanceId;
         public int suit;
         public int value;
         public int ownerId;
+        public bool isModified;
         public bool isValid;
 
         public SimpleTileData() 
@@ -337,7 +341,11 @@ namespace MahjongGame.Core.Network.Messages
             isValid = false;
         }
 
-        public SimpleTileData(TileData tile)
+        public SimpleTileData(TileData tile) : this(tile, false)
+        {
+        }
+
+        public SimpleTileData(TileData tile, bool includeOwnerPrivateState)
         {
             if (tile == null)
             {
@@ -347,13 +355,20 @@ namespace MahjongGame.Core.Network.Messages
             suit = (int)tile.TileSuit;
             value = tile.Value;
             ownerId = tile.OriginalOwnerID;
+            instanceId = includeOwnerPrivateState ? tile.ID : null;
+            isModified = includeOwnerPrivateState && tile.IsModified;
             isValid = true;
         }
 
         public TileData ToTileData()
         {
             if (!isValid) return null;
-            return new TileData((Suit)suit, value, ownerId);
+            var tile = new TileData((Suit)suit, value, ownerId)
+            {
+                ID = instanceId,
+                IsModified = isModified
+            };
+            return tile;
         }
     }
 
@@ -408,6 +423,7 @@ namespace MahjongGame.Core.Network.Messages
         public int actionType; // ClientActionType
         public SimpleTileData tile;
         public int[] chiCombinations;
+        public SimpleTileData[] meldTiles;
     }
 
     [Serializable]

@@ -10,9 +10,11 @@ internal static class SnapshotReconnectTests
     public static void Run(RegressionRunner runner)
     {
         TestAuthoritativeTableState(runner);
+        TestPhysicalTileIdentityAndMeldPreservation(runner);
         TestAddedKongPublicCommitUsesAuthoritativeTile(runner);
         TestDecisionTracker(runner);
         TestSnapshotPrivacyAndSerialization(runner);
+        TestAlienatedTileProjectionPrivacy(runner);
         TestAuthoritativeTalentSnapshotFiltering(runner);
         TestRuntimeSnapshotProjectionUsesRuleApprovedPrivateValues(runner);
         TestTalentRecoveryPresentationUsesOnlyAuthoritativeMainDecision(runner);
@@ -27,6 +29,7 @@ internal static class SnapshotReconnectTests
         TestCompletedEastOnlyProjection(runner);
         TestCompletedSessionRoundProgressRecovery(runner);
         TestClientProjection(runner);
+        TestGameStartClearsPreviousRoundProjection(runner);
         TestTalentRuntimeEventProjection(runner);
         TestRemoteWinningHandNotification(runner);
         TestReconnectStream(runner);
@@ -44,6 +47,208 @@ internal static class SnapshotReconnectTests
         TestGatherMomentumCrossRoundAndSideboard(runner);
         TestFadingColorCrossRoundAndSideboard(runner);
         TestRedirectForceRoundScopeAndSideboard(runner);
+    }
+
+    private static void TestPhysicalTileIdentityAndMeldPreservation(RegressionRunner runner)
+    {
+        var ordinary = new TileData(Suit.Man, 5, 0);
+        var alienated = new TileData(Suit.Man, 5, 0)
+        {
+            IsModified = true,
+            SpecialEffectID = "fading_color"
+        };
+        var state = new ServerGameState(4);
+        state.InitHand(0, new List<TileData> { ordinary, alienated });
+
+        var selected = new TileData(Suit.Man, 5, 0) { ID = alienated.ID };
+        state.RemoveTile(0, selected);
+        runner.Check(state.GetHand(0).Count == 1 && state.GetHand(0).Single().ID == ordinary.ID,
+            "authoritative discard removal uses the submitted private physical id when duplicate faces exist");
+
+        var first = new TileData(Suit.Pin, 7, 0) { IsModified = true, SpecialEffectID = "midas_touch" };
+        var second = new TileData(Suit.Pin, 7, 0);
+        var unrelated = new TileData(Suit.Sou, 2, 0);
+        state.InitHand(0, new List<TileData> { first, second, unrelated });
+        var claimedDiscard = new TileData(Suit.Pin, 7, 1);
+        state.ApplyMeld(0, ClientActionType.Pon, claimedDiscard, null);
+
+        Meld meld = state.GetMelds(0).Single();
+        runner.Check(state.GetHand(0).Single().ID == unrelated.ID
+                     && meld.Tiles.Any(tile => tile.ID == first.ID && tile.IsModified
+                                              && tile.SpecialEffectID == "midas_touch")
+                     && meld.Tiles.Any(tile => tile.ID == second.ID && !tile.IsModified)
+                     && meld.Tiles.Any(tile => tile.ID == claimedDiscard.ID),
+            "authoritative melds retain the actual consumed physical tiles instead of cloning the discard face");
+
+        var selectedAddedKong = new TileData(Suit.Sou, 4, 0) { ID = "added-selected" };
+        var otherAddedKong = new TileData(Suit.Sou, 4, 0)
+        {
+            ID = "added-other-modified",
+            IsModified = true,
+            SpecialEffectID = "midas_touch"
+        };
+        state.InitHand(0, new List<TileData>
+        {
+            otherAddedKong,
+            selectedAddedKong,
+            new(Suit.Sou, 4, 0),
+            new(Suit.Sou, 4, 0)
+        });
+        state.ApplyMeld(0, ClientActionType.Pon, new TileData(Suit.Sou, 4, 1), null);
+        bool prepared = state.TryGetAddedKongDeclarationTile(0, selectedAddedKong,
+            out TileData authoritativeAddedKong);
+        TileData publicAddedKong = null;
+        bool addedKongCommitted = prepared
+            && state.TryCommitAddedKong(0, authoritativeAddedKong, out publicAddedKong);
+        Meld addedKong = state.GetMelds(0).Single();
+        runner.Check(addedKongCommitted
+                     && publicAddedKong.ID == selectedAddedKong.ID
+                     && !publicAddedKong.IsModified
+                     && state.GetHand(0).Single().ID == otherAddedKong.ID
+                     && state.GetHand(0).Single().IsModified
+                     && addedKong.Tiles.Any(tile => tile.ID == selectedAddedKong.ID)
+                     && addedKong.Tiles.All(tile => tile.ID != otherAddedKong.ID),
+            "added kong preparation and commit preserve the selected physical id among duplicate faces");
+    }
+
+    private static void TestAlienatedTileProjectionPrivacy(RegressionRunner runner)
+    {
+        var concealed = new TileData(Suit.Man, 3, 0) { IsModified = true };
+        var meldTile = new TileData(Suit.Pin, 6, 0) { IsModified = true };
+        var riverTile = new TileData(Suit.Sou, 9, 0) { IsModified = true };
+        RoomGameSnapshotSource source = CreateEmptySnapshotSource("alienated-privacy", RoomState.InRound);
+        source.Hands[0].Add(concealed);
+        source.Melds[0].Add(new Meld(MeldType.Pon,
+            new List<TileData> { meldTile, new(Suit.Pin, 6, 0), new(Suit.Pin, 6, 1) }, 1));
+        source.Rivers[0].Add(riverTile);
+
+        RoomGameSnapshot owner = RoomGameSnapshotBuilder.Build(source, 0);
+        RoomGameSnapshot opponent = RoomGameSnapshotBuilder.Build(source, 1);
+        SimpleTileData ownerHand = owner.privateSeat.concealedHand.Single();
+        SimpleTileData ownerPrivateMeld = owner.privateSeat.melds.Single().tiles
+            .Single(tile => tile.instanceId == meldTile.ID);
+
+        runner.Check(ownerHand.isModified
+                     && ownerHand.instanceId == concealed.ID
+                     && ownerPrivateMeld.isModified,
+            "the requesting seat receives private physical identity and modification state for its hand and melds");
+        runner.Check(owner.seats[0].publicMelds.Single().tiles.All(tile => !tile.isModified
+                                                                         && string.IsNullOrEmpty(tile.instanceId))
+                     && owner.rivers[0].tiles.All(tile => !tile.isModified
+                                                         && string.IsNullOrEmpty(tile.instanceId))
+                     && opponent.seats[0].publicMelds.Single().tiles.All(tile => !tile.isModified
+                                                                            && string.IsNullOrEmpty(tile.instanceId))
+                     && opponent.rivers[0].tiles.All(tile => !tile.isModified
+                                                            && string.IsNullOrEmpty(tile.instanceId)),
+            "public meld and river projections never expose another physical tile id or alienation marker");
+
+        var ownerEndpoint = new GameEndpoint();
+        var opponentEndpoint = new GameEndpoint();
+        var ownerRemote = new RemotePlayerClient(0, new SeatMessageStream(ownerEndpoint, 4));
+        var opponentRemote = new RemotePlayerClient(1, new SeatMessageStream(opponentEndpoint, 4));
+        var exactMeld = new List<TileData>
+        {
+            new(Suit.Pin, 6, 1),
+            meldTile,
+            new(Suit.Pin, 6, 0)
+        };
+        ownerRemote.OnActionResolved(0, ClientActionType.Pon, exactMeld[0], null, exactMeld);
+        opponentRemote.OnActionResolved(0, ClientActionType.Pon, exactMeld[0], null, exactMeld);
+        ActionResolvedMessage ownerMessage = MessageSerializer.DeserializePayload<ActionResolvedMessage>(
+            MessageSerializer.DeserializeEnvelope(ownerEndpoint.SentMessages.Single()).data);
+        ActionResolvedMessage opponentMessage = MessageSerializer.DeserializePayload<ActionResolvedMessage>(
+            MessageSerializer.DeserializeEnvelope(opponentEndpoint.SentMessages.Single()).data);
+
+        runner.Check(ownerMessage.meldTiles.Any(tile => tile.instanceId == meldTile.ID && tile.isModified)
+                     && opponentMessage.meldTiles.All(tile => string.IsNullOrEmpty(tile.instanceId)
+                                                             && !tile.isModified),
+            "live resolved-meld messages retain exact tile state only on the acting seat's stream");
+
+        var projected = new ClientGameState();
+        projected.ApplySnapshot(new RoomGameSnapshot
+        {
+            requestingSeatIndex = 0,
+            seats = Enumerable.Range(0, 4).Select(index => new RoomSnapshotSeat
+            {
+                seatIndex = index,
+                concealedTileCount = index == 0 ? 2 : 0,
+                publicMelds = Array.Empty<SnapshotMeld>()
+            }).ToArray(),
+            privateSeat = new SnapshotPrivateSeat
+            {
+                seatIndex = 0,
+                concealedHand = new[]
+                {
+                    new SimpleTileData(meldTile, true),
+                    new SimpleTileData(exactMeld[2], true)
+                },
+                melds = Array.Empty<SnapshotMeld>()
+            },
+            rivers = EmptyRivers()
+        }, 0);
+        projected.ApplyEnvelope(new NetworkMessageEnvelope
+        {
+            type = "ActionResolved",
+            seq = 1,
+            data = UnityEngine.JsonUtility.ToJson(ownerMessage)
+        });
+        RoomGameSnapshot projectedSnapshot = projected.Snapshot;
+        runner.Check(projectedSnapshot.privateSeat.concealedHand.Length == 0
+                     && projectedSnapshot.privateSeat.melds.Single().tiles
+                         .Any(tile => tile.instanceId == meldTile.ID && tile.isModified)
+                     && projectedSnapshot.seats[0].publicMelds.Single().tiles
+                         .All(tile => string.IsNullOrEmpty(tile.instanceId) && !tile.isModified),
+            "client projection consumes exact private tile ids while keeping its public meld view sanitized");
+    }
+
+    private static void TestGameStartClearsPreviousRoundProjection(RegressionRunner runner)
+    {
+        var staleMeld = new SnapshotMeld
+        {
+            meldType = (int)MeldType.Pon,
+            tiles = new[] { new SimpleTileData(new TileData(Suit.Man, 1, 0)) }
+        };
+        var state = new ClientGameState();
+        state.ApplySnapshot(new RoomGameSnapshot
+        {
+            requestingSeatIndex = 0,
+            seats = Enumerable.Range(0, 4).Select(index => new RoomSnapshotSeat
+            {
+                seatIndex = index,
+                concealedTileCount = 4,
+                publicMelds = new[] { staleMeld }
+            }).ToArray(),
+            privateSeat = new SnapshotPrivateSeat
+            {
+                seatIndex = 0,
+                concealedHand = new[] { new SimpleTileData(new TileData(Suit.Pin, 1, 0), true) },
+                melds = new[] { staleMeld },
+                peekWallTiles = new[] { new SimpleTileData(new TileData(Suit.Sou, 1, 0), true) }
+            },
+            rivers = Enumerable.Range(0, 4).Select(index => new SeatRiverSnapshot
+            {
+                seatIndex = index,
+                tiles = new[] { new SimpleTileData(new TileData(Suit.Dragon, 1, index)) }
+            }).ToArray(),
+            activeDecision = new SnapshotDecision { decisionId = 7 },
+            mainTurnDrawnTile = new SimpleTileData(new TileData(Suit.Wind, 1, 0), true),
+            result = new RoundResultSnapshot { winnerId = 1 }
+        }, 0);
+
+        var nextHand = new[] { new SimpleTileData(new TileData(Suit.Man, 9, 0), true) };
+        state.ApplyEnvelope(MessageSerializer.DeserializeEnvelope(MessageSerializer.Serialize(
+            "GameStart", 1, new GameStartMessage { tiles = nextHand })));
+        RoomGameSnapshot snapshot = state.Snapshot;
+
+        runner.Check(snapshot.privateSeat.concealedHand.Single().value == 9
+                     && snapshot.privateSeat.melds.Length == 0
+                     && snapshot.privateSeat.peekWallTiles.Length == 0
+                     && snapshot.seats.All(seat => seat.publicMelds.Length == 0)
+                     && snapshot.rivers.All(river => river.tiles.Length == 0)
+                     && snapshot.activeDecision == null
+                     && snapshot.mainTurnDrawnTile == null
+                     && snapshot.result == null,
+            "GameStart atomically removes every round-scoped projection before installing the next hand");
     }
 
     private static void TestCompletedSessionRoundProgressRecovery(RegressionRunner runner)
@@ -128,6 +333,7 @@ internal static class SnapshotReconnectTests
                 IsActive = true,
                 IsRevealed = true,
                 PrivateValue = 2,
+                PrivateStatusKey = "owner-only-mode",
                 LastPublicEventType = "uses_remaining",
                 LastPublicValue = 2
             },
@@ -146,6 +352,7 @@ internal static class SnapshotReconnectTests
                 IsActive = false,
                 IsRevealed = true,
                 PrivateValue = 91,
+                PrivateStatusKey = "opponent-only-mode",
                 LastPublicEventType = "edge",
                 LastPublicValue = 3
             },
@@ -186,6 +393,7 @@ internal static class SnapshotReconnectTests
                      && owner.privateSeat.ownTalents.Length == 2
                      && owner.privateSeat.ownTalents.Single(talent => talent.talentId == "interception").isActive
                      && owner.privateSeat.ownTalents.Single(talent => talent.talentId == "interception").privateValue == 2
+                     && owner.privateSeat.ownTalents.Single(talent => talent.talentId == "interception").privateStatusKey == "owner-only-mode"
                      && owner.privateSeat.availableTalentActions.Single().targetTalentId == "sheathed_edge"
                      && owner.knownTalents.Length == 1
                      && owner.knownTalents[0].ownerSeatIndex == 1
@@ -196,8 +404,10 @@ internal static class SnapshotReconnectTests
                      && knownJson.Contains("\"isActive\":false", StringComparison.Ordinal)
                      && !ownerJson.Contains("\"privateValue\":91", StringComparison.Ordinal)
                      && !ownerJson.Contains("\"privateValue\":77", StringComparison.Ordinal)
+                     && !ownerJson.Contains("opponent-only-mode", StringComparison.Ordinal)
                      && opponent.privateSeat.ownTalents.Single().talentId == "sheathed_edge"
-                     && opponent.privateSeat.ownTalents.Single().privateValue == 91,
+                     && opponent.privateSeat.ownTalents.Single().privateValue == 91
+                     && opponent.privateSeat.ownTalents.Single().privateStatusKey == "opponent-only-mode",
             "talent snapshots serialize public activity without picker drafts, hidden talents, or opponent private values");
     }
 
@@ -1132,7 +1342,7 @@ internal static class SnapshotReconnectTests
         ServerGameState robbedState = BuildAddedKongState(target, out TileData robbedAuthoritativeTile);
         bool robbedCommitted = robbedState.TryResolveAddedKong(
             0,
-            target,
+            robbedAuthoritativeTile,
             wasRobbed: true,
             out TileData robbedPublicTile);
         Meld robbedMeld = robbedState.GetMelds(0).Single();
@@ -1145,7 +1355,7 @@ internal static class SnapshotReconnectTests
         ServerGameState committedState = BuildAddedKongState(target, out TileData committedAuthoritativeTile);
         bool committed = committedState.TryResolveAddedKong(
             0,
-            target,
+            committedAuthoritativeTile,
             wasRobbed: false,
             out TileData committedPublicTile);
         Meld committedMeld = committedState.GetMelds(0).Single();
@@ -1786,6 +1996,7 @@ internal static class SnapshotReconnectTests
                 IsActive = entry.IsActive,
                 IsRevealed = entry.IsRevealed,
                 PrivateValue = entry.PrivateValue,
+                PrivateStatusKey = entry.PrivateStatusKey,
                 LastPublicEventType = entry.LastPublicEventType,
                 LastPublicValue = entry.LastPublicValue
             })

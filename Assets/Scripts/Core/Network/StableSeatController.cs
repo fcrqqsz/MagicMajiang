@@ -12,7 +12,7 @@ namespace MahjongGame.Core.Network
     /// A logical human seat's permanent GameServer client. Physical endpoints can disappear and
     /// rebind without replacing this instance; the temporary AI is only selected on a new decision.
     /// </summary>
-    public sealed class StableSeatController : IPlayerClient, INetworkDecisionClient, IDirectActionAuthorizer
+    public sealed class StableSeatController : IPlayerClient, IResolvedMeldPlayerClient, INetworkDecisionClient, IDirectActionAuthorizer
     {
         private readonly int _playerId;
         private readonly RemotePlayerClient _remote;
@@ -111,6 +111,18 @@ namespace MahjongGame.Core.Network
         {
             _remote.OnActionResolved(playerId, actionType, targetTile, chiCombinations);
             if (_temporaryAiOwnsDecision) _temporaryAi.OnActionResolved(playerId, actionType, targetTile, chiCombinations);
+        }
+
+        public void OnActionResolved(
+            int playerId,
+            ClientActionType actionType,
+            TileData targetTile,
+            int[] chiCombinations,
+            IReadOnlyList<TileData> resolvedMeldTiles)
+        {
+            _remote.OnActionResolved(playerId, actionType, targetTile, chiCombinations, resolvedMeldTiles);
+            if (_temporaryAiOwnsDecision)
+                _temporaryAi.OnActionResolved(playerId, actionType, targetTile, chiCombinations, resolvedMeldTiles);
         }
 
         public void OnDrawGame() => _remote.OnDrawGame();

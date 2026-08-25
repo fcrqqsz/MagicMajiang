@@ -93,6 +93,14 @@ namespace MahjongGame.Talents.Impl
             context.ApplyScoreDelta(RefundScore, "prepare_for_risk_refund");
         }
 
+        public override string GetSnapshotPrivateStatusKey(TalentRuntimeState state)
+        {
+            if (!state.GetFlag(ChosenKey, TalentStateScope.Round)) return null;
+            return state.GetCounter(ModeKey, TalentStateScope.Round) == SelfDrawMode
+                ? "protect_self_draw"
+                : "protect_ron";
+        }
+
         private static bool TryParseMode(string choiceId, out int mode)
         {
             switch (choiceId)

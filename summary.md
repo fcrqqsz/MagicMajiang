@@ -9,6 +9,10 @@
 *   **特色玩法**: Roguelike 天赋系统、自定义 34 张牌库及异化值机制。
 
 2. 最近进展 (Recent Progress, snapshot 2026-08-24)
+*   **天赋观察模式与状态 chip 完成 (2026-08-24)**:
+    *   异彩成章、褪色和去芜的本家 chip 可切换纯客户端观察模式；匹配牌仅将 3D 底座染红，牌面保持清晰，暗杠同样可观察。模式默认关闭，再点取消，并在新小局或快照恢复时清空。
+    *   chip 显示异化牌数量、资源/触发进度和服务端已确认的玩法模式。观察开关本身不进入网络、快照或天赋拆装状态。
+    *   协议 v9 以本家私有实体 ID 保证同牌面普通牌/异化牌的精确出牌和副露；他家消息、公共副露和牌河均清洗实体 ID 与异化标记。
 *   **万金油填槽天赋完成 (2026-08-24)**:
     *   新增中品阶 **定调 (`set_the_tone`)** 与 **未雨绸缪 (`prepare_for_risk`)**：前者公开选择数牌花色并在对应胡牌张上获得 +4 post-legal 番；后者公开选择防自摸/防放铳，并在第三方荣和的基础保险或所选风险发生时最多返还一次 8 分。
     *   新增小品阶 **去芜 (`prune_the_excess`)**、**候潮 (`bide_the_tide`)** 与 **预判 (`foretell_outcome`)**：分别围绕第 3 张幺九/字牌弃牌、第 6 次弃牌及预先选择胡牌方式提供 +3/+2/+3 post-legal 番，均不改变 8 番起胡门槛。
@@ -16,7 +20,7 @@
     *   六个规则完全复用类型化选择、动作账本、post-legal 归因、`OnDiscard` 与小局结算分数增量；未新增协议、UI、专用服务分支或遥测字段。长期纯 C# 回归与真实 `GameServerTelemetryRegression` 覆盖 AI 默认选项、组合归因、自动弃牌权威顺序和小局重置。
 *   **通用私有牌面揭示能力与洞若观火完成 (2026-08-23)**:
     *   **通用私有牌面揭示 (Universal Private Tile Reveal)**: 服务端提供通用的私有牌面揭示机制，对牌数据做权威脱敏（仅保留花色、数值与修改标记，抹除全局 ID、归属与特效）；揭示结果对外保持 detached、只在本次主动动作新生成时投递，并严格按查看席位隔离；对应 `SeatMessageStream` 与 `RoomGameSnapshot.privateSeat.privateTileReveal` 支持本家断线恢复，小局结束立即清理。
-    *   **协议升级为 v8**: 升级网络协议版本至 v8（拒绝 v7），新增 `SnapshotRevealedTile`, `PrivateTileRevealMessage`, `SnapshotPrivateTileReveal` 等 DTO，`ClientGameState` 原子投影并支持重连快照恢复。
+    *   **协议升级为 v9**: 在 v8 私有揭示基础上加入本家牌实体 ID、异化标记与精确副露投影；公共牌河/副露会清洗这些私有字段，并拒绝 v8 客户端。
     *   **洞若观火 (`piercing_insight`)**: 大品阶 26 成本，小局生效范围（`TalentStateScope.Round`），主回合主动激活（`TalentActivationWindow.MainTurn`），公开效果前隐藏（`TalentRevealPolicy.HiddenUntilPublicEffect`），备选灵活（`TalentSideboardPolicy.Flexible`）。每小局限 1 次，私下查看一名其他玩家当前暗手中的全部数牌（万/饼/条，保留重复牌与修改标记，排除字牌与花牌）；即使目标无数牌亦正常消耗当局次数；触发公开事件 `piercing_insight_target` 携带目标席位编号（1..4）；不改变算番。
     *   **UI 表现与交互**: `LocalPlayerClient` 收到揭示通知时通过 `FloatingTilePanelController` 弹窗展示目标玩家暗手数牌，空牌时友好展示“没有可展示的牌”；`TalentActionPanelPolicy` 拓展支持纯玩家目标选择（无需挂载目标天赋）。
     *   **全量回归通过**: 纯 C# 自动化回归、`NetworkRegression` 与真实 `GameServerTelemetryRegression` 均 100% 通过。

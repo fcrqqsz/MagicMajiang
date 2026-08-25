@@ -130,6 +130,7 @@ internal static class TalentActionTests
 
         runner.Check(activated.Accepted
                      && selectedSnapshot.IsRevealed
+                     && selectedSnapshot.PrivateStatusKey == "sou"
                      && selectedSnapshot.LastPublicEventType == "suit_convergence_sou"
                      && selectedSnapshot.LastPublicValue == 2,
             "归色 acceptance publicly records its target suit and two remaining transformations");
@@ -2182,6 +2183,8 @@ internal static class TalentActionTests
         ScoringOptions afterChiOpts = runtime.BuildScoringOptions(new TalentScoringContext(session, 0));
         TalentFanResolution afterChiRes = runtime.ResolvePostLegalFan(
             new TalentWinContext(session, 0, winFacts), eligibilityFan: 8);
+        TalentSnapshotEntry afterChiSnap = runtime.GetSnapshotEntries()
+            .Single(e => e.TalentId == "last_stand_formation");
 
         // 3. AnGan -> ignored (does not count as public meld)
         runtime.CommitAction(TalentActionCommittedFacts.Create(
@@ -2246,7 +2249,8 @@ internal static class TalentActionTests
                      && initialRes.PostLegalBonusFan == 0 && !initialSnap.IsRevealed,
             "背水阵 initial state has MinimumFan=8, no eligibility adjustment, 0 bonus, hidden");
         runner.Check(afterChiOpts.BonusFan == 0 && afterChiOpts.MinimumFan == 8
-                     && afterChiRes.PostLegalBonusFan == 0,
+                     && afterChiRes.PostLegalBonusFan == 0
+                     && afterChiSnap.PrivateValue == 1,
             "背水阵 after 1st meld remains unrevealed with MinimumFan=8 and 0 bonus");
         runner.Check(afterGangsOpts.BonusFan == 0 && afterGangsOpts.MinimumFan == 8
                      && afterGangsRes.PostLegalBonusFan == 0,
@@ -2341,8 +2345,9 @@ internal static class TalentActionTests
                      && validResult.EffectApplied
                      && validResult.PublicStateValue == 2
                      && markedSnapshot.LastPublicValue == 2
-                     && markedSnapshot.PrivateValue == 2,
-            "点将 encodes target seats as seatIndex + 1 in action and recovery state");
+                     && markedSnapshot.PrivateValue == 2
+                     && markedSnapshot.PrivateStatusKey == "pending",
+            "点将 snapshots its authoritative target and pending presentation state");
 
         // 5. Duplicate activation in same round is rejected (consumed once per round):
         TalentActionResult duplicateResult = runtime.TryActivate(
@@ -2373,8 +2378,12 @@ internal static class TalentActionTests
 
         TalentFanResolution resSuccess = runtime.ResolvePostLegalFan(
             new TalentWinContext(session, 0, winFacts), eligibilityFan: 8);
-        runner.Check(resSuccess.PostLegalBonusFan == 6 && resSuccess.FinalFan == 14,
-            "点将 awards +6 post-legal fan upon meld from targeted seat 1");
+        TalentSnapshotEntry successSnapshot = runtime.GetSnapshotEntries()
+            .Single(entry => entry.TalentId == "call_the_mark");
+        runner.Check(resSuccess.PostLegalBonusFan == 6
+                     && resSuccess.FinalFan == 14
+                     && successSnapshot.PrivateStatusKey == "success",
+            "点将 awards +6 post-legal fan and snapshots a readable success state");
 
         // 8. Now test failure case in next round:
         runtime.EndRound(new TalentRoundOutcome { WinnerSeatIndex = 0, FinalFan = 14 }, session);
@@ -2402,9 +2411,13 @@ internal static class TalentActionTests
 
         TalentFanResolution resStillFailed = runtime.ResolvePostLegalFan(
             new TalentWinContext(session, 0, winFacts), eligibilityFan: 8);
+        TalentSnapshotEntry failedSnapshot = runtime.GetSnapshotEntries()
+            .Single(entry => entry.TalentId == "call_the_mark");
 
-        runner.Check(resFailed.PostLegalBonusFan == 0 && resStillFailed.PostLegalBonusFan == 0,
-            "点将 permanently invalidates bonus if next meld is from a non-target opponent");
+        runner.Check(resFailed.PostLegalBonusFan == 0
+                     && resStillFailed.PostLegalBonusFan == 0
+                     && failedSnapshot.PrivateStatusKey == "failed",
+            "点将 permanently invalidates bonus and snapshots a readable failure state");
 
         // 9. Expired without meld:
         runtime.EndRound(new TalentRoundOutcome { WinnerSeatIndex = 3 }, session);

@@ -25,7 +25,12 @@ namespace MahjongGame.Core.Network
         {
             if (option == null || string.IsNullOrWhiteSpace(option.talentId)) return null;
             TalentChoiceSet choice = null;
-            if (option.choice != null)
+            bool hasChoicePayload = option.choice != null
+                                    && (option.choice.kind != 0
+                                        || !string.IsNullOrWhiteSpace(option.choice.promptKey)
+                                        || !string.IsNullOrWhiteSpace(option.choice.defaultChoiceId)
+                                        || (option.choice.options?.Any(candidate => candidate != null) ?? false));
+            if (hasChoicePayload)
             {
                 try
                 {

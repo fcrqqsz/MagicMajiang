@@ -30,6 +30,8 @@ namespace MahjongGame.Core
         // 统一处理点击（子类按需重写）
         public virtual void OnTileClicked(TileVisual tile) { }
 
+        protected virtual void ConfigureTileVisual(TileVisual tile) { }
+
         protected Sprite GetTileSprite(TileData data)
         {
             if (data == null) return null;
@@ -117,6 +119,8 @@ namespace MahjongGame.Core
                     // 扣着的牌不需要初始化花色
                     visual.Initialize(data, this, null);
                 }
+
+                ConfigureTileVisual(visual);
 
                 // --- 视觉旋转逻辑 ---
                 Quaternion rotation;

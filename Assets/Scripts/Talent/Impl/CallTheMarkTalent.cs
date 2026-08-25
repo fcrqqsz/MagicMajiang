@@ -115,5 +115,13 @@ namespace MahjongGame.Talents.Impl
             if (state.GetFlag(UsedThisRoundKey, TalentStateScope.Round)) return -1;
             return 0;
         }
+
+        public override string GetSnapshotPrivateStatusKey(TalentRuntimeState state)
+        {
+            if (state.GetFlag(MarkSuccessKey, TalentStateScope.Round)) return "success";
+            if (state.GetFlag(MarkFailedKey, TalentStateScope.Round)) return "failed";
+            if (state.GetFlag(MarkPendingKey, TalentStateScope.Round)) return "pending";
+            return null;
+        }
     }
 }

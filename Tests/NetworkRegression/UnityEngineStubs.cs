@@ -125,6 +125,7 @@ namespace MahjongGame.UI
         public void BindServerProxy(MahjongGame.Core.Network.RemoteServerProxy proxy) { }
         public void UnbindServerProxy(MahjongGame.Core.Network.RemoteServerProxy proxy) { }
         public void CloseTalentDrawers() { }
+        public void RefreshTalentHudStatus() { }
     }
 
     public sealed class SideboardPanelController

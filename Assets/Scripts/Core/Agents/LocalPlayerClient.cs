@@ -16,7 +16,7 @@ namespace MahjongGame.Core.Agents
     /// <summary>
     /// 本地玩家客户端。将服务端的事件映射到 UI 和 3D 表现层，并收集玩家输入发回服务端。
     /// </summary>
-    public class LocalPlayerClient : IPlayerClient, ITalentActionPresentationClient
+    public class LocalPlayerClient : IPlayerClient, IResolvedMeldPlayerClient, ITalentActionPresentationClient
     {
         public int PlayerId { get; private set; }
         public CancellationToken TurnCancellationToken { get; set; }
@@ -37,6 +37,9 @@ namespace MahjongGame.Core.Agents
         private CancellationTokenSource _presentationCancellation = new CancellationTokenSource();
         private RemoteServerProxy _talentActionProxy;
         private TalentActionPanelState _talentPanelState = TalentActionPanelPolicy.Clear();
+        private long _automaticChoiceDecisionId;
+        private readonly HashSet<string> _suppressedAutomaticChoices =
+            new HashSet<string>(StringComparer.Ordinal);
 
         public LocalPlayerClient(int playerId, IServer server, HandController handController)
         {
@@ -98,25 +101,59 @@ namespace MahjongGame.Core.Agents
                 return;
             }
 
+            if (_automaticChoiceDecisionId != decisionId)
+            {
+                _automaticChoiceDecisionId = decisionId;
+                _suppressedAutomaticChoices.Clear();
+            }
+
             _talentPanelState = TalentActionPanelPolicy.Open(
                 decisionId,
                 new BaseActionAvailability { CanDiscard = true },
                 options);
+            string automaticChoiceTalentId = TalentActionPanelPolicy.GetNextAutomaticChoice(
+                _talentPanelState,
+                _suppressedAutomaticChoices);
+            if (!string.IsNullOrWhiteSpace(automaticChoiceTalentId))
+            {
+                _talentPanelState = TalentActionPanelPolicy.BeginChoiceSelection(
+                    _talentPanelState,
+                    automaticChoiceTalentId);
+            }
             ActionPanelController.Instance?.ShowTalentActions(
                 decisionId,
                 _talentPanelState.Options.Select(option => option.Option).ToArray(),
-                HandleTalentActionSelected);
+                HandleTalentActionSelected,
+                automaticChoiceTalentId,
+                HandleAutomaticChoiceCancelled);
+        }
+
+        private void HandleAutomaticChoiceCancelled(string talentId)
+        {
+            if (string.IsNullOrWhiteSpace(talentId)) return;
+            _suppressedAutomaticChoices.Add(talentId);
+            _talentPanelState = TalentActionPanelPolicy.CancelChoiceSelection(_talentPanelState);
         }
 
         private void HandleTalentActionSelected(TalentActionOption option)
         {
             if (option == null || _talentActionProxy == null || !_talentPanelState.IsOpen) return;
 
+            if (!string.IsNullOrWhiteSpace(option.SelectedChoiceId))
+            {
+                option = TalentActionPanelPolicy.SelectAuthorizedChoice(
+                    _talentPanelState,
+                    option.TalentId,
+                    option.SelectedChoiceId);
+                if (option == null) return;
+            }
+
             IReadOnlyList<TalentActionTargetPresentation> targets =
                 TalentActionPanelPolicy.BuildAuthorizedTargets(
                     _talentPanelState.Options,
                     option.TalentId,
-                    NetworkManager.Instance?.RoomService?.GameState?.Snapshot);
+                    NetworkManager.Instance?.RoomService?.GameState?.Snapshot,
+                    NetworkManager.Instance?.RoomService?.Seats);
             bool requiresTarget = _talentPanelState.Options.Any(candidate =>
                 string.Equals(candidate.TalentId, option.TalentId, StringComparison.Ordinal)
                 && (candidate.Option.TargetSeatIndex >= 0
@@ -171,6 +208,8 @@ namespace MahjongGame.Core.Agents
         private void HandleTalentPickerReset()
         {
             _talentPanelState = TalentActionPanelPolicy.ResetForRecovery(_talentPanelState);
+            _automaticChoiceDecisionId = 0;
+            _suppressedAutomaticChoices.Clear();
             ActionPanelController.Instance?.ClearTalentActions(0);
             FloatingTilePanelController.Instance?.HideOptionSelection();
         }
@@ -179,6 +218,8 @@ namespace MahjongGame.Core.Agents
         {
             long decisionId = _talentPanelState.DecisionId;
             _talentPanelState = TalentActionPanelPolicy.Clear();
+            _automaticChoiceDecisionId = 0;
+            _suppressedAutomaticChoices.Clear();
             ActionPanelController.Instance?.ClearTalentActions(decisionId);
             FloatingTilePanelController.Instance?.HideOptionSelection();
         }
@@ -308,6 +349,7 @@ namespace MahjongGame.Core.Agents
 
         public void OnGameStart(List<TileData> startingHand)
         {
+            GameHUDController.Instance?.ResetTalentObservationForRoundBoundary();
             _handController.ClearHand();
             foreach (var tile in startingHand)
             {
@@ -652,6 +694,16 @@ namespace MahjongGame.Core.Agents
 
         public void OnActionResolved(int actionPlayerId, ClientActionType actionType, TileData targetTile, int[] chiCombinations)
         {
+            OnActionResolved(actionPlayerId, actionType, targetTile, chiCombinations, null);
+        }
+
+        public void OnActionResolved(
+            int actionPlayerId,
+            ClientActionType actionType,
+            TileData targetTile,
+            int[] chiCombinations,
+            IReadOnlyList<TileData> resolvedMeldTiles)
+        {
             // 从打出该牌的玩家牌河中移除这张牌 (不论是谁吃碰杠)
             if (actionType != ClientActionType.AnGan && actionType != ClientActionType.JiaGang && _lastDiscarderId != -1)
             {
@@ -666,6 +718,8 @@ namespace MahjongGame.Core.Agents
             // 收到全局动作广播，更新表现层
             if (actionPlayerId == PlayerId)
             {
+                if (_handController.ApplyAuthoritativeMeld(actionType, targetTile, resolvedMeldTiles))
+                    return;
                 // 如果是自己执行的动作，调用 HandController 播放对应动画并更新数据
                 if (actionType == ClientActionType.Pon) _handController.ExecutePon(targetTile);
                 else if (actionType == ClientActionType.Chi) _handController.ExecuteChi(targetTile, chiCombinations);
@@ -680,15 +734,20 @@ namespace MahjongGame.Core.Agents
                 var view = GameManager.Instance.GetOpponentView(actionPlayerId);
                 if (view != null)
                 {
-                    List<TileData> meldTiles = new List<TileData> { targetTile };
+                    List<TileData> meldTiles = resolvedMeldTiles?.Where(tile => tile != null).ToList()
+                        ?? new List<TileData>();
+                    if (meldTiles.Count == 0) meldTiles.Add(targetTile);
                     
-                    if (actionType == ClientActionType.Pon) { meldTiles.Add(targetTile); meldTiles.Add(targetTile); }
-                    else if (actionType == ClientActionType.MingGan || actionType == ClientActionType.AnGan) { meldTiles.Add(targetTile); meldTiles.Add(targetTile); meldTiles.Add(targetTile); }
-                    else if (actionType == ClientActionType.Chi)
+                    if (resolvedMeldTiles == null || resolvedMeldTiles.Count == 0)
                     {
-                        meldTiles.Add(new TileData(targetTile.TileSuit, chiCombinations[0], targetTile.OriginalOwnerID));
-                        meldTiles.Add(new TileData(targetTile.TileSuit, chiCombinations[1], targetTile.OriginalOwnerID));
-                        meldTiles.Sort((a,b) => a.Value.CompareTo(b.Value));
+                        if (actionType == ClientActionType.Pon) { meldTiles.Add(targetTile); meldTiles.Add(targetTile); }
+                        else if (actionType == ClientActionType.MingGan || actionType == ClientActionType.AnGan) { meldTiles.Add(targetTile); meldTiles.Add(targetTile); meldTiles.Add(targetTile); }
+                        else if (actionType == ClientActionType.Chi)
+                        {
+                            meldTiles.Add(new TileData(targetTile.TileSuit, chiCombinations[0], targetTile.OriginalOwnerID));
+                            meldTiles.Add(new TileData(targetTile.TileSuit, chiCombinations[1], targetTile.OriginalOwnerID));
+                            meldTiles.Sort((a,b) => a.Value.CompareTo(b.Value));
+                        }
                     }
 
                     if (actionType == ClientActionType.Pon) view.ExecuteMeld(MeldType.Pon, meldTiles);
@@ -828,7 +887,12 @@ namespace MahjongGame.Core.Agents
             {
                 string talentName = TalentRegistry.Instance.GetDisplayName(reveal.TalentId);
                 if (string.IsNullOrWhiteSpace(talentName)) talentName = "私下揭示";
-                string title = $"{talentName} - 玩家 {reveal.TargetSeatIndex + 1} 私下揭示";
+                RoomGameSnapshot snapshot = NetworkManager.Instance?.RoomService?.GameState?.Snapshot;
+                string targetName = PlayerDisplayNamePolicy.Resolve(
+                    snapshot,
+                    reveal.TargetSeatIndex,
+                    NetworkManager.Instance?.RoomService?.Seats);
+                string title = $"{talentName} - {targetName} 私下揭示";
                 FloatingTilePanelController.Instance.ShowTiles(
                     title,
                     reveal.Tiles ?? Array.Empty<TileData>(),

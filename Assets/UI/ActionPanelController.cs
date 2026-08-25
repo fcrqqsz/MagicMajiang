@@ -35,6 +35,7 @@ namespace MahjongGame.UI
         private Action<int> _currentChiCallback;
         private Action<TileData> _currentKongCallback;
         private Action<TalentActionOption> _talentSelectedCallback;
+        private Action<string> _talentChoiceCancelledCallback;
         private TalentActionPanelState _talentState = TalentActionPanelPolicy.Clear();
         private IVisualElementScheduledItem _talentStatusClearSchedule;
 
@@ -124,14 +125,23 @@ namespace MahjongGame.UI
         public void ShowTalentActions(
             long decisionId,
             IReadOnlyList<TalentActionOption> options,
-            Action<TalentActionOption> onSelected)
+            Action<TalentActionOption> onSelected,
+            string automaticChoiceTalentId = null,
+            Action<string> onChoiceCancelled = null)
         {
             _talentSelectedCallback = onSelected;
+            _talentChoiceCancelledCallback = onChoiceCancelled;
             ClearTalentStatus();
             _talentState = TalentActionPanelPolicy.Open(
                 decisionId,
                 ReadBaseActionAvailability(),
                 options);
+            if (!string.IsNullOrWhiteSpace(automaticChoiceTalentId))
+            {
+                _talentState = TalentActionPanelPolicy.BeginChoiceSelection(
+                    _talentState,
+                    automaticChoiceTalentId);
+            }
             RenderTalentActions();
             RefreshRootVisibility();
         }
@@ -141,6 +151,7 @@ namespace MahjongGame.UI
             if (decisionId > 0 && _talentState.DecisionId != decisionId) return;
             _talentState = TalentActionPanelPolicy.Clear();
             _talentSelectedCallback = null;
+            _talentChoiceCancelledCallback = null;
             ClearTalentStatus();
             _talentActionContainer?.Clear();
             if (_talentActionContainer != null)
@@ -240,11 +251,15 @@ namespace MahjongGame.UI
                 button.AddToClassList("talent-choice-btn");
                 button.clicked += () =>
                 {
-                    TalentActionOption selected = TalentActionPanelPolicy.SelectChoice(
-                        presentation.Option,
+                    TalentActionOption selected = TalentActionPanelPolicy.SelectAuthorizedChoice(
+                        _talentState,
+                        presentation.TalentId,
                         choiceId);
-                    if (selected != null)
-                        _talentSelectedCallback?.Invoke(selected);
+                    if (selected == null) return;
+
+                    _talentState = TalentActionPanelPolicy.CancelChoiceSelection(_talentState);
+                    RenderTalentActions();
+                    _talentSelectedCallback?.Invoke(selected);
                 };
                 _talentActionContainer.Add(button);
             }
@@ -254,7 +269,9 @@ namespace MahjongGame.UI
             cancel.AddToClassList("talent-choice-cancel-btn");
             cancel.clicked += () =>
             {
+                string cancelledTalentId = _talentState.ChoiceSelection;
                 _talentState = TalentActionPanelPolicy.CancelChoiceSelection(_talentState);
+                _talentChoiceCancelledCallback?.Invoke(cancelledTalentId);
                 RenderTalentActions();
             };
             _talentActionContainer.Add(cancel);

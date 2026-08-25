@@ -52,6 +52,8 @@ namespace MahjongGame.Talents
             TalentActionRequest request) => TalentActionResult.NotSupported();
         /// <summary>Returns the one rule-approved integer safe for the owning seat's snapshot.</summary>
         public virtual int GetSnapshotPrivateValue(TalentRuntimeState state) => 0;
+        /// <summary>Returns a rule-approved local display key safe only for the owning seat.</summary>
+        public virtual string GetSnapshotPrivateStatusKey(TalentRuntimeState state) => null;
         public virtual int GetPostLegalFanBonus(TalentWinContext context) => 0;
         public virtual int GetPostLegalFanPenalty(TalentWinContext context) => 0;
         public virtual void OnAcceptedWin(TalentWinContext context) { }

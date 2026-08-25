@@ -6,7 +6,7 @@ using MahjongGame.Talents;
 
 namespace MahjongGame.Core.Network
 {
-    public class RemotePlayerClient : Agents.IPlayerClient, INetworkDecisionClient
+    public class RemotePlayerClient : Agents.IPlayerClient, Agents.IResolvedMeldPlayerClient, INetworkDecisionClient
     {
         private readonly int _playerId;
         private readonly SeatMessageStream _messageStream;
@@ -72,7 +72,7 @@ namespace MahjongGame.Core.Network
         {
             var msg = new GameStartMessage
             {
-                tiles = startingHand.Select(t => new SimpleTileData(t)).ToArray()
+                tiles = startingHand.Select(t => new SimpleTileData(t, true)).ToArray()
             };
             Send("GameStart", msg);
         }
@@ -81,7 +81,7 @@ namespace MahjongGame.Core.Network
         {
             var msg = new PeekWallMessage
             {
-                tiles = topTiles.Select(t => new SimpleTileData(t)).ToArray()
+                tiles = topTiles.Select(t => new SimpleTileData(t, true)).ToArray()
             };
             Send("PeekWall", msg);
         }
@@ -111,7 +111,7 @@ namespace MahjongGame.Core.Network
             {
                 decisionId = _activeDecisionId,
                 decision = RoomGameSnapshotBuilder.CreateDecisionSnapshot(_activeDecision),
-                tile = new SimpleTileData(drawnTile)
+                tile = new SimpleTileData(drawnTile, true)
             };
             Send("TileDrawn", msg);
         }
@@ -143,7 +143,7 @@ namespace MahjongGame.Core.Network
                 decisionId = _activeDecisionId,
                 decision = RoomGameSnapshotBuilder.CreateDecisionSnapshot(_activeDecision),
                 playerId = playerId,
-                tile = new SimpleTileData(tile)
+                tile = new SimpleTileData(tile, playerId == _playerId)
             };
             Send("Discarded", msg);
         }
@@ -155,19 +155,34 @@ namespace MahjongGame.Core.Network
                 decisionId = _activeDecisionId,
                 decision = RoomGameSnapshotBuilder.CreateDecisionSnapshot(_activeDecision),
                 playerId = playerId,
-                tile = new SimpleTileData(tile)
+                tile = new SimpleTileData(tile, playerId == _playerId)
             };
             Send("AddedKongDeclared", msg);
         }
 
         public void OnActionResolved(int playerId, ClientActionType actionType, TileData tile, int[] chiCombinations)
         {
+            OnActionResolved(playerId, actionType, tile, chiCombinations, null);
+        }
+
+        public void OnActionResolved(
+            int playerId,
+            ClientActionType actionType,
+            TileData tile,
+            int[] chiCombinations,
+            IReadOnlyList<TileData> resolvedMeldTiles)
+        {
+            bool includeOwnerPrivateState = playerId == _playerId;
             var msg = new ActionResolvedMessage
             {
                 playerId = playerId,
                 actionType = (int)actionType,
                 tile = tile != null ? new SimpleTileData(tile) : null,
-                chiCombinations = chiCombinations
+                chiCombinations = chiCombinations,
+                meldTiles = (resolvedMeldTiles ?? System.Array.Empty<TileData>())
+                    .Where(t => t != null)
+                    .Select(t => new SimpleTileData(t, includeOwnerPrivateState))
+                    .ToArray()
             };
             Send("ActionResolved", msg);
         }
@@ -176,7 +191,7 @@ namespace MahjongGame.Core.Network
         {
             var msg = new TimeoutMessage
             {
-                tile = forceDiscardTile != null ? new SimpleTileData(forceDiscardTile) : null
+                tile = forceDiscardTile != null ? new SimpleTileData(forceDiscardTile, true) : null
             };
             Send("Timeout", msg);
             _activeDecisionId = 0;

@@ -70,3 +70,15 @@
 .talent-chip--negative {
     border-color: #E78686;
 }
+
+.talent-chip--inspectable:hover {
+    border-color: #D98A8A;
+    background-color: rgba(61, 31, 28, 0.96);
+}
+
+.talent-chip--observing {
+    border-width: 2px;
+    border-color: #F05A5A;
+    background-color: rgba(104, 24, 24, 0.96);
+    opacity: 1;
+}

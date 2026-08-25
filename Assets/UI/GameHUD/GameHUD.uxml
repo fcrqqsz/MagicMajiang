@@ -25,16 +25,19 @@
             <ui:VisualElement name="Seat0KnownTalentDrawer" class="talent-drawer talent-drawer--bottom" picking-mode="Ignore" />
         </ui:VisualElement>
         <ui:VisualElement name="Seat1TalentLayer" class="seat-talent-layer seat-talent-layer--right">
+            <ui:Label name="Seat1TalentPlayerName" text="" class="talent-player-name" picking-mode="Ignore" />
             <ui:VisualElement name="Seat1KnownTalents" class="known-talent-row known-talent-row--vertical" picking-mode="Ignore" />
             <ui:Button name="Seat1KnownTalentMore" text="" class="talent-more-button" />
             <ui:VisualElement name="Seat1KnownTalentDrawer" class="talent-drawer talent-drawer--right" picking-mode="Ignore" />
         </ui:VisualElement>
         <ui:VisualElement name="Seat2TalentLayer" class="seat-talent-layer seat-talent-layer--top">
+            <ui:Label name="Seat2TalentPlayerName" text="" class="talent-player-name" picking-mode="Ignore" />
             <ui:VisualElement name="Seat2KnownTalents" class="known-talent-row" picking-mode="Ignore" />
             <ui:Button name="Seat2KnownTalentMore" text="" class="talent-more-button" />
             <ui:VisualElement name="Seat2KnownTalentDrawer" class="talent-drawer talent-drawer--top" picking-mode="Ignore" />
         </ui:VisualElement>
         <ui:VisualElement name="Seat3TalentLayer" class="seat-talent-layer seat-talent-layer--left">
+            <ui:Label name="Seat3TalentPlayerName" text="" class="talent-player-name" picking-mode="Ignore" />
             <ui:VisualElement name="Seat3KnownTalents" class="known-talent-row known-talent-row--vertical" picking-mode="Ignore" />
             <ui:Button name="Seat3KnownTalentMore" text="" class="talent-more-button" />
             <ui:VisualElement name="Seat3KnownTalentDrawer" class="talent-drawer talent-drawer--left" picking-mode="Ignore" />

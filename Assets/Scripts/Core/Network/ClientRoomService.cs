@@ -308,6 +308,7 @@ namespace MahjongGame.Core.Network
                     _gameState.ApplyRoomJoined(joined);
                     _projectionLineage.Bind(joined.roomId, joined.streamId);
                     _roomState.ApplyJoined(joined);
+                    _gameState.ApplyRoomSeats(Seats);
                     SaveReconnectTicket(joined);
                     LastRoomClosureReason = null;
                     RoomJoined?.Invoke(joined); SeatSnapshotChanged?.Invoke(Seats);
@@ -321,7 +322,10 @@ namespace MahjongGame.Core.Network
                 case "RoomSeatUpdated":
                     var seatUpdated = MessageSerializer.DeserializePayload<RoomSeatUpdatedMessage>(envelope.data);
                     if (seatUpdated != null && seatUpdated.roomId == RoomId && _roomState.ApplySeatUpdate(seatUpdated.seat))
+                    {
+                        _gameState.ApplyRoomSeats(Seats);
                         SeatSnapshotChanged?.Invoke(Seats);
+                    }
                     break;
                 case "RoomReady": _roomState.SetRoomState((int)RoomState.LoadingGameScene); RoomReady?.Invoke(); break;
                 case "SideboardStarted":
@@ -375,7 +379,9 @@ namespace MahjongGame.Core.Network
             var snapshot = (RoomSeatMessage[])Seats.Clone();
             if (snapshot.Length != 4) snapshot = new RoomSeatMessage[4];
             snapshot[message.seat.seatIndex] = message.seat;
-            _roomState.SetSeats(snapshot); SeatSnapshotChanged?.Invoke(Seats);
+            _roomState.SetSeats(snapshot);
+            _gameState.ApplyRoomSeats(Seats);
+            SeatSnapshotChanged?.Invoke(Seats);
         }
 
         private void ApplyPlayerLeft(PlayerLeftMessage message)
@@ -384,7 +390,9 @@ namespace MahjongGame.Core.Network
             var snapshot = (RoomSeatMessage[])Seats.Clone();
             if (snapshot.Length != 4) snapshot = new RoomSeatMessage[4];
             snapshot[message.seatIndex] = message.seat;
-            _roomState.SetSeats(snapshot); SeatSnapshotChanged?.Invoke(Seats);
+            _roomState.SetSeats(snapshot);
+            _gameState.ApplyRoomSeats(Seats);
+            SeatSnapshotChanged?.Invoke(Seats);
         }
 
         private bool TryBuildSelectedLoadout(out PlayerLoadoutMessage loadout)

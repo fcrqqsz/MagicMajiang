@@ -17,12 +17,12 @@ internal static class IdentityConnectionTests
 
     private static void TestProtocolAndIdentity(RegressionRunner runner)
     {
-        runner.Check(NetworkProtocol.IsSupported(8) && !NetworkProtocol.IsSupported(7),
-            "Private tile reveal rollout must accept protocol v8 and reject v7.");
-        runner.Check(new HelloMessage().protocolVersion == 8
+        runner.Check(NetworkProtocol.IsSupported(9) && !NetworkProtocol.IsSupported(8),
+            "Owner-private physical tile rollout must accept protocol v9 and reject v8.");
+        runner.Check(new HelloMessage().protocolVersion == 9
             && new HeartbeatAckMessage() != null
             && new PlayerLoadoutMessage() != null,
-            "Protocol v8 must expose Hello, heartbeat acknowledgement, and loadout DTOs.");
+            "Protocol v9 must expose Hello, heartbeat acknowledgement, and loadout DTOs.");
 
         string publicSeatJson = UnityEngine.JsonUtility.ToJson(new RoomSeatMessage
         {
@@ -57,8 +57,8 @@ internal static class IdentityConnectionTests
             "The development authenticator must expose the normalized identity.");
 
         var hello = ClientHelloProtocol.Create("Alice");
-        runner.Check(hello.protocolVersion == 8 && hello.username == "Alice",
-            "Client Hello must carry protocol v8 and the selected username.");
+        runner.Check(hello.protocolVersion == 9 && hello.username == "Alice",
+            "Client Hello must carry protocol v9 and the selected username.");
         runner.Check(RoomErrorPresentationPolicy.GetDisplayMessage(new RoomErrorMessage
             {
                 code = NetworkErrorCodes.IdentityInUse,

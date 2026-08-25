@@ -23,5 +23,8 @@ namespace MahjongGame.Talents.Impl
 
         public override int GetPostLegalFanBonus(TalentWinContext context) =>
             context.State.GetCounter(DiscardCountKey, TalentStateScope.Round) >= 6 ? 2 : 0;
+
+        public override int GetSnapshotPrivateValue(TalentRuntimeState state) =>
+            System.Math.Min(6, state.GetCounter(DiscardCountKey, TalentStateScope.Round));
     }
 }

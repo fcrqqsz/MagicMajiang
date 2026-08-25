@@ -66,7 +66,8 @@ internal static class AuthoritativePublicTileTransitionTests
         ServerGameState state = CreateAddedKongState("jiagang-success");
         var transition = new AuthoritativePublicTileTransition(state, runtime, session);
 
-        bool prepared = transition.TryPrepareAddedKong(0, ClientIntentTile(), out TileData authoritativeTile);
+        TileData selectedTile = state.GetHand(0).Single();
+        bool prepared = transition.TryPrepareAddedKong(0, selectedTile, out TileData authoritativeTile);
         TileData declaredTile = null;
         transition.PublishAddedKongDeclaration(0, authoritativeTile, tile => declaredTile = tile);
         bool committed = transition.TryCommitAddedKong(
@@ -97,7 +98,8 @@ internal static class AuthoritativePublicTileTransitionTests
         ServerGameState state = CreateAddedKongState("jiagang-robbed");
         var transition = new AuthoritativePublicTileTransition(state, runtime, session);
 
-        bool prepared = transition.TryPrepareAddedKong(0, ClientIntentTile(), out TileData authoritativeTile);
+        TileData selectedTile = state.GetHand(0).Single();
+        bool prepared = transition.TryPrepareAddedKong(0, selectedTile, out TileData authoritativeTile);
         TileData declaredTile = null;
         transition.PublishAddedKongDeclaration(0, authoritativeTile, tile => declaredTile = tile);
 

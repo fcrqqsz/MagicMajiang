@@ -104,7 +104,8 @@ namespace MahjongGame.Core.Network
         {
             if (hello == null || !NetworkProtocol.IsSupported(hello.protocolVersion))
             {
-                SendError(endpoint, NetworkErrorCodes.ProtocolMismatch, "This server requires protocol version 3.");
+                SendError(endpoint, NetworkErrorCodes.ProtocolMismatch,
+                    $"This server requires protocol version {NetworkProtocol.Version}.");
                 return;
             }
 

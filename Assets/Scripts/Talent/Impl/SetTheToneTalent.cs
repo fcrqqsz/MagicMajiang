@@ -67,6 +67,12 @@ namespace MahjongGame.Talents.Impl
                 : 0;
         }
 
+        public override string GetSnapshotPrivateStatusKey(TalentRuntimeState state)
+        {
+            if (!state.GetFlag(ChosenKey, TalentStateScope.Round)) return null;
+            return GetChoiceId((Suit)state.GetCounter(SuitKey, TalentStateScope.Round));
+        }
+
         private static TalentChoiceSet CreateSuitChoice() =>
             new TalentChoiceSet(
                 TalentChoiceKind.Suit,
@@ -92,5 +98,12 @@ namespace MahjongGame.Talents.Impl
 
         private static bool IsNumberedSuit(Suit suit) =>
             suit == Suit.Man || suit == Suit.Pin || suit == Suit.Sou;
+
+        private static string GetChoiceId(Suit suit) => suit switch
+        {
+            Suit.Pin => "pin",
+            Suit.Sou => "sou",
+            _ => "man"
+        };
     }
 }

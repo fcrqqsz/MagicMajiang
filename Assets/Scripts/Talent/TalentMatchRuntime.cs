@@ -511,8 +511,8 @@ namespace MahjongGame.Talents
                                  && string.Equals(option.TalentId, request.TalentId, StringComparison.Ordinal)
                                  && option.TargetSeatIndex == request.TargetSeatIndex
                                  && string.Equals(
-                                     option.TargetTalentId,
-                                     request.TargetTalentId,
+                                     option.TargetTalentId ?? string.Empty,
+                                     request.TargetTalentId ?? string.Empty,
                                      StringComparison.Ordinal))
                 .ToArray();
             bool requestHasChoice = !string.IsNullOrWhiteSpace(request.ChoiceId);
@@ -597,6 +597,7 @@ namespace MahjongGame.Talents
                         IsActive = entry.State.IsActive,
                         IsRevealed = entry.State.IsRevealed,
                         PrivateValue = entry.Rule.GetSnapshotPrivateValue(entry.State.CreateDetachedCopy()),
+                        PrivateStatusKey = entry.Rule.GetSnapshotPrivateStatusKey(entry.State.CreateDetachedCopy()),
                         LastPublicEventType = lastPublicEvent?.EventType,
                         LastPublicValue = lastPublicEvent?.Value ?? 0
                     };

@@ -62,6 +62,7 @@ internal static class UniversalFillerTalentTests
                      && invalid.ErrorCode == TalentActionErrorCodes.InvalidChoice
                      && accepted.Accepted
                      && accepted.PublicStateValue == 2
+                     && selected.PrivateStatusKey == "pin"
                      && selected.LastPublicEventType == "set_the_tone_suit"
                      && selected.LastPublicValue == 2,
             "定调 rejects unauthorized choices without consumption and snapshots its public suit as Man=1, Pin=2, Sou=3");
@@ -102,6 +103,8 @@ internal static class UniversalFillerTalentTests
 
         TalentActionResult accepted = ActivateChoice(
             runtime, session, "foretell_outcome", decisionId, "ron");
+        TalentSnapshotEntry selected = runtime.GetSnapshotEntries()
+            .Single(entry => entry.TalentId == "foretell_outcome");
         TalentFanResolution selfDraw = Resolve(
             runtime, session, WinFacts(session, 0, null, Suit.Man, 5, true));
         TalentFanResolution ron = Resolve(
@@ -109,6 +112,7 @@ internal static class UniversalFillerTalentTests
         TalentFanResolution robKong = Resolve(
             runtime, session, WinFacts(session, 0, 2, Suit.Man, 5, false, isRobKong: true));
         runner.Check(accepted.Accepted
+                     && selected.PrivateStatusKey == "ron"
                      && selfDraw.PostLegalBonusFan == 0
                      && ron.PostLegalBonusFan == 3
                      && robKong.PostLegalBonusFan == 3
@@ -123,7 +127,10 @@ internal static class UniversalFillerTalentTests
         CommitDiscard(runtime, 13001, new TileData(Suit.Man, 1, 0));
         CommitDiscard(runtime, 13002, new TileData(Suit.Pin, 5, 0));
         CommitDiscard(runtime, 13003, new TileData(Suit.Wind, 2, 0));
-        runner.Check(Resolve(runtime, session, WinFacts(session, 0, null, Suit.Sou, 4, true)).PostLegalBonusFan == 0,
+        TalentSnapshotEntry beforeTrigger = runtime.GetSnapshotEntries()
+            .Single(entry => entry.TalentId == "prune_the_excess");
+        runner.Check(beforeTrigger.PrivateValue == 2
+                     && Resolve(runtime, session, WinFacts(session, 0, null, Suit.Sou, 4, true)).PostLegalBonusFan == 0,
             "去芜 does not trigger before three qualifying committed discards");
 
         var transformedTerminal = new TileData(Suit.Sou, 9, 0)
@@ -149,7 +156,10 @@ internal static class UniversalFillerTalentTests
         for (int index = 0; index < 5; index++)
             CommitDiscard(runtime, 14001 + index, new TileData(Suit.Man, index + 1, 0));
 
-        runner.Check(Resolve(runtime, session, WinFacts(session, 0, null, Suit.Man, 6, true)).PostLegalBonusFan == 0,
+        TalentSnapshotEntry beforeTrigger = runtime.GetSnapshotEntries()
+            .Single(entry => entry.TalentId == "bide_the_tide");
+        runner.Check(beforeTrigger.PrivateValue == 5
+                     && Resolve(runtime, session, WinFacts(session, 0, null, Suit.Man, 6, true)).PostLegalBonusFan == 0,
             "候潮 does not trigger at five committed discards");
         CommitDiscard(runtime, 14006, new TileData(Suit.Dragon, 1, 0), wasAutomatic: true);
         TalentFanResolution selfDraw = Resolve(
@@ -165,6 +175,14 @@ internal static class UniversalFillerTalentTests
 
     private static void PrepareForRiskRefundsOnlyApprovedOutcomes(RegressionRunner runner)
     {
+        (TalentMatchRuntime statusRuntime, GameSession statusSession) = CreateRuntime("prepare_for_risk", 1);
+        const long statusDecision = 16999;
+        statusRuntime.OpenMainDecision(0, statusDecision);
+        ActivateChoice(statusRuntime, statusSession, "prepare_for_risk", statusDecision, "ron");
+        runner.Check(statusRuntime.GetSnapshotEntries()
+                         .Single(entry => entry.TalentId == "prepare_for_risk").PrivateStatusKey == "protect_ron",
+            "未雨绸缪 snapshots the owner's selected protection mode for chip recovery");
+
         runner.Check(ResolveInsurance("self_draw", winner: 2, discarder: 1) == 8,
             "未雨绸缪 base insurance refunds an uninvolved owner on another player's ron");
         runner.Check(ResolveInsurance("self_draw", winner: 2, discarder: null) == 8,

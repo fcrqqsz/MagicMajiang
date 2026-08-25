@@ -14,7 +14,7 @@ namespace MahjongGame.Core.Agents
     /// <summary>
     /// 规则化AI胖客户端。自己在本地计算胡牌、吃碰权限和打牌策略。
     /// </summary>
-    public class SimpleAIClient : IPlayerClient
+    public class SimpleAIClient : IPlayerClient, IResolvedMeldPlayerClient
     {
         public int PlayerId { get; private set; }
         public CancellationToken TurnCancellationToken { get; set; }
@@ -211,7 +211,17 @@ namespace MahjongGame.Core.Agents
             }
         }
 
-        public async void OnActionResolved(int actionPlayerId, ClientActionType actionType, TileData targetTile, int[] chiCombinations)
+        public void OnActionResolved(int actionPlayerId, ClientActionType actionType, TileData targetTile, int[] chiCombinations)
+        {
+            OnActionResolved(actionPlayerId, actionType, targetTile, chiCombinations, null);
+        }
+
+        public async void OnActionResolved(
+            int actionPlayerId,
+            ClientActionType actionType,
+            TileData targetTile,
+            int[] chiCombinations,
+            IReadOnlyList<TileData> resolvedMeldTiles)
         {
             if (actionPlayerId == PlayerId)
             {
@@ -220,7 +230,8 @@ namespace MahjongGame.Core.Agents
                 {
                     if (actionType == ClientActionType.Pon)
                     {
-                        ExecutePonLocally(targetTile);
+                        if (!ApplyResolvedMeldLocally(actionType, resolvedMeldTiles))
+                            ExecutePonLocally(targetTile);
                         await Task.Delay(500, ct);
                         SortHand();
                         TryUseActiveTalent();
@@ -230,7 +241,8 @@ namespace MahjongGame.Core.Agents
                     }
                     else if (actionType == ClientActionType.Chi)
                     {
-                        ExecuteChiLocally(targetTile, chiCombinations);
+                        if (!ApplyResolvedMeldLocally(actionType, resolvedMeldTiles))
+                            ExecuteChiLocally(targetTile, chiCombinations);
                         await Task.Delay(500, ct);
                         SortHand();
                         TryUseActiveTalent();
@@ -240,7 +252,13 @@ namespace MahjongGame.Core.Agents
                     }
                     else if (actionType == ClientActionType.MingGan)
                     {
-                        ExecuteMingGanLocally(targetTile);
+                        if (!ApplyResolvedMeldLocally(actionType, resolvedMeldTiles))
+                            ExecuteMingGanLocally(targetTile);
+                        SortHand();
+                    }
+                    else if (actionType == ClientActionType.AnGan || actionType == ClientActionType.JiaGang)
+                    {
+                        ApplyResolvedMeldLocally(actionType, resolvedMeldTiles);
                         SortHand();
                     }
                 }
@@ -372,6 +390,47 @@ namespace MahjongGame.Core.Agents
             List<TileData> meldTiles = new List<TileData> { target, matchingTiles[0], matchingTiles[1] };
             // TODO: sourceId 应该由服务器在 OnActionResolved 中提供，暂时用-1
             _melds.Add(new Meld(MeldType.Pon, meldTiles, -1));
+        }
+
+        private bool ApplyResolvedMeldLocally(
+            ClientActionType actionType,
+            IReadOnlyList<TileData> resolvedMeldTiles)
+        {
+            if (resolvedMeldTiles == null || resolvedMeldTiles.Count == 0) return false;
+            foreach (TileData resolvedTile in resolvedMeldTiles)
+            {
+                if (resolvedTile == null || string.IsNullOrWhiteSpace(resolvedTile.ID)) continue;
+                TileData handTile = _hand.FirstOrDefault(tile => tile.ID == resolvedTile.ID);
+                if (handTile != null) _hand.Remove(handTile);
+            }
+
+            MeldType type = actionType switch
+            {
+                ClientActionType.Chi => MeldType.Chi,
+                ClientActionType.Pon => MeldType.Pon,
+                ClientActionType.MingGan => MeldType.Kan_Exposed,
+                ClientActionType.AnGan => MeldType.Kan_Concealed,
+                ClientActionType.JiaGang => MeldType.Kan_Added,
+                _ => (MeldType)(-1)
+            };
+            if ((int)type < 0) return false;
+            List<TileData> exactTiles = resolvedMeldTiles.Select(CloneTile).ToList();
+            if (actionType == ClientActionType.JiaGang)
+            {
+                var exactIds = new HashSet<string>(
+                    exactTiles.Where(tile => !string.IsNullOrWhiteSpace(tile.ID)).Select(tile => tile.ID),
+                    StringComparer.Ordinal);
+                Meld pon = _melds.FirstOrDefault(meld => meld.Type == MeldType.Pon
+                    && meld.Tiles.Any(tile => !string.IsNullOrWhiteSpace(tile.ID)
+                                              && exactIds.Contains(tile.ID)));
+                pon ??= _melds.FirstOrDefault(meld => meld.Type == MeldType.Pon
+                    && meld.FirstTile.TileSuit == exactTiles[0].TileSuit
+                    && meld.FirstTile.Value == exactTiles[0].Value);
+                if (pon != null) _melds.Remove(pon);
+            }
+            _melds.Add(new Meld(type, exactTiles, exactTiles[0].OriginalOwnerID,
+                actionType == ClientActionType.AnGan));
+            return true;
         }
 
         private void ExecuteChiLocally(TileData target, int[] combos)

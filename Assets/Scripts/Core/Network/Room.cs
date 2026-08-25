@@ -586,6 +586,7 @@ namespace MahjongGame.Core.Network
                         IsActive = entry.IsActive,
                         IsRevealed = entry.IsRevealed,
                         PrivateValue = entry.PrivateValue,
+                        PrivateStatusKey = entry.PrivateStatusKey,
                         LastPublicEventType = entry.LastPublicEventType,
                         LastPublicValue = entry.LastPublicValue
                     })
@@ -703,7 +704,17 @@ namespace MahjongGame.Core.Network
 
         private bool TryBeginLoadingGameScene()
         {
+            bool[] occupiedBeforeLock = _seats.Select(seat => seat != null).ToArray();
             if (!TryLockSeatLoadouts()) return false;
+            for (int seatIndex = 0; seatIndex < _seats.Length; seatIndex++)
+            {
+                if (occupiedBeforeLock[seatIndex] || _seats[seatIndex]?.IsAi != true) continue;
+                Broadcast("RoomSeatUpdated", new RoomSeatUpdatedMessage
+                {
+                    roomId = RoomId,
+                    seat = GetSeatMessage(seatIndex)
+                });
+            }
             State = RoomState.LoadingGameScene;
             Broadcast("RoomReady", new RoomReadyMessage { roomId = RoomId });
             InitializeTalentRuntime();
@@ -929,7 +940,8 @@ namespace MahjongGame.Core.Network
                         {
                             talentId = entry.TalentId,
                             isActive = entry.IsActive,
-                            privateValue = entry.PrivateValue
+                            privateValue = entry.PrivateValue,
+                            privateStatusKey = entry.PrivateStatusKey
                         })
                         .ToArray(),
                     availableTalentActions = (GameServer?.GetAvailableTalentActionsSnapshot(seat.SeatIndex)

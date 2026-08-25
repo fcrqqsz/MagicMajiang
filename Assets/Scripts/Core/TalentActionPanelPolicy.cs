@@ -44,6 +44,30 @@ namespace MahjongGame.Core
         public int PublicCharge { get; set; }
     }
 
+    public static class PlayerDisplayNamePolicy
+    {
+        public static string Resolve(RoomGameSnapshot snapshot, int seatIndex) =>
+            Resolve(snapshot, seatIndex, null);
+
+        public static string Resolve(
+            RoomGameSnapshot snapshot,
+            int seatIndex,
+            RoomSeatMessage[] roomSeats)
+        {
+            RoomSnapshotSeat seat = (snapshot?.seats ?? Array.Empty<RoomSnapshotSeat>())
+                .FirstOrDefault(candidate => candidate != null && candidate.seatIndex == seatIndex);
+            if (seat?.isAi == true) return $"AI {seatIndex + 1}";
+            if (!string.IsNullOrWhiteSpace(seat?.displayName)) return seat.displayName.Trim();
+
+            RoomSeatMessage roomSeat = (roomSeats ?? Array.Empty<RoomSeatMessage>())
+                .FirstOrDefault(candidate => candidate != null && candidate.seatIndex == seatIndex);
+            if (roomSeat?.isAi == true) return $"AI {seatIndex + 1}";
+            return string.IsNullOrWhiteSpace(roomSeat?.displayName)
+                ? "未知玩家"
+                : roomSeat.displayName.Trim();
+        }
+    }
+
     public static class TalentActionPanelPolicy
     {
         public static TalentActionPanelState Open(
@@ -106,6 +130,28 @@ namespace MahjongGame.Core
             TalentActionPanelState next = CloneState(state);
             next.ChoiceSelection = null;
             return next;
+        }
+
+        public static string GetNextAutomaticChoice(
+            TalentActionPanelState state,
+            IEnumerable<string> suppressedTalentIds)
+        {
+            if (state?.IsOpen != true) return null;
+
+            var suppressed = new HashSet<string>(
+                suppressedTalentIds ?? Array.Empty<string>(),
+                StringComparer.Ordinal);
+            IReadOnlyList<TalentActionPanelOption> options =
+                state.Options ?? Array.Empty<TalentActionPanelOption>();
+            if (options.Any(option => option?.Option?.Choice != null && option.IsPending))
+                return null;
+
+            return options
+                .FirstOrDefault(option => option?.Option?.Choice != null
+                                          && !option.IsPending
+                                          && string.IsNullOrWhiteSpace(option.Option.SelectedChoiceId)
+                                          && !suppressed.Contains(option.TalentId))
+                ?.TalentId;
         }
 
         public static TalentActionPanelState BeginTargetSelection(
@@ -175,7 +221,8 @@ namespace MahjongGame.Core
         public static IReadOnlyList<TalentActionTargetPresentation> BuildAuthorizedTargets(
             IEnumerable<TalentActionPanelOption> options,
             string talentId,
-            RoomGameSnapshot snapshot)
+            RoomGameSnapshot snapshot,
+            RoomSeatMessage[] roomSeats = null)
         {
             if (string.IsNullOrWhiteSpace(talentId) || snapshot == null)
                 return Array.Empty<TalentActionTargetPresentation>();
@@ -210,9 +257,10 @@ namespace MahjongGame.Core
                         {
                             Option = CloneOption(authorized),
                             SeatIndex = authorized.TargetSeatIndex,
-                            SeatDisplayName = string.IsNullOrWhiteSpace(seat.displayName)
-                                ? $"玩家 {authorized.TargetSeatIndex + 1}"
-                                : seat.displayName,
+                            SeatDisplayName = PlayerDisplayNamePolicy.Resolve(
+                                snapshot,
+                                authorized.TargetSeatIndex,
+                                roomSeats),
                             TalentDisplayName = TalentRegistry.Instance.GetDisplayName(authorized.TargetTalentId),
                             PublicCharge = Math.Max(0, publicTalent.lastPublicValue)
                         };
@@ -222,9 +270,10 @@ namespace MahjongGame.Core
                     {
                         Option = CloneOption(authorized),
                         SeatIndex = authorized.TargetSeatIndex,
-                        SeatDisplayName = string.IsNullOrWhiteSpace(seat.displayName)
-                            ? $"玩家 {authorized.TargetSeatIndex + 1}"
-                            : seat.displayName,
+                        SeatDisplayName = PlayerDisplayNamePolicy.Resolve(
+                            snapshot,
+                            authorized.TargetSeatIndex,
+                            roomSeats),
                         TalentDisplayName = string.Empty,
                         PublicCharge = 0
                     };
@@ -291,6 +340,30 @@ namespace MahjongGame.Core
             TalentActionOption selected = CloneOption(source);
             selected.SelectedChoiceId = choiceId;
             return selected;
+        }
+
+        public static TalentActionOption SelectAuthorizedChoice(
+            TalentActionPanelState state,
+            string talentId,
+            string choiceId)
+        {
+            if (state?.IsOpen != true
+                || string.IsNullOrWhiteSpace(talentId)
+                || string.IsNullOrWhiteSpace(choiceId))
+            {
+                return null;
+            }
+
+            TalentActionPanelOption current = (state.Options
+                                                ?? Array.Empty<TalentActionPanelOption>())
+                .FirstOrDefault(option => option?.Option?.Choice != null
+                                          && !option.IsPending
+                                          && string.Equals(
+                                              option.TalentId,
+                                              talentId,
+                                              StringComparison.Ordinal)
+                                          && option.Option.Choice.Contains(choiceId));
+            return SelectChoice(current?.Option, choiceId);
         }
     }
 }

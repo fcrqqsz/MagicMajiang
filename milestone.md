@@ -143,3 +143,7 @@
     *   [x] 褪色 (`fading_color`): 保持 `HiddenUntilPublicEffect` 隐蔽策略；跨小局积墨（上限 2），每局首次提交打出异化牌（含超时自动出牌）充能，主动消耗 1 墨定向削减对手公开充能，被防御阻挡不退款；实现 `IPublicChargeTalent` 与 `IPublicChargeControlTalent`。
     *   [x] 化劲 (`redirect_force`): 小局重置；以 Priority 10 优先于定心 (0) 拦截公开充能削减，格挡后强化当局合法胡牌 +4 番；实现 `IPublicChargeDefenseTalent`。
     *   [x] 网络快照反序列化与 `ClientGameState` 投影全面验证本家/他家隐私隔离与断线恢复；`NetworkRegression` 与 `GameServerTelemetryRegression` 自动化套件 100% 通过。
+*   [x] **天赋观察模式与 chip 状态 (2026-08-24)**:
+    *   [x] 默认不改变牌面；点击本家可观察天赋 chip 后，仅将匹配牌的 3D 底座改为红色，再次点击取消，牌面 Sprite、牌河与他家视觉不受影响。
+    *   [x] 异彩成章与褪色复用异化牌观察，去芜复用幺九/字牌观察；观察状态纯客户端本地、快照恢复和新小局都会清空，备牌拆装不保存该状态。
+    *   [x] chip 展示异化牌数量、墨/弃牌/副露进度及已选花色/胡牌方式/防护模式；协议 v9 仅向本家下发实体 ID、异化标记和精确副露，公共牌河与副露严格清洗。

@@ -100,4 +100,15 @@ namespace MahjongGame.Core.Agents
         /// </summary>
         void OnPrivateTileReveal(TalentPrivateTileReveal reveal);
     }
+
+    /// <summary>Optional exact physical meld projection for clients that track owner-private tile state.</summary>
+    public interface IResolvedMeldPlayerClient
+    {
+        void OnActionResolved(
+            int playerId,
+            Network.ClientActionType actionType,
+            TileData targetTile,
+            int[] chiCombinations,
+            IReadOnlyList<TileData> resolvedMeldTiles);
+    }
 }

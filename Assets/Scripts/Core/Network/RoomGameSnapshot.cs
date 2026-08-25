@@ -58,6 +58,7 @@ namespace MahjongGame.Core.Network
         public bool IsActive;
         public bool IsRevealed;
         public int PrivateValue;
+        public string PrivateStatusKey;
         public string LastPublicEventType;
         public int LastPublicValue;
     }
@@ -103,10 +104,10 @@ namespace MahjongGame.Core.Network
                 {
                     seatIndex = requestingSeatIndex,
                     ownTotalAlienation = source.OwnTotalAlienation,
-                    concealedHand = ToSimpleTiles(GetAt(source.Hands, requestingSeatIndex)),
-                    melds = ToMeldSnapshots(GetAt(source.Melds, requestingSeatIndex)),
+                    concealedHand = ToOwnerPrivateTiles(GetAt(source.Hands, requestingSeatIndex)),
+                    melds = ToOwnerPrivateMeldSnapshots(GetAt(source.Melds, requestingSeatIndex)),
                     scoringOptions = ToScoringOptions(GetAt(source.ScoringOptions, requestingSeatIndex)),
-                    peekWallTiles = ToSimpleTiles(GetAt(source.PeekWallTiles, requestingSeatIndex)),
+                    peekWallTiles = ToOwnerPrivateTiles(GetAt(source.PeekWallTiles, requestingSeatIndex)),
                     privateTileReveal = source.PrivateTileReveal?.ViewerSeatIndex == requestingSeatIndex
                         ? CreatePrivateTileRevealSnapshot(source.PrivateTileReveal)
                         : null,
@@ -123,7 +124,7 @@ namespace MahjongGame.Core.Network
                 remainingWallCount = source.RemainingWallCount,
                 activeDecision = CreateDecisionSnapshot(source.ActiveDecision),
                 mainTurnDrawnTile = IsRequestingSeatMainTurn(source.ActiveDecision, requestingSeatIndex)
-                    ? ToSimpleTile(source.MainTurnDrawnTile)
+                    ? ToOwnerPrivateTile(source.MainTurnDrawnTile)
                     : null,
                 sideboard = BuildSideboard(source.Sideboard),
                 result = new RoundResultSnapshot
@@ -244,7 +245,8 @@ namespace MahjongGame.Core.Network
                 {
                     talentId = talent.TalentId,
                     isActive = talent.IsActive,
-                    privateValue = talent.PrivateValue
+                    privateValue = talent.PrivateValue,
+                    privateStatusKey = talent.PrivateStatusKey
                 })
                 .ToArray();
         }
@@ -303,14 +305,39 @@ namespace MahjongGame.Core.Network
             }).ToArray();
         }
 
+        private static SnapshotMeld[] ToOwnerPrivateMeldSnapshots(List<Meld> melds)
+        {
+            return (melds ?? new List<Meld>()).Where(meld => meld != null).Select(meld => new SnapshotMeld
+            {
+                meldType = (int)meld.Type,
+                sourceSeatIndex = meld.SourcePlayerID,
+                isConcealed = meld.IsConcealed,
+                tileCount = meld.Tiles?.Count ?? 0,
+                tiles = ToOwnerPrivateTiles(meld.Tiles)
+            }).ToArray();
+        }
+
         private static SimpleTileData[] ToSimpleTiles(IEnumerable<TileData> tiles)
         {
             return (tiles ?? Enumerable.Empty<TileData>()).Select(ToSimpleTile).Where(tile => tile != null).ToArray();
         }
 
+        private static SimpleTileData[] ToOwnerPrivateTiles(IEnumerable<TileData> tiles)
+        {
+            return (tiles ?? Enumerable.Empty<TileData>())
+                .Select(ToOwnerPrivateTile)
+                .Where(tile => tile != null)
+                .ToArray();
+        }
+
         private static SimpleTileData ToSimpleTile(TileData tile)
         {
             return tile == null ? null : new SimpleTileData(tile);
+        }
+
+        private static SimpleTileData ToOwnerPrivateTile(TileData tile)
+        {
+            return tile == null ? null : new SimpleTileData(tile, true);
         }
 
         private static SnapshotPrivateTileReveal CreatePrivateTileRevealSnapshot(TalentPrivateTileReveal reveal)
@@ -417,6 +444,7 @@ namespace MahjongGame.Core.Network.Messages
         public string talentId;
         public bool isActive;
         public int privateValue;
+        public string privateStatusKey;
     }
 
     [Serializable]

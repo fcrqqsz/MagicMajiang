@@ -92,10 +92,32 @@ namespace MahjongGame.Core.Network
             _players[playerId].Hand.Add(tile);
         }
 
+        public bool TryGetHandTile(int playerId, TileData requestedTile, out TileData authoritativeTile)
+        {
+            authoritativeTile = null;
+            if (requestedTile == null) return false;
+            List<TileData> hand = _players[playerId].Hand;
+            TileData match = !string.IsNullOrWhiteSpace(requestedTile.ID)
+                ? hand.FirstOrDefault(tile => string.Equals(
+                    tile.ID, requestedTile.ID, System.StringComparison.Ordinal))
+                : hand.FirstOrDefault(tile => tile.TileSuit == requestedTile.TileSuit
+                                              && tile.Value == requestedTile.Value);
+            if (match == null
+                || match.TileSuit != requestedTile.TileSuit
+                || match.Value != requestedTile.Value)
+                return false;
+            authoritativeTile = CloneTile(match);
+            return true;
+        }
+
         public void RemoveTile(int playerId, TileData tile)
         {
+            if (tile == null) return;
             var hand = _players[playerId].Hand;
-            var match = hand.FirstOrDefault(
+            var match = !string.IsNullOrWhiteSpace(tile.ID)
+                ? hand.FirstOrDefault(t => string.Equals(t.ID, tile.ID, System.StringComparison.Ordinal))
+                : null;
+            match ??= hand.FirstOrDefault(
                 t => t.TileSuit == tile.TileSuit && t.Value == tile.Value);
             if (match != null)
                 hand.Remove(match);
@@ -123,7 +145,7 @@ namespace MahjongGame.Core.Network
             return true;
         }
 
-        public void ApplyMeld(int playerId, ClientActionType type, TileData targetTile, int[] chiCombinations)
+        public Meld ApplyMeld(int playerId, ClientActionType type, TileData targetTile, int[] chiCombinations)
         {
             var snapshot = _players[playerId];
 
@@ -132,44 +154,55 @@ namespace MahjongGame.Core.Network
                 case ClientActionType.Chi:
                     if (chiCombinations != null && chiCombinations.Length == 2)
                     {
+                        var meldTiles = new List<TileData> { CloneTile(targetTile) };
                         foreach (var val in chiCombinations)
                         {
                             var match = snapshot.Hand.FirstOrDefault(
                                 t => t.TileSuit == targetTile.TileSuit && t.Value == val);
-                            if (match != null) snapshot.Hand.Remove(match);
+                            if (match == null) continue;
+                            snapshot.Hand.Remove(match);
+                            meldTiles.Add(CloneTile(match));
                         }
-                        var meldTiles = new List<TileData>
-                        {
-                            CloneTile(targetTile),
-                            new TileData(targetTile.TileSuit, chiCombinations[0], targetTile.OriginalOwnerID),
-                            new TileData(targetTile.TileSuit, chiCombinations[1], targetTile.OriginalOwnerID)
-                        };
-                        snapshot.Melds.Add(new Meld(MeldType.Chi, meldTiles, targetTile.OriginalOwnerID));
+                        var meld = new Meld(MeldType.Chi, meldTiles, targetTile.OriginalOwnerID);
+                        snapshot.Melds.Add(meld);
+                        return CloneMeld(meld);
                     }
                     break;
 
                 case ClientActionType.Pon:
-                    RemoveMatching(snapshot.Hand, targetTile, 2);
-                    snapshot.Melds.Add(new Meld(MeldType.Pon,
-                        new List<TileData> { CloneTile(targetTile), CloneTile(targetTile), CloneTile(targetTile) },
-                        targetTile.OriginalOwnerID));
-                    break;
+                    var ponTiles = TakeMatching(snapshot.Hand, targetTile, 2);
+                    var ponMeld = new Meld(MeldType.Pon,
+                        new[] { CloneTile(targetTile) }.Concat(ponTiles.Select(CloneTile)).ToList(),
+                        targetTile.OriginalOwnerID);
+                    snapshot.Melds.Add(ponMeld);
+                    return CloneMeld(ponMeld);
 
                 case ClientActionType.MingGan:
-                    RemoveMatching(snapshot.Hand, targetTile, 3);
-                    snapshot.Melds.Add(new Meld(MeldType.Kan_Exposed,
-                        new List<TileData> { CloneTile(targetTile), CloneTile(targetTile), CloneTile(targetTile), CloneTile(targetTile) },
-                        targetTile.OriginalOwnerID));
-                    break;
+                    var kongTiles = TakeMatching(snapshot.Hand, targetTile, 3);
+                    var exposedKong = new Meld(MeldType.Kan_Exposed,
+                        new[] { CloneTile(targetTile) }.Concat(kongTiles.Select(CloneTile)).ToList(),
+                        targetTile.OriginalOwnerID);
+                    snapshot.Melds.Add(exposedKong);
+                    return CloneMeld(exposedKong);
 
                 case ClientActionType.AnGan:
-                    TryCommitConcealedKong(playerId, targetTile, out _);
+                    if (TryCommitConcealedKong(playerId, targetTile, out _))
+                        return CloneMeld(snapshot.Melds[snapshot.Melds.Count - 1]);
                     break;
 
                 case ClientActionType.JiaGang:
-                    TryResolveAddedKong(playerId, targetTile, wasRobbed: false, out _);
+                    if (TryResolveAddedKong(playerId, targetTile, wasRobbed: false, out _))
+                    {
+                        Meld addedKong = snapshot.Melds.FirstOrDefault(meld =>
+                            meld.Type == MeldType.Kan_Added
+                            && meld.FirstTile.TileSuit == targetTile.TileSuit
+                            && meld.FirstTile.Value == targetTile.Value);
+                        return CloneMeld(addedKong);
+                    }
                     break;
             }
+
+            return null;
         }
 
         public bool TryCommitConcealedKong(
@@ -213,11 +246,7 @@ namespace MahjongGame.Core.Network
                         && meld.FirstTile.Value == targetTile.Value);
             if (!hasPon) return false;
 
-            TileData handTile = snapshot.Hand.FirstOrDefault(
-                tile => tile.TileSuit == targetTile.TileSuit && tile.Value == targetTile.Value);
-            if (handTile == null) return false;
-            authoritativeTile = CloneTile(handTile);
-            return true;
+            return TryGetHandTile(playerId, targetTile, out authoritativeTile);
         }
 
         public bool TryCommitAddedKong(
@@ -280,17 +309,18 @@ namespace MahjongGame.Core.Network
         public List<Meld> GetMelds(int playerId) => _players[playerId].Melds.Select(CloneMeld).ToList();
         public List<TileData> GetRiver(int playerId) => _players[playerId].River.Select(CloneTile).ToList();
 
-        private void RemoveMatching(List<TileData> hand, TileData target, int count)
+        private static List<TileData> TakeMatching(List<TileData> hand, TileData target, int count)
         {
-            int removed = 0;
-            for (int i = hand.Count - 1; i >= 0 && removed < count; i--)
+            var selected = new List<TileData>();
+            for (int i = hand.Count - 1; i >= 0 && selected.Count < count; i--)
             {
                 if (hand[i].TileSuit == target.TileSuit && hand[i].Value == target.Value)
                 {
+                    selected.Add(hand[i]);
                     hand.RemoveAt(i);
-                    removed++;
                 }
             }
+            return selected;
         }
 
         private static bool TilesMatch(TileData left, TileData right)

@@ -18,6 +18,7 @@ namespace MahjongGame.Core
 
         // [重要] 标记最后摸到的那张牌
         private TileVisual _lastDrawnTile = null;
+        private TalentObservationMode _observationMode = TalentObservationMode.None;
 
         public TileData LastDrawnData => _lastDrawnTile?.Data;
 
@@ -255,6 +256,64 @@ namespace MahjongGame.Core
             UpdateHandPositions();
         }
 
+        public bool ApplyAuthoritativeMeld(
+            Network.ClientActionType actionType,
+            TileData targetTile,
+            IReadOnlyList<TileData> resolvedMeldTiles)
+        {
+            if (resolvedMeldTiles == null || resolvedMeldTiles.Count == 0) return false;
+            var exactTiles = resolvedMeldTiles.Where(tile => tile != null).ToList();
+            if (exactTiles.Count == 0) return false;
+
+            var resolvedIds = new HashSet<string>(
+                exactTiles.Where(tile => !string.IsNullOrWhiteSpace(tile.ID)).Select(tile => tile.ID),
+                System.StringComparer.Ordinal);
+            foreach (TileVisual visual in _handTiles
+                         .Where(visual => visual?.Data != null && resolvedIds.Contains(visual.Data.ID))
+                         .ToList())
+            {
+                _handTiles.Remove(visual);
+                visual.transform.DOKill();
+                Destroy(visual.gameObject);
+            }
+
+            MeldType meldType = actionType switch
+            {
+                Network.ClientActionType.Chi => MeldType.Chi,
+                Network.ClientActionType.Pon => MeldType.Pon,
+                Network.ClientActionType.MingGan => MeldType.Kan_Exposed,
+                Network.ClientActionType.AnGan => MeldType.Kan_Concealed,
+                Network.ClientActionType.JiaGang => MeldType.Kan_Added,
+                _ => (MeldType)(-1)
+            };
+            if ((int)meldType < 0) return false;
+
+            if (actionType == Network.ClientActionType.JiaGang)
+            {
+                var exactIds = new HashSet<string>(
+                    exactTiles.Where(tile => !string.IsNullOrWhiteSpace(tile.ID)).Select(tile => tile.ID),
+                    System.StringComparer.Ordinal);
+                Meld pon = Melds.FirstOrDefault(meld => meld.Type == MeldType.Pon
+                    && meld.Tiles.Any(tile => !string.IsNullOrWhiteSpace(tile.ID)
+                                              && exactIds.Contains(tile.ID)));
+                pon ??= Melds.FirstOrDefault(meld => meld.Type == MeldType.Pon
+                    && meld.FirstTile.TileSuit == exactTiles[0].TileSuit
+                    && meld.FirstTile.Value == exactTiles[0].Value);
+                if (pon != null) Melds.Remove(pon);
+            }
+
+            Melds.Add(new Meld(
+                meldType,
+                exactTiles,
+                targetTile?.OriginalOwnerID ?? exactTiles[0].OriginalOwnerID,
+                actionType == Network.ClientActionType.AnGan));
+            _lastDrawnTile = null;
+            RefreshAllMeldsVisual();
+            SortHand();
+            UpdateHandPositions();
+            return true;
+        }
+
         public void DrawCard()
         {
             TileData newData = DeckManager.Instance.DrawTile();
@@ -280,7 +339,24 @@ namespace MahjongGame.Core
             TileVisual visual = go.GetComponent<TileVisual>();
             Sprite face = GetTileSprite(data);
             visual.Initialize(data, this, face);
+            ConfigureTileVisual(visual);
             AddTileToHand(visual, animate);
+        }
+
+        public void SetTalentObservationMode(TalentObservationMode mode)
+        {
+            _observationMode = mode;
+            foreach (TileVisual tile in _handTiles)
+                ConfigureTileVisual(tile);
+            if (meldSpawnPoint == null) return;
+            foreach (TileVisual tile in meldSpawnPoint.GetComponentsInChildren<TileVisual>())
+                ConfigureTileVisual(tile);
+        }
+
+        protected override void ConfigureTileVisual(TileVisual tile)
+        {
+            if (tile == null) return;
+            tile.SetObservationHighlight(TalentObservationPolicy.Matches(_observationMode, tile.Data));
         }
 
         private void AddTileToHand(TileVisual visual, bool animate = true)
@@ -345,6 +421,7 @@ namespace MahjongGame.Core
             _handTiles.Remove(tile);
             _selectedTile = null;
             _lastDrawnTile = null;
+            tile.SetObservationHighlight(false);
 
             if (myRiver != null) {
                 myRiver.AddTileToRiver(tile);
@@ -364,13 +441,18 @@ namespace MahjongGame.Core
         /// </summary>
         public void ForceRemoveTile(TileData tileData)
         {
-            var tile = _handTiles.FirstOrDefault(
+            if (tileData == null) return;
+            var tile = !string.IsNullOrWhiteSpace(tileData.ID)
+                ? _handTiles.FirstOrDefault(t => t.Data.ID == tileData.ID)
+                : null;
+            tile ??= _handTiles.FirstOrDefault(
                 t => t.Data.TileSuit == tileData.TileSuit && t.Data.Value == tileData.Value);
             if (tile == null) return;
 
             _handTiles.Remove(tile);
             _selectedTile = null;
             _lastDrawnTile = null;
+            tile.SetObservationHighlight(false);
 
             if (myRiver != null)
                 myRiver.AddTileToRiver(tile);
@@ -432,6 +514,7 @@ namespace MahjongGame.Core
 
         public override void ClearHand()
         {
+            _observationMode = TalentObservationMode.None;
             base.ClearHand();
             _selectedTile = null;
             Melds.Clear();
