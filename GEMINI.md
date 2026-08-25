@@ -54,6 +54,16 @@
     - **显式 Flex 方向**: HTML 原型所有 flex 容器必须显式写明 `flex-direction: column` 或 `row`（因浏览器默认 `row` 而 UI Toolkit 默认 `column`）。
     - **Emoji 绝对禁令**: HTML 原型与 UXML 文本严禁使用 Unicode Emoji（📋/👑/🔄/🀄/●/✓/✕ 等），避免 TextCore 字体出现 `[□]` 方块乱码。
     - **字体引用**: USS 统一引用 `MSYH_UITK.asset`，对齐使用 `-unity-text-align`，加粗使用 `-unity-font-style: bold;`。
+    - **USS 选择器安全规范**: 避免使用子元素选择器 `>`（如 `.parent > .child`），统一使用后代选择器 `.parent .child`，确保在各版本 UI Toolkit 解析器中的绝对兼容。
+    - **Button 默认边距重置与 Tab 容器保护 (Button Margin & Flex-Shrink Protection)**:
+      - UI Toolkit `Button` 控件默认携带内置的 `margin` 与边框。在设计 Tab 按钮组（Segmented Control）、小尺寸功能按钮或网格项时，**必须显式重置外边距**（展开 `margin-left/right/top/bottom`）并清零 `border-*-width: 0;`。
+      - 与 `flex-grow: 1` 弹性组件（如搜索框、自适应标题）同处一行水平容器的固定控件组（如 Tab 栏、状态徽章），**必须显式声明 `flex-shrink: 0;`**，严防被弹性组件挤压导致末尾按钮文字溢出外围边框。
+      - 按钮文本居中必须显式设置 `-unity-text-align: middle-center;` 并配合合理的 `min-width` 和 `height`。
+    - **双列网格流动卡片容差 (Dual-Column Grid Tolerance)**:
+      - 在 ScrollView 内部使用 `flex-direction: row; flex-wrap: wrap; justify-content: space-between;` 实现多列流动网格时，卡片宽度应预留安全容差（如双列卡片宽度使用 `48.5%`），防止特定 DPI 缩放下因亚像素舍入导致异常折行。
+    - **选择器弹窗设计模式 (Picker Modal Pattern)**:
+      - 遵循“容量上限智能过滤（小槽过滤大中品阶）+ 多级确定性排序（品阶降序 -> 费用升序 -> 拼音字母）+ 实时模糊搜索 + 品阶 Tab 联动 + 即选即装配”的交互范式。
+      - 对当前槽位不可用的品阶 Tab，同步执行 `tab.SetEnabled(false)` 与样式禁用，保证原生输入拦截与视觉反馈一致。
 
 ### 编码与架构规范
 *   **单例模式**: 逻辑层核心管理器（如 `FanRuleRegistry`, `TalentRegistry`）必须使用纯 C# 懒加载单例，避免对场景 GameObject 的硬依赖。

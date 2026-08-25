@@ -921,11 +921,53 @@ namespace MahjongGame.UI
 
         private void ShowTalentPicker(int slotIndex, bool isReserve)
         {
-            var allIds = TalentRegistry.Instance.GetAllIds();
             string[] targetSlots = GetTalentSlots(isReserve);
             string currentSlotTalent = targetSlots[slotIndex];
+            TalentTier slotTier = isReserve
+                ? (slotIndex == 0 ? TalentTier.Medium : TalentTier.Small)
+                : TalentSlotConfig.GetSlotTier(slotIndex);
+            string slotLabel = isReserve ? ReserveSlotTierLabels[slotIndex] : SlotTierLabels[slotIndex];
+            string slotTierName = slotTier == TalentTier.Large ? "大" : (slotTier == TalentTier.Medium ? "中" : "小");
 
-            // 创建弹出选择列表
+            // 1. 过滤：排除超出此槽位品阶上限的天赋，以及备选槽不支持的天赋
+            var allIds = TalentRegistry.Instance.GetAllIds();
+            var candidateList = new List<TalentPickerOption>();
+
+            foreach (var id in allIds)
+            {
+                var tier = TalentRegistry.Instance.GetTier(id);
+                TalentMetadata metadata = TalentRegistry.Instance.GetMetadata(id);
+
+                bool allowedBySlot = isReserve
+                    ? _currentTalents.CanEquipReserve(slotIndex, tier)
+                    : _currentTalents.CanEquip(slotIndex, tier);
+                bool allowedByMetadata = !isReserve || metadata.SideboardPolicy == TalentSideboardPolicy.Flexible;
+
+                if (!allowedBySlot || !allowedByMetadata) continue;
+
+                candidateList.Add(new TalentPickerOption
+                {
+                    Id = id,
+                    DisplayName = TalentRegistry.Instance.GetDisplayName(id),
+                    Description = TalentRegistry.Instance.GetDescription(id),
+                    Cost = TalentRegistry.Instance.GetCost(id),
+                    Tier = tier,
+                    TierName = tier == TalentTier.Large ? "大" : (tier == TalentTier.Medium ? "中" : "小"),
+                    TierClass = tier == TalentTier.Large ? "tier-large" : (tier == TalentTier.Medium ? "tier-medium" : "tier-small")
+                });
+            }
+
+            // 2. 多级排序：品阶降序 (大 > 中 > 小) -> 异化值升序 (低费在前) -> 名称字母升序
+            candidateList.Sort((a, b) =>
+            {
+                int tierCmp = ((int)b.Tier).CompareTo((int)a.Tier);
+                if (tierCmp != 0) return tierCmp;
+                int costCmp = a.Cost.CompareTo(b.Cost);
+                if (costCmp != 0) return costCmp;
+                return string.Compare(a.DisplayName, b.DisplayName, StringComparison.Ordinal);
+            });
+
+            // 3. 构建弹窗 UI 容器
             var overlay = new VisualElement();
             overlay.name = "TalentPickerOverlay";
             overlay.AddToClassList("talent-picker-overlay");
@@ -933,114 +975,299 @@ namespace MahjongGame.UI
             var panel = new VisualElement();
             panel.AddToClassList("talent-picker-panel");
 
-            string slotLabel = isReserve ? ReserveSlotTierLabels[slotIndex] : SlotTierLabels[slotIndex];
+            // 头部栏
+            var header = new VisualElement();
+            header.AddToClassList("talent-picker-header");
+
             var title = new Label($"选择天赋 — {slotLabel}槽位");
             title.AddToClassList("talent-picker-title");
-            panel.Add(title);
+            header.Add(title);
 
+            var slotBadge = new Label($"容量上限: {slotTierName}品阶");
+            slotBadge.AddToClassList("talent-picker-slot-badge");
+            header.Add(slotBadge);
+            panel.Add(header);
+
+            // 搜索与品阶筛选栏
+            var filterBar = new VisualElement();
+            filterBar.AddToClassList("talent-picker-filter-bar");
+
+            var searchWrap = new VisualElement();
+            searchWrap.AddToClassList("talent-picker-search-wrap");
+
+            var searchIcon = new Label("[搜索]");
+            searchIcon.AddToClassList("talent-picker-search-icon");
+            searchWrap.Add(searchIcon);
+
+            var searchField = new TextField();
+            searchField.AddToClassList("talent-picker-search");
+            searchField.value = "";
+            searchWrap.Add(searchField);
+            filterBar.Add(searchWrap);
+
+            var tabsContainer = new VisualElement();
+            tabsContainer.AddToClassList("talent-picker-tabs");
+
+            var tabAll = new Button { text = "全部" };
+            tabAll.AddToClassList("talent-tab-btn");
+            tabAll.AddToClassList("active");
+            tabsContainer.Add(tabAll);
+
+            var tabLarge = new Button { text = "大" };
+            tabLarge.AddToClassList("talent-tab-btn");
+            if (slotTier < TalentTier.Large)
+            {
+                tabLarge.AddToClassList("disabled-tab");
+                tabLarge.SetEnabled(false);
+            }
+            tabsContainer.Add(tabLarge);
+
+            var tabMedium = new Button { text = "中" };
+            tabMedium.AddToClassList("talent-tab-btn");
+            if (slotTier < TalentTier.Medium)
+            {
+                tabMedium.AddToClassList("disabled-tab");
+                tabMedium.SetEnabled(false);
+            }
+            tabsContainer.Add(tabMedium);
+
+            var tabSmall = new Button { text = "小" };
+            tabSmall.AddToClassList("talent-tab-btn");
+            tabsContainer.Add(tabSmall);
+
+            filterBar.Add(tabsContainer);
+            panel.Add(filterBar);
+
+            // 状态与计数提示行
+            var statusLine = new VisualElement();
+            statusLine.AddToClassList("talent-picker-status-line");
+
+            var countLabel = new Label();
+            countLabel.AddToClassList("talent-picker-count-label");
+            statusLine.Add(countLabel);
+
+            var hintLabel = new Label("点击卡片即可直接装配并关闭");
+            hintLabel.AddToClassList("talent-picker-hint-label");
+            statusLine.Add(hintLabel);
+
+            panel.Add(statusLine);
+
+            // 滚动网格区域
             var scrollView = new ScrollView();
             scrollView.AddToClassList("talent-picker-scroll");
 
-            // "清空此槽位" 选项（如果当前已装备）
-            if (!string.IsNullOrEmpty(currentSlotTalent))
-            {
-                var clearItem = new Button(() =>
-                {
-                    targetSlots[slotIndex] = null;
-                    RefreshTalentSlots();
-                    MarkDraftDirty();
-                    _root.Remove(overlay);
-                });
-                clearItem.text = "清空此槽位";
-                clearItem.AddToClassList("talent-picker-clear");
-                scrollView.Add(clearItem);
-            }
-
-            foreach (var id in allIds)
-            {
-                string displayName = TalentRegistry.Instance.GetDisplayName(id);
-                string desc = TalentRegistry.Instance.GetDescription(id);
-                int cost = TalentRegistry.Instance.GetCost(id);
-                var tier = TalentRegistry.Instance.GetTier(id);
-                string tierName = tier == TalentTier.Large ? "大" : (tier == TalentTier.Medium ? "中" : "小");
-                string tierClass = tier == TalentTier.Large ? "tier-large" : (tier == TalentTier.Medium ? "tier-medium" : "tier-small");
-                bool isCurrent = id == currentSlotTalent;
-                TalentMetadata metadata = TalentRegistry.Instance.GetMetadata(id);
-                bool allowedBySlot = isReserve
-                    ? _currentTalents.CanEquipReserve(slotIndex, tier)
-                    : _currentTalents.CanEquip(slotIndex, tier);
-                bool allowedByMetadata = !isReserve || metadata.SideboardPolicy == TalentSideboardPolicy.Flexible;
-                bool isDuplicate = TalentPickerDuplicatePolicy.IsDuplicateOutsideSlot(
-                    _currentTalents, id, slotIndex, isReserve);
-                bool canSelect = allowedBySlot && allowedByMetadata && !isDuplicate;
-
-                var item = new VisualElement();
-                item.AddToClassList("talent-picker-item");
-                if (isCurrent) item.AddToClassList("current-equipped");
-                if (!canSelect) item.AddToClassList("talent-picker-item-disabled");
-
-                var nameLabel = new Label(displayName);
-                nameLabel.AddToClassList("talent-picker-item-name");
-                item.Add(nameLabel);
-
-                var descLabel = new Label(desc);
-                descLabel.AddToClassList("talent-picker-item-desc");
-                item.Add(descLabel);
-
-                var metaRow = new VisualElement();
-                metaRow.AddToClassList("talent-picker-item-meta");
-
-                var tierLabel = new Label($"[{tierName}]");
-                tierLabel.AddToClassList("talent-picker-item-tier");
-                tierLabel.AddToClassList(tierClass);
-                metaRow.Add(tierLabel);
-
-                var costLabel = new Label($"异化值 +{cost}");
-                costLabel.AddToClassList("talent-picker-item-cost");
-                metaRow.Add(costLabel);
-
-                item.Add(metaRow);
-
-                if (!canSelect)
-                {
-                    var reason = new Label(isDuplicate ? "已在其他槽位携带" : !allowedByMetadata ? "该天赋只能装入主槽" : "品阶不符合此槽位");
-                    reason.AddToClassList("talent-picker-item-reason");
-                    item.Add(reason);
-                }
-
-                item.RegisterCallback<ClickEvent>(evt =>
-                {
-                    if (!canSelect) return;
-                    if (targetSlots[slotIndex] == id)
-                    {
-                        _root.Remove(overlay);
-                        return;
-                    }
-                    targetSlots[slotIndex] = id;
-                    RefreshTalentSlots();
-                    MarkDraftDirty();
-                    _root.Remove(overlay);
-                });
-
-                scrollView.Add(item);
-            }
-
+            var grid = new VisualElement();
+            grid.AddToClassList("talent-picker-grid");
+            scrollView.Add(grid);
             panel.Add(scrollView);
 
-            var btnCancel = new Button(() => _root.Remove(overlay)) { text = "取消" };
-            btnCancel.AddToClassList("talent-picker-cancel");
-            panel.Add(btnCancel);
+            // 底部操作栏
+            var footer = new VisualElement();
+            footer.AddToClassList("talent-picker-footer");
 
+            var clearBtn = new Button(() =>
+            {
+                targetSlots[slotIndex] = null;
+                RefreshTalentSlots();
+                MarkDraftDirty();
+                _root.Remove(overlay);
+            })
+            { text = "清空此槽位" };
+            clearBtn.AddToClassList("talent-picker-clear-btn");
+            if (string.IsNullOrEmpty(currentSlotTalent))
+            {
+                clearBtn.style.display = DisplayStyle.None;
+            }
+            footer.Add(clearBtn);
+
+            var cancelBtn = new Button(() => _root.Remove(overlay)) { text = "取消" };
+            cancelBtn.AddToClassList("talent-picker-cancel-btn");
+            footer.Add(cancelBtn);
+
+            panel.Add(footer);
             overlay.Add(panel);
 
-            // Click overlay background to close
+            // 筛选状态与刷新函数
+            TalentTier? activeTierFilter = null;
+            string currentQuery = "";
+
+            void UpdateTabsActiveState()
+            {
+                tabAll.EnableInClassList("active", activeTierFilter == null);
+                tabLarge.EnableInClassList("active", activeTierFilter == TalentTier.Large);
+                tabMedium.EnableInClassList("active", activeTierFilter == TalentTier.Medium);
+                tabSmall.EnableInClassList("active", activeTierFilter == TalentTier.Small);
+            }
+
+            void RefreshGrid()
+            {
+                grid.Clear();
+
+                var filtered = candidateList.Where(item =>
+                {
+                    if (activeTierFilter.HasValue && item.Tier != activeTierFilter.Value)
+                        return false;
+
+                    if (!string.IsNullOrWhiteSpace(currentQuery))
+                    {
+                        bool nameMatch = item.DisplayName.IndexOf(currentQuery, StringComparison.OrdinalIgnoreCase) >= 0;
+                        bool descMatch = item.Description.IndexOf(currentQuery, StringComparison.OrdinalIgnoreCase) >= 0;
+                        if (!nameMatch && !descMatch) return false;
+                    }
+
+                    return true;
+                }).ToList();
+
+                countLabel.text = $"当前匹配 {filtered.Count} 个天赋 (按品阶降序与异化值升序排列)";
+
+                if (filtered.Count == 0)
+                {
+                    var emptyBox = new VisualElement();
+                    emptyBox.AddToClassList("talent-picker-empty");
+                    var emptyLabel = new Label("[未找到匹配的天赋]");
+                    emptyLabel.AddToClassList("talent-picker-empty-text");
+                    emptyBox.Add(emptyLabel);
+                    grid.Add(emptyBox);
+                    return;
+                }
+
+                foreach (var opt in filtered)
+                {
+                    bool isCurrent = (opt.Id == currentSlotTalent);
+                    bool isDuplicate = TalentPickerDuplicatePolicy.IsDuplicateOutsideSlot(
+                        _currentTalents, opt.Id, slotIndex, isReserve);
+
+                    var card = new VisualElement();
+                    card.AddToClassList("talent-picker-card");
+                    if (isCurrent) card.AddToClassList("is-current");
+                    if (isDuplicate) card.AddToClassList("is-disabled");
+
+                    // 卡片头部
+                    var cardHeader = new VisualElement();
+                    cardHeader.AddToClassList("talent-card-header");
+
+                    var titleWrap = new VisualElement();
+                    titleWrap.AddToClassList("talent-card-title-wrap");
+
+                    var nameLabel = new Label(opt.DisplayName);
+                    nameLabel.AddToClassList("talent-card-name");
+                    titleWrap.Add(nameLabel);
+
+                    var tierLabel = new Label($"[{opt.TierName}]");
+                    tierLabel.AddToClassList("talent-card-tier");
+                    tierLabel.AddToClassList(opt.TierClass);
+                    titleWrap.Add(tierLabel);
+
+                    cardHeader.Add(titleWrap);
+
+                    var costLabel = new Label($"+{opt.Cost} 异化值");
+                    costLabel.AddToClassList("talent-card-cost");
+                    cardHeader.Add(costLabel);
+
+                    card.Add(cardHeader);
+
+                    // 卡片描述
+                    var descLabel = new Label(opt.Description);
+                    descLabel.AddToClassList("talent-card-desc");
+                    card.Add(descLabel);
+
+                    // 卡片底部状态角标
+                    var cardFooter = new VisualElement();
+                    cardFooter.AddToClassList("talent-card-footer");
+
+                    if (isCurrent)
+                    {
+                        var badge = new Label("[当前槽位已装备]");
+                        badge.AddToClassList("talent-card-status-badge");
+                        badge.AddToClassList("badge-current");
+                        cardFooter.Add(badge);
+                    }
+                    else if (isDuplicate)
+                    {
+                        var badge = new Label("[已在其他槽位装备]");
+                        badge.AddToClassList("talent-card-status-badge");
+                        badge.AddToClassList("badge-disabled");
+                        cardFooter.Add(badge);
+                    }
+
+                    card.Add(cardFooter);
+
+                    // 点击事件：不可用则忽略，若是当前则直接关闭，否则装备并关闭
+                    string capturedId = opt.Id;
+                    card.RegisterCallback<ClickEvent>(evt =>
+                    {
+                        if (isDuplicate) return;
+                        if (targetSlots[slotIndex] != capturedId)
+                        {
+                            targetSlots[slotIndex] = capturedId;
+                            RefreshTalentSlots();
+                            MarkDraftDirty();
+                        }
+                        _root.Remove(overlay);
+                    });
+
+                    grid.Add(card);
+                }
+            }
+
+            // 绑定 Tab 点击事件
+            tabAll.clicked += () =>
+            {
+                activeTierFilter = null;
+                UpdateTabsActiveState();
+                RefreshGrid();
+            };
+
+            tabLarge.clicked += () =>
+            {
+                if (slotTier < TalentTier.Large) return;
+                activeTierFilter = TalentTier.Large;
+                UpdateTabsActiveState();
+                RefreshGrid();
+            };
+
+            tabMedium.clicked += () =>
+            {
+                if (slotTier < TalentTier.Medium) return;
+                activeTierFilter = TalentTier.Medium;
+                UpdateTabsActiveState();
+                RefreshGrid();
+            };
+
+            tabSmall.clicked += () =>
+            {
+                activeTierFilter = TalentTier.Small;
+                UpdateTabsActiveState();
+                RefreshGrid();
+            };
+
+            // 绑定搜索输入事件
+            searchField.RegisterValueChangedCallback(evt =>
+            {
+                currentQuery = evt.newValue?.Trim() ?? "";
+                RefreshGrid();
+            });
+
+            // 点击背景关闭
             overlay.RegisterCallback<ClickEvent>(evt =>
             {
                 if (evt.target == overlay)
                     _root.Remove(overlay);
             });
 
+            RefreshGrid();
             _root.Add(overlay);
+        }
+
+        private sealed class TalentPickerOption
+        {
+            public string Id;
+            public string DisplayName;
+            public string Description;
+            public int Cost;
+            public TalentTier Tier;
+            public string TierName;
+            public string TierClass;
         }
 
         private string[] GetTalentSlots(bool isReserve) => isReserve

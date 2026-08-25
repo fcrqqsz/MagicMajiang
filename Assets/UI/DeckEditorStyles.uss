@@ -469,148 +469,384 @@
     top: 0;
     right: 0;
     bottom: 0;
-    background-color: rgba(0, 0, 0, 0.6);
+    background-color: rgba(0, 0, 0, 0.75);
     justify-content: center;
     align-items: center;
 }
 
 .talent-picker-panel {
-    background-color: #222831;
-    padding: 24px;
+    background-color: #1E2630;
     border-radius: 16px;
     border-width: 2px;
     border-color: #00ADB5;
-    min-width: 420px;
-    max-width: 520px;
-    max-height: 500px;
+    width: 780px;
+    height: 620px;
     flex-direction: column;
+    padding-left: 24px;
+    padding-right: 24px;
+    padding-top: 20px;
+    padding-bottom: 20px;
 }
 
-.talent-picker-title {
-    font-size: 22px;
-    color: #EEEEEE;
-    -unity-font-style: bold;
-    -unity-text-align: middle-center;
-    margin-bottom: 16px;
-    padding-bottom: 12px;
+.talent-picker-header {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    padding-bottom: 10px;
     border-bottom-width: 1px;
     border-bottom-color: rgba(0, 173, 181, 0.3);
 }
 
+.talent-picker-title {
+    font-size: 20px;
+    color: #EEEEEE;
+    -unity-font-style: bold;
+    -unity-text-align: middle-left;
+}
+
+.talent-picker-slot-badge {
+    font-size: 12px;
+    color: #00ADB5;
+    background-color: rgba(0, 173, 181, 0.15);
+    border-width: 1px;
+    border-color: rgba(0, 173, 181, 0.4);
+    border-radius: 4px;
+    padding-left: 8px;
+    padding-right: 8px;
+    padding-top: 3px;
+    padding-bottom: 3px;
+    -unity-font-style: bold;
+}
+
+.talent-picker-filter-bar {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.talent-picker-search-wrap {
+    flex-direction: row;
+    align-items: center;
+    flex-grow: 1;
+    flex-shrink: 1;
+    min-width: 200px;
+    height: 34px;
+    background-color: #2D3748;
+    border-radius: 8px;
+    border-width: 1px;
+    border-color: #4A5568;
+    margin-right: 12px;
+    padding-left: 8px;
+    padding-right: 8px;
+}
+
+.talent-picker-search-icon {
+    font-size: 12px;
+    color: #A0AEC0;
+    margin-right: 6px;
+    -unity-font-style: bold;
+}
+
+.talent-picker-search {
+    flex-grow: 1;
+    background-color: transparent;
+    border-width: 0;
+    color: #F7FAFC;
+    font-size: 13px;
+    padding-left: 0;
+    padding-right: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+}
+
+.talent-picker-search .unity-text-field__input {
+    background-color: transparent;
+    border-width: 0;
+    color: #F7FAFC;
+    font-size: 13px;
+    padding-left: 0;
+    padding-right: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+}
+
+.talent-picker-tabs {
+    flex-direction: row;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    background-color: #182028;
+    border-radius: 8px;
+    padding-left: 4px;
+    padding-right: 4px;
+    padding-top: 3px;
+    padding-bottom: 3px;
+}
+
+.talent-tab-btn {
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    background-color: transparent;
+    color: #A0AEC0;
+    border-left-width: 0;
+    border-right-width: 0;
+    border-top-width: 0;
+    border-bottom-width: 0;
+    border-top-left-radius: 6px;
+    border-top-right-radius: 6px;
+    border-bottom-left-radius: 6px;
+    border-bottom-right-radius: 6px;
+    margin-left: 2px;
+    margin-right: 2px;
+    margin-top: 0;
+    margin-bottom: 0;
+    padding-left: 10px;
+    padding-right: 10px;
+    padding-top: 4px;
+    padding-bottom: 4px;
+    min-width: 38px;
+    height: 28px;
+    font-size: 13px;
+    -unity-font-style: bold;
+    -unity-text-align: middle-center;
+    transition-duration: 0.15s;
+}
+
+.talent-tab-btn.active {
+    background-color: #00ADB5;
+    color: #121820;
+}
+
+.talent-tab-btn.disabled-tab {
+    color: #4A5568;
+    opacity: 0.45;
+}
+
+.talent-picker-status-line {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+    padding-left: 2px;
+    padding-right: 2px;
+}
+
+.talent-picker-count-label {
+    font-size: 12px;
+    color: #8C9BAE;
+}
+
+.talent-picker-hint-label {
+    font-size: 12px;
+    color: #6C7D93;
+}
+
 .talent-picker-scroll {
-    max-height: 360px;
+    flex-grow: 1;
+    height: 400px;
+    margin-bottom: 10px;
+    padding-right: 4px;
+}
+
+.talent-picker-grid {
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: space-between;
+}
+
+.talent-picker-card {
+    background-color: #26313E;
+    border-radius: 10px;
+    border-width: 1px;
+    border-color: #3B4A5C;
+    width: 48.5%;
+    min-height: 90px;
+    padding-left: 12px;
+    padding-right: 12px;
+    padding-top: 10px;
+    padding-bottom: 10px;
+    margin-bottom: 10px;
+    flex-direction: column;
+    justify-content: space-between;
+    transition-duration: 0.15s;
+}
+
+.talent-picker-card:hover {
+    border-color: #00ADB5;
+    background-color: #2F3D4D;
+}
+
+.talent-picker-card:active {
+    background-color: #00ADB5;
+    border-color: #00ADB5;
+}
+
+.talent-picker-card.is-current {
+    border-color: #9F7AEA;
+    background-color: rgba(159, 122, 234, 0.12);
+}
+
+.talent-picker-card.is-disabled {
+    opacity: 0.45;
+    background-color: #1C242E;
+    border-color: #2D3748;
+}
+
+.talent-picker-card.is-disabled:hover {
+    border-color: #2D3748;
+    background-color: #1C242E;
+}
+
+.talent-card-header {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 5px;
+}
+
+.talent-card-title-wrap {
+    flex-direction: row;
+    align-items: center;
+}
+
+.talent-card-name {
+    font-size: 15px;
+    color: #FFFFFF;
+    -unity-font-style: bold;
+    margin-right: 6px;
+}
+
+.talent-card-tier {
+    font-size: 11px;
+    -unity-font-style: bold;
+    border-radius: 4px;
+    padding-left: 5px;
+    padding-right: 5px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+    border-width: 1px;
+}
+
+.tier-large {
+    color: #F6AD55;
+    background-color: rgba(246, 173, 85, 0.18);
+    border-color: rgba(246, 173, 85, 0.4);
+}
+
+.tier-medium {
+    color: #B794F4;
+    background-color: rgba(183, 148, 244, 0.18);
+    border-color: rgba(183, 148, 244, 0.4);
+}
+
+.tier-small {
+    color: #63B3ED;
+    background-color: rgba(99, 179, 237, 0.18);
+    border-color: rgba(99, 179, 237, 0.4);
+}
+
+.talent-card-cost {
+    font-size: 12px;
+    color: #FC8181;
+    -unity-font-style: bold;
+}
+
+.talent-card-desc {
+    font-size: 12px;
+    color: #A0AEC0;
+    white-space: normal;
+    margin-bottom: 6px;
     flex-grow: 1;
 }
 
-.talent-picker-item {
-    background-color: #393E46;
-    border-radius: 10px;
-    border-width: 2px;
-    border-color: transparent;
-    padding: 12px 16px;
-    margin-bottom: 8px;
-    -unity-text-align: middle-left;
+.talent-card-footer {
+    flex-direction: row;
+    justify-content: flex-end;
+    align-items: center;
+}
+
+.talent-card-status-badge {
+    font-size: 11px;
+    padding-left: 4px;
+    padding-right: 4px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+    border-radius: 3px;
+}
+
+.badge-current {
+    color: #D6BCFA;
+    background-color: rgba(214, 188, 250, 0.2);
+    -unity-font-style: bold;
+}
+
+.badge-disabled {
+    color: #FEB2B2;
+    background-color: rgba(254, 178, 178, 0.15);
+}
+
+.talent-picker-footer {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    padding-top: 12px;
+    border-top-width: 1px;
+    border-top-color: rgba(255, 255, 255, 0.08);
+}
+
+.talent-picker-clear-btn {
+    background-color: rgba(229, 62, 62, 0.15);
+    color: #FC8181;
+    border-width: 1px;
+    border-color: rgba(229, 62, 62, 0.4);
+    border-radius: 8px;
+    padding-left: 18px;
+    padding-right: 18px;
+    padding-top: 8px;
+    padding-bottom: 8px;
+    font-size: 14px;
+    -unity-font-style: bold;
     transition-duration: 0.15s;
+}
+
+.talent-picker-clear-btn:hover {
+    background-color: rgba(229, 62, 62, 0.28);
+    border-color: #E53E3E;
+}
+
+.talent-picker-cancel-btn {
+    background-color: #394656;
+    color: #E2E8F0;
+    border-width: 0;
+    border-radius: 8px;
+    padding-left: 24px;
+    padding-right: 24px;
+    padding-top: 8px;
+    padding-bottom: 8px;
+    font-size: 14px;
+    -unity-font-style: bold;
+    transition-duration: 0.15s;
+}
+
+.talent-picker-cancel-btn:hover {
+    background-color: #4A5B70;
+}
+
+.talent-picker-empty {
+    width: 100%;
+    height: 220px;
+    justify-content: center;
+    align-items: center;
     flex-direction: column;
 }
 
-.talent-picker-item:hover {
-    border-color: #00ADB5;
-    background-color: #444b56;
-}
-
-.talent-picker-item:active {
-    background-color: #00ADB5;
-    color: #222831;
-}
-
-.talent-picker-item.current-equipped {
-    border-color: rgba(122, 90, 245, 0.6);
-    opacity: 0.7;
-}
-
-.talent-picker-item-disabled {
-    opacity: 0.42;
-}
-
-.talent-picker-item-reason {
-    margin-top: 4px;
-    color: #ff9b9b;
-    font-size: 12px;
-}
-
-.talent-picker-item-name {
-    font-size: 17px;
-    color: #EEEEEE;
-    -unity-font-style: bold;
-    margin-bottom: 4px;
-}
-
-.talent-picker-item-desc {
-    font-size: 13px;
-    color: #aaaaaa;
-    white-space: normal;
-}
-
-.talent-picker-item-meta {
-    flex-direction: row;
-    justify-content: space-between;
-    margin-top: 6px;
-}
-
-.talent-picker-item-tier {
-    font-size: 12px;
-    -unity-font-style: bold;
-}
-
-.talent-picker-item-tier.tier-large {
-    color: #f5a623;
-}
-
-.talent-picker-item-tier.tier-medium {
-    color: #7a5af5;
-}
-
-.talent-picker-item-tier.tier-small {
-    color: #4a9af5;
-}
-
-.talent-picker-item-cost {
-    font-size: 12px;
-    color: #ff6b6b;
-}
-
-.talent-picker-clear {
-    background-color: rgba(255, 107, 107, 0.15);
-    border-radius: 10px;
-    border-width: 2px;
-    border-color: rgba(255, 107, 107, 0.3);
-    padding: 10px 16px;
-    margin-bottom: 12px;
-    -unity-text-align: middle-center;
-    transition-duration: 0.15s;
-    color: #ff6b6b;
-    font-size: 16px;
-}
-
-.talent-picker-clear:hover {
-    border-color: #ff6b6b;
-    background-color: rgba(255, 107, 107, 0.25);
-}
-
-.talent-picker-cancel {
-    height: 44px;
-    font-size: 18px;
-    background-color: #393E46;
-    color: #EEEEEE;
-    border-radius: 10px;
-    border-width: 0;
-    margin-top: 12px;
-    transition-duration: 0.15s;
-}
-
-.talent-picker-cancel:hover {
-    background-color: #555;
+.talent-picker-empty-text {
+    font-size: 14px;
+    color: #718096;
 }
 
 .talent-reserve-header { margin-top: 14px; }
