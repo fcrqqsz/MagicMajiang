@@ -254,4 +254,5 @@ Assets/UI/                   # UI Toolkit 面板
 - `plan.md`: 当前待办任务与长期优化路线图（仅未完成项）
 - `milestone.md`: 已完成里程碑归档（完成的任务记录在此）
 - `struct.md`: 详细架构索引
+- `unity_mcp_guide.md`: UnityMCP 连接、Refresh、场景操作、资源副作用与排障经验
 - `docs/network_verification.md`: Dedicated Server、多人联机、多局与重连验证指南
