@@ -1,75 +1,88 @@
+.wait-hint-document-root {
+    position: absolute;
+    left: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    -unity-font-definition: url('project://database/Assets/Font/MSYH_UITK.asset');
+}
+
 .wait-hint-root {
     position: absolute;
-    /* 强制相对于屏幕计算 */
     left: 50%;
     translate: -50% 0;
-    margin-left: 75px; /* 这样会在 translate 居中的基础上再向右偏移 75px */
-    
-    bottom: 350px;
-    
-    background-color: rgba(0, 0, 0, 0.85);
-    border-radius: 15px; /* 圆角也适当放大 */
-    padding: 15px; /* 内边距放大 */
+    bottom: 12%;
+    width: 196px;
+    min-width: 196px;
+    max-width: 790px;
+    height: 96px;
     flex-direction: row;
     align-items: center;
-    border-width: 3px; /* 边框加粗 */
-    border-color: #D4AF37;
-    
-    /* 默认隐藏 */
-    display: none; 
-    
-    /* 尺寸整体放大 */
-    height: 180px; /* 原 120px */
-    width: auto;
-    min-width: 300px;
-    /* 13张牌，每张 90px (含边距 20px)，加上左侧标题的宽度(约 120px) 和内边距，需要约 1400px */
-    max-width: 1800px; 
+    padding-left: 12px;
+    padding-right: 12px;
+    padding-top: 4px;
+    padding-bottom: 4px;
+    background-color: rgba(3, 15, 11, 0.9);
+    border-left-width: 1px;
+    border-right-width: 1px;
+    border-top-width: 1px;
+    border-bottom-width: 1px;
+    border-left-color: rgba(212, 175, 55, 0.76);
+    border-right-color: rgba(212, 175, 55, 0.76);
+    border-top-color: rgba(212, 175, 55, 0.76);
+    border-bottom-color: rgba(212, 175, 55, 0.76);
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
+    border-bottom-left-radius: 8px;
+    border-bottom-right-radius: 8px;
+    display: none;
 }
 
 .wait-hint-title {
-    color: white;
-    font-size: 42px; /* 原 32px */
+    width: 56px;
+    flex-shrink: 0;
+    color: #F4E8C0;
+    font-size: 20px;
     -unity-font-style: bold;
-    margin-right: 25px;
-    margin-left: 20px;
+    margin-right: 8px;
     -unity-text-align: middle-center;
 }
 
 .wait-list-scroll {
     flex-direction: row;
-    height: 150px; /* 原 100px */
+    height: 88px;
     flex-grow: 1;
 }
 
 .wait-list-scroll .unity-scroll-view__content-container {
     flex-direction: row;
     align-items: center;
+    justify-content: center;
+    min-width: 100%;
 }
 
 .wait-item {
     align-items: center;
-    margin-right: 20px;
-    width: 90px; /* 原 60px */
-    height: 150px; /* 原 100px */
+    width: 54px;
+    height: 88px;
+    flex-shrink: 0;
     justify-content: center;
 }
 
 .wait-item-image {
-    width: 75px; /* 原 50px */
-    height: 105px; /* 原 70px */
-    background-color: white;
-    border-radius: 8px;
+    width: 44px;
+    height: 62px;
+    background-color: #F7F3E8;
+    border-top-left-radius: 4px;
+    border-top-right-radius: 4px;
+    border-bottom-left-radius: 4px;
+    border-bottom-right-radius: 4px;
     -unity-background-scale-mode: scale-to-fit;
 }
 
 .wait-item-fan {
-    color: #FFD700;
-    font-size: 24px; /* 原 18px */
+    color: #F2D675;
+    font-size: 13px;
     -unity-font-style: bold;
-    margin-top: 10px;
-}
-
-/* 字体修正 (确保显示中文) */
-.unity-text-element {
-    -unity-font-definition: url('project://database/Assets/Font/MSYH_UITK.asset');
+    margin-top: 3px;
 }

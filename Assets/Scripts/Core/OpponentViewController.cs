@@ -75,10 +75,15 @@ namespace MahjongGame.Core
 
         protected override void UpdateHandPositions()
         {
+            bool hasDrawGap = _justDrawn && _handTiles.Count > 1;
             for (int i = 0; i < _handTiles.Count; i++)
             {
-                float targetX = i * tileGap;
-                if (_justDrawn && i == _handTiles.Count - 1) targetX += drawGap;
+                float targetX = GameTableLayoutPolicy.GetCenteredHandX(
+                    _handTiles.Count,
+                    i,
+                    tileGap,
+                    hasDrawGap,
+                    drawGap);
                 _handTiles[i].transform.DOKill(); // 在播放新动画前杀掉旧动画，防止冲突
                 _handTiles[i].transform.DOLocalMove(new Vector3(targetX, 0, 0), 0.3f).SetLink(_handTiles[i].gameObject);
                 _handTiles[i].transform.DOLocalRotate(opponentHandRotation, 0.3f).SetLink(_handTiles[i].gameObject);
@@ -108,7 +113,13 @@ namespace MahjongGame.Core
             {
                 var tile = _handTiles[i];
                 tile.transform.DOKill();
-                tile.transform.localPosition = new Vector3(i * tileGap, 0, 0);
+                float x = GameTableLayoutPolicy.GetCenteredHandX(
+                    _handTiles.Count,
+                    i,
+                    tileGap,
+                    false,
+                    drawGap);
+                tile.transform.localPosition = new Vector3(x, 0, 0);
                 tile.transform.localRotation = Quaternion.Euler(opponentHandRotation);
             }
         }

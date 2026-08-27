@@ -7,8 +7,8 @@ namespace MahjongGame.Core
     public class RiverController : MonoBehaviour
     {
         [Header("Layout Settings")]
-        public float xGap = 0.9f; // 牌宽度间隔
-        public float zGap = 1.2f; // 牌高度间隔 (行距)
+        public float xGap = 0.93f; // 牌宽度间隔
+        public float zGap = 1.26f; // 牌高度间隔 (行距)
         public int tilesPerRow = 6; // 每行几张牌
 
         // 存储已经打入牌河的牌
@@ -49,17 +49,19 @@ namespace MahjongGame.Core
 
             // 3. 计算目标位置 (局部坐标)
             int index = _discardedTiles.Count - 1;
-            int row = index / tilesPerRow;
-            int col = index % tilesPerRow;
-
-            Vector3 targetPos = new Vector3(col * xGap, 0, -row * zGap);
+            TableLayoutPoint layoutPoint = GameTableLayoutPolicy.GetRiverLocalPosition(
+                index,
+                tilesPerRow,
+                xGap,
+                zGap);
+            Vector3 targetPos = new Vector3(layoutPoint.X, 0, layoutPoint.Z);
             
             // 4. 移动动画 (如果你有 DoTween)
             tile.transform.DOKill(); // 先杀掉可能还在进行的其它动画
             if (animate)
             {
-                tile.transform.DOLocalMove(targetPos, 0.5f);
-            tile.transform.DOLocalRotate(new Vector3(90, 0, 0), 0.5f); // 牌河里的牌通常是倒下的
+                tile.transform.DOLocalMove(targetPos, 0.5f).SetLink(tile.gameObject);
+                tile.transform.DOLocalRotate(new Vector3(90, 0, 0), 0.5f).SetLink(tile.gameObject); // 牌河里的牌通常是倒下的
 
             // 5. 高亮新打出的牌
             }

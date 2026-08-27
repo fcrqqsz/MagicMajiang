@@ -7,9 +7,15 @@ namespace MahjongGame.UI
 {
     public class WaitHintController : MonoBehaviour
     {
+        private const float WaitItemWidth = 54f;
+        private const float WaitStripFixedWidth = 88f;
+        private const float WaitStripMinimumWidth = 196f;
+        private const float WaitStripMaximumWidth = 790f;
+
         public static WaitHintController Instance;
 
         [SerializeField] private UIDocument _document; // 显式引用
+        private VisualElement _documentRoot;
         private VisualElement _root;
         private ScrollView _scrollList;
 
@@ -28,8 +34,9 @@ namespace MahjongGame.UI
 
             if (_document != null && _document.rootVisualElement != null)
             {
-                _root = _document.rootVisualElement.Q<VisualElement>("WaitHintRoot");
-                _scrollList = _document.rootVisualElement.Q<ScrollView>("WaitListScroll");
+                _documentRoot = _document.rootVisualElement;
+                _root = _documentRoot.Q<VisualElement>("WaitHintRoot");
+                _scrollList = _documentRoot.Q<ScrollView>("WaitListScroll");
                 HideHint();
             }
             else
@@ -76,8 +83,16 @@ namespace MahjongGame.UI
                 _scrollList.Add(item);
             }
 
+            _root.style.width = GameTableLayoutPolicy.GetWaitHintWidth(
+                details.Count,
+                WaitItemWidth,
+                WaitStripFixedWidth,
+                WaitStripMinimumWidth,
+                WaitStripMaximumWidth);
+
             // 修改为 Flex，确保它能被 UI Toolkit 渲染
             _root.style.display = DisplayStyle.Flex;
+            _documentRoot.style.display = DisplayStyle.Flex;
         }
 
         public void HideHint()
@@ -85,6 +100,10 @@ namespace MahjongGame.UI
             if (_root != null)
             {
                 _root.style.display = DisplayStyle.None;
+            }
+            if (_documentRoot != null)
+            {
+                _documentRoot.style.display = DisplayStyle.None;
             }
         }
 

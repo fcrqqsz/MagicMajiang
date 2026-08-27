@@ -494,21 +494,21 @@ namespace MahjongGame.Core
 
         protected override void UpdateHandPositions()
         {
+            bool hasDrawGap = _handTiles.Count > 1 && _handTiles[_handTiles.Count - 1] == _lastDrawnTile;
             for (int i = 0; i < _handTiles.Count; i++)
             {
-                float targetX = i * tileGap;
-
-                if (i == _handTiles.Count - 1 && _handTiles[i] == _lastDrawnTile)
-                {
-                    targetX += drawGap;
-                }
+                float targetX = GameTableLayoutPolicy.GetCenteredHandX(
+                    _handTiles.Count,
+                    i,
+                    tileGap,
+                    hasDrawGap,
+                    drawGap);
 
                 Vector3 targetPos = new Vector3(targetX, 0, 0);
-                Quaternion targetRot = Quaternion.Euler(handRotation);
 
                 _handTiles[i].transform.DOKill(); 
-                _handTiles[i].transform.DOLocalMove(targetPos, 0.3f);
-                _handTiles[i].transform.DOLocalRotate(handRotation, 0.3f);
+                _handTiles[i].transform.DOLocalMove(targetPos, 0.3f).SetLink(_handTiles[i].gameObject);
+                _handTiles[i].transform.DOLocalRotate(handRotation, 0.3f).SetLink(_handTiles[i].gameObject);
             }
         }
 
@@ -545,7 +545,13 @@ namespace MahjongGame.Core
             {
                 var tile = _handTiles[i];
                 tile.transform.DOKill();
-                tile.transform.localPosition = new Vector3(i * tileGap, 0, 0);
+                float x = GameTableLayoutPolicy.GetCenteredHandX(
+                    _handTiles.Count,
+                    i,
+                    tileGap,
+                    false,
+                    drawGap);
+                tile.transform.localPosition = new Vector3(x, 0, 0);
                 tile.transform.localRotation = Quaternion.Euler(handRotation);
             }
         }

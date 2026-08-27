@@ -64,5 +64,6 @@ SideboardTests.Run(runner);
 AiTalentPolicyTests.Run(runner);
 AuthoritativePublicTileTransitionTests.Run(runner);
 CompendiumPresentationTests.Run(runner);
+GameTableLayoutPolicyTests.Run(runner);
 
 return runner.Complete();

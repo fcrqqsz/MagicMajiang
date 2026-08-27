@@ -10,8 +10,8 @@ namespace MahjongGame.Core
     {
         [Header("Common Hand Settings")]
         public GameObject tilePrefab;
-        public float tileGap = 0.8f;
-        public float drawGap = 1.0f;
+        public float tileGap = 0.84f;
+        public float drawGap = 0.32f;
 
         [Header("Common Meld Settings")]
         public Transform meldSpawnPoint;

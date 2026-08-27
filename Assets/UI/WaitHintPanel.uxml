@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" editor-extension-mode="False">
     <ui:Style src="WaitHintPanelStyles.uss" />
-    <ui:VisualElement style="flex-grow: 1; width: 100%; height: 100%; pointer-events: none;">
-        <ui:VisualElement name="WaitHintRoot" class="wait-hint-root">
-            <ui:Label text="听牌" class="wait-hint-title" />
-            <ui:ScrollView name="WaitListScroll" mode="Horizontal" class="wait-list-scroll">
+    <ui:VisualElement class="wait-hint-document-root" picking-mode="Ignore">
+        <ui:VisualElement name="WaitHintRoot" class="wait-hint-root" picking-mode="Ignore">
+            <ui:Label text="听牌" class="wait-hint-title" picking-mode="Ignore" />
+            <ui:ScrollView name="WaitListScroll" mode="Horizontal" horizontal-scroller-visibility="Hidden" vertical-scroller-visibility="Hidden" class="wait-list-scroll" picking-mode="Ignore">
                 <!-- items added dynamically -->
             </ui:ScrollView>
         </ui:VisualElement>

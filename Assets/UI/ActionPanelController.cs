@@ -341,10 +341,8 @@ namespace MahjongGame.UI
                 int index = i; 
                 Button btn = new Button();
                 btn.text = $"吃\n{options[i]}";
-                btn.AddToClassList("action-btn"); // 复用 USS 样式
-                btn.style.width = 160;
-                btn.style.height = 100;
-                btn.style.backgroundColor = new StyleColor(new Color(0.2f, 0.6f, 0.2f));
+                btn.AddToClassList("action-btn");
+                btn.AddToClassList("chi-target-btn");
                 
                 // 标记为临时按钮
                 btn.userData = "temp_chi";

@@ -43,7 +43,7 @@
             <ui:VisualElement name="Seat3KnownTalentDrawer" class="talent-drawer talent-drawer--left" picking-mode="Ignore" />
         </ui:VisualElement>
 
-        <!-- 中央菱形 -->
+        <!-- 中央指挥盘：保留既有元素名与控制器映射 -->
         <ui:VisualElement name="DiamondWrapper" class="diamond-wrapper" picking-mode="Ignore">
             <ui:VisualElement name="Diamond" class="diamond" picking-mode="Ignore">
 

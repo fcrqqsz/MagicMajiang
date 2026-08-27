@@ -217,11 +217,11 @@ Assets/UI/                   # UI Toolkit 面板
 - 对 `.uxml` / `.uss` 的日常自动检查仅限 XML 结构、资源路径、源码约束和纯策略测试；实际布局、中文字体、动画、音效及场景实例化由人工在 Unity 中验收。
 - 已完成人工验收的 UI 不长期保留 UXML/USS/Scene 源码形状、`.meta` GUID 或占位音频字节级测试；长期测试只保护玩法、网络权威、隐私、恢复和纯展示策略。
 - **禁止智能体手写、猜测、复制或修复 Unity `.meta` GUID**。新增 Unity 资产时允许暂时没有 `.meta`，必须等待 Unity/Tuanjie Refresh 权威生成。
-- 如果实现需要在场景、Prefab、UXML 或其他序列化资产中引用新资产 GUID，智能体必须暂停该引用步骤，请求人工先执行 Unity Refresh；不得预造 GUID 后继续。
+- 如果实现需要在场景、Prefab、UXML 或其他序列化资产中引用新资产 GUID，必须先由 Unity/Tuanjie Refresh 权威生成；不得预造 GUID。UnityMCP 已连接且用户在当前任务明确授权时，智能体可以通过 MCP 执行该 Refresh 并等待导入完成，否则请求人工执行。
 - **禁止智能体编辑、临时补项或以其他方式修补 Unity 生成的 `Assembly-CSharp.csproj` 等工程文件**，也不得把未 Refresh 导致的生成工程缺项视为源码编译失败。
-- Unity/Tuanjie Refresh、Unity Console 导入与编译确认、`Assembly-CSharp` 权威生成及最终视觉/音频 smoke test，默认均由人工在阶段集成或合并前统一执行。
-- 人工完成 Refresh 后，智能体可以只读检查并提交 Unity 实际生成的 `.meta` 或其他必要资产变更，但不得重写其 GUID 或用自生成内容替换。
-- 除非用户明确授权，智能体不得启动 Unity/Tuanjie batch mode、执行 Unity Refresh 或构建 Unity 生成的 `Assembly-CSharp.csproj`。
+- Unity/Tuanjie Refresh、Unity Console 导入与编译确认、`Assembly-CSharp` 权威生成及最终视觉/音频 smoke test 默认由人工执行；当 UnityMCP 已连接且用户在当前任务明确授权时，智能体可以通过 MCP 执行 Refresh、等待编译、读取 Console 并进行场景视觉 smoke test。
+- 人工或已授权的 UnityMCP Refresh 完成后，智能体可以只读检查并提交 Unity 实际生成的 `.meta` 或其他必要资产变更，但不得重写其 GUID 或用自生成内容替换。
+- 未经用户明确授权，智能体不得执行 Unity Refresh；即使已授权 Refresh，也不得据此启动 Unity/Tuanjie batch mode 或构建 Unity 生成的 `Assembly-CSharp.csproj`，这些操作仍需分别明确授权。
 - 人工 Unity 关口尚未完成时，智能体必须明确报告“纯 C# 验证通过，Unity 集成/视觉验收待人工执行”，不得宣称完整 Unity 验证通过。
 - 新增全屏模态流程、独立阶段面板或跨场景表现组件时，智能体必须先评估其布局、输入拦截、排序、生命周期、恢复和网络绑定归属；不得仅为了少建 Scene Object、少做一次 Unity 配置或复用现有入口，就默认挂载到已有 HUD/Controller。
 - 如果新界面具有独立显示阶段、全屏输入所有权或独立恢复状态，应优先设计为独立 `UIDocument` / Scene Object。复用现有宿主与新建独立宿主之间存在架构取舍时，必须在实现前向用户说明方案和影响并取得确认，不得自行选择便利方案后再以局部样式补丁修复耦合问题。

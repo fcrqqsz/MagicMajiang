@@ -11,9 +11,8 @@
 /* ======= 分层天赋 HUD（B 密度） ======= */
 .own-talent-layer {
     position: absolute;
-    left: 50%;
-    bottom: 188px;
-    translate: -50% 0;
+    left: 24px;
+    bottom: 20px;
     flex-direction: row;
     align-items: center;
 }
@@ -37,19 +36,19 @@
 }
 
 .seat-talent-layer--right {
-    right: 28px;
+    right: 20px;
     top: 50%;
     translate: 0 -50%;
 }
 
 .seat-talent-layer--top {
     left: 50%;
-    top: 30px;
+    top: 20px;
     translate: -50% 0;
 }
 
 .seat-talent-layer--left {
-    left: 28px;
+    left: 20px;
     top: 50%;
     translate: 0 -50%;
 }
@@ -102,16 +101,18 @@
     display: flex;
 }
 
-.talent-drawer--bottom { bottom: 36px; left: 50%; translate: -50% 0; }
+.talent-drawer--bottom { bottom: 36px; left: 0; }
 .talent-drawer--top { top: 36px; left: 50%; translate: -50% 0; }
 .talent-drawer--right { right: 46px; top: 50%; translate: 0 -50%; }
 .talent-drawer--left { left: 46px; top: 50%; translate: 0 -50%; }
 
 .talent-effect-feed {
     position: absolute;
-    right: 26px;
-    top: 84px;
-    width: 260px;
+    right: 20px;
+    top: 68px;
+    width: 240px;
+    max-height: 116px;
+    overflow: hidden;
     align-items: flex-end;
 }
 
@@ -129,12 +130,18 @@
 .talent-drawer-dismiss--visible { display: flex; }
 
 .talent-feed-row {
-    margin-bottom: 4px;
-    padding: 5px 10px;
+    margin-bottom: 3px;
+    padding-left: 8px;
+    padding-right: 8px;
+    padding-top: 4px;
+    padding-bottom: 4px;
     background-color: rgba(5, 18, 12, 0.78);
-    border-radius: 6px;
+    border-top-left-radius: 5px;
+    border-top-right-radius: 5px;
+    border-bottom-left-radius: 5px;
+    border-bottom-right-radius: 5px;
     color: #D9D3C2;
-    font-size: 14px;
+    font-size: 13px;
     -unity-font-definition: url('project://database/Assets/Font/MSYH_UITK.asset');
 }
 
@@ -144,16 +151,19 @@
 .talent-toast {
     position: absolute;
     left: 50%;
-    top: 40%;
+    top: 42%;
     translate: -50% -50%;
     display: none;
-    padding: 12px 24px;
+    padding-left: 20px;
+    padding-right: 20px;
+    padding-top: 9px;
+    padding-bottom: 9px;
     background-color: rgba(4, 20, 12, 0.94);
     border-width: 2px;
     border-color: #E5C66E;
     border-radius: 10px;
     color: #FFF1B0;
-    font-size: 25px;
+    font-size: 22px;
     -unity-font-style: bold;
     -unity-text-align: middle-center;
     -unity-font-definition: url('project://database/Assets/Font/MSYH_UITK.asset');
@@ -164,80 +174,118 @@
 /* ======= 左上角信息栏 ======= */
 .info-bar {
     position: absolute;
-    left: 30px;
-    top: 30px;
+    left: 22px;
+    top: 20px;
     background-color: rgba(0, 10, 5, 0.8);
-    border-width: 2px;
-    border-color: #D4AF37;
-    border-radius: 8px;
-    padding: 8px 16px;
+    border-left-width: 1px;
+    border-right-width: 1px;
+    border-top-width: 1px;
+    border-bottom-width: 1px;
+    border-left-color: #D4AF37;
+    border-right-color: #D4AF37;
+    border-top-color: #D4AF37;
+    border-bottom-color: #D4AF37;
+    border-top-left-radius: 6px;
+    border-top-right-radius: 6px;
+    border-bottom-left-radius: 6px;
+    border-bottom-right-radius: 6px;
+    padding-left: 12px;
+    padding-right: 12px;
+    padding-top: 6px;
+    padding-bottom: 6px;
 }
 
 .info-label {
-    font-size: 22px;
+    font-size: 18px;
     color: #E0D8C0;
     -unity-font-style: bold;
     -unity-font-definition: url('project://database/Assets/Font/MSYH_UITK.asset');
 }
 
-/* ======= 中央菱形容器 ======= */
+/* ======= 中央指挥盘 ======= */
 .diamond-wrapper {
     position: absolute;
     left: 50%;
-    top: 50%;
+    top: 45.4%;
     translate: -50% -50%;
-    width: 200px;
-    height: 200px;
+    width: 164px;
+    height: 104px;
 }
 
 .diamond {
     width: 100%;
     height: 100%;
-    rotate: 45deg;
-    background-color: rgba(0, 20, 10, 0.75);
-    border-width: 2px;
-    border-color: #D4AF37;
-    border-radius: 6px;
+    background-color: rgba(2, 18, 15, 0.94);
+    border-left-width: 2px;
+    border-right-width: 2px;
+    border-top-width: 2px;
+    border-bottom-width: 2px;
+    border-left-color: rgba(232, 196, 101, 0.94);
+    border-right-color: rgba(232, 196, 101, 0.94);
+    border-top-color: rgba(232, 196, 101, 0.94);
+    border-bottom-color: rgba(232, 196, 101, 0.94);
+    border-top-left-radius: 12px;
+    border-top-right-radius: 12px;
+    border-bottom-left-radius: 12px;
+    border-bottom-right-radius: 12px;
 }
 
 /* ======= 座位通用 ======= */
 .seat {
     position: absolute;
-    rotate: -45deg;
+    min-width: 56px;
+    height: 26px;
+    padding-left: 4px;
+    padding-right: 4px;
+    flex-direction: row;
     align-items: center;
     justify-content: center;
+    background-color: rgba(10, 48, 39, 0.96);
+    border-left-width: 1px;
+    border-right-width: 1px;
+    border-top-width: 1px;
+    border-bottom-width: 1px;
+    border-left-color: rgba(181, 154, 89, 0.48);
+    border-right-color: rgba(181, 154, 89, 0.48);
+    border-top-color: rgba(181, 154, 89, 0.48);
+    border-bottom-color: rgba(181, 154, 89, 0.48);
+    border-top-left-radius: 6px;
+    border-top-right-radius: 6px;
+    border-bottom-left-radius: 6px;
+    border-bottom-right-radius: 6px;
 }
 
-/* 上方 (对家) — 未旋转正方形的左上角 → 旋转后为菱形顶点 */
 .seat-top {
-    top: 8px;
-    left: 8px;
+    top: 4px;
+    left: 50%;
+    translate: -50% 0;
 }
 
-/* 下方 (自己) — 未旋转正方形的右下角 → 旋转后为菱形底点 */
 .seat-bottom {
-    bottom: 8px;
-    right: 8px;
+    bottom: 4px;
+    left: 50%;
+    translate: -50% 0;
 }
 
-/* 左侧 (上家) — 未旋转正方形的左下角 → 旋转后为菱形左点 */
 .seat-left {
-    bottom: 8px;
-    left: 8px;
+    left: 4px;
+    top: 50%;
+    translate: 0 -50%;
 }
 
-/* 右侧 (下家) — 未旋转正方形的右上角 → 旋转后为菱形右点 */
 .seat-right {
-    top: 8px;
-    right: 8px;
+    right: 4px;
+    top: 50%;
+    translate: 0 -50%;
 }
 
 /* ======= 风位标签 ======= */
 .wind-label {
-    font-size: 24px;
+    margin-right: 3px;
+    font-size: 16px;
     -unity-font-style: bold;
     -unity-font-definition: url('project://database/Assets/Font/MSYH_UITK.asset');
-    color: rgba(120, 120, 120, 0.4);
+    color: rgba(239, 236, 221, 0.92);
     -unity-text-align: middle-center;
 }
 
@@ -246,13 +294,13 @@
 }
 
 .wind-label--inactive {
-    color: rgba(120, 120, 120, 0.4);
+    color: rgba(214, 216, 205, 0.78);
 }
 
 /* ======= 分数标签 ======= */
 .score-label {
-    font-size: 25px;
-    color: #C0C0C0;
+    font-size: 12px;
+    color: #F0E8D2;
     -unity-text-align: middle-center;
     -unity-font-definition: url('project://database/Assets/Font/MSYH_UITK.asset');
 }
@@ -264,13 +312,15 @@
 /* ======= 发光效果元素 (叠加在活跃风字后面) ======= */
 .glow {
     position: absolute;
-    width: 40px;
-    height: 40px;
-    border-radius: 20px;
-    background-color: rgba(255, 215, 0, 0.25);
-    translate: -50% -50%;
-    left: 50%;
-    top: 50%;
+    left: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    border-top-left-radius: 6px;
+    border-top-right-radius: 6px;
+    border-bottom-left-radius: 6px;
+    border-bottom-right-radius: 6px;
+    background-color: rgba(255, 210, 82, 0.32);
     display: none;
 }
 
@@ -284,9 +334,8 @@
     left: 50%;
     top: 50%;
     translate: -50% -50%;
-    rotate: -45deg;
-    width: 70px;
-    height: 70px;
+    width: 44px;
+    height: 44px;
     align-items: center;
     justify-content: center;
 }
@@ -295,7 +344,10 @@
 .arc-segment {
     position: absolute;
     background-color: #4CAF50;
-    border-radius: 2px;
+    border-top-left-radius: 1px;
+    border-top-right-radius: 1px;
+    border-bottom-left-radius: 1px;
+    border-bottom-right-radius: 1px;
 }
 
 /* 上方进度条 */
@@ -303,8 +355,8 @@
     top: 0;
     left: 50%;
     translate: -50% 0;
-    width: 50px;
-    height: 5px;
+    width: 32px;
+    height: 3px;
     transform-origin: center center;
 }
 
@@ -313,8 +365,8 @@
     bottom: 0;
     left: 50%;
     translate: -50% 0;
-    width: 50px;
-    height: 5px;
+    width: 32px;
+    height: 3px;
     transform-origin: center center;
 }
 
@@ -323,8 +375,8 @@
     left: 0;
     top: 50%;
     translate: 0 -50%;
-    width: 5px;
-    height: 50px;
+    width: 3px;
+    height: 32px;
     transform-origin: center center;
 }
 
@@ -333,25 +385,28 @@
     right: 0;
     top: 50%;
     translate: 0 -50%;
-    width: 5px;
-    height: 50px;
+    width: 3px;
+    height: 32px;
     transform-origin: center center;
 }
 
 /* 中心圆形内圈 */
 .timer-inner {
-    width: 46px;
-    height: 46px;
-    border-radius: 23px;
-    background-color: rgba(0, 0, 0, 0.85);
-    border-width: 1px;
-    border-color: rgba(212, 175, 55, 0.5);
+    width: 34px;
+    height: 34px;
+    border-top-left-radius: 17px;
+    border-top-right-radius: 17px;
+    border-bottom-left-radius: 17px;
+    border-bottom-right-radius: 17px;
+    background-color: rgba(0, 0, 0, 0.92);
+    border-width: 2px;
+    border-color: rgba(232, 196, 101, 0.72);
     align-items: center;
     justify-content: center;
 }
 
 .timer-text {
-    font-size: 22px;
+    font-size: 17px;
     color: #FFFFFF;
     -unity-font-style: bold;
     -unity-text-align: middle-center;

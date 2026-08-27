@@ -26,6 +26,7 @@
     <Compile Include="AiTalentPolicyTests.cs" />
     <Compile Include="AuthoritativePublicTileTransitionTests.cs" />
     <Compile Include="CompendiumPresentationTests.cs" />
+    <Compile Include="GameTableLayoutPolicyTests.cs" />
     <Compile Include="UnityEngineStubs.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\ActionValidator.cs" Link="ActionValidator.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\MahjongLogic.cs" Link="MahjongLogic.cs" />
@@ -104,6 +105,7 @@
     <Compile Include="..\..\Assets\Scripts\Core\Meld.cs" Link="Meld.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\OpponentMeldState.cs" Link="OpponentMeldState.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\MeldVisualPolicy.cs" Link="MeldVisualPolicy.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\GameTableLayoutPolicy.cs" Link="GameTableLayoutPolicy.cs" />
     <Compile Include="..\..\Assets\UI\ResultHandLayoutPolicy.cs" Link="ResultHandLayoutPolicy.cs" />
     <Compile Include="..\..\Assets\UI\TalentFanPresentationState.cs" Link="TalentFanPresentationState.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\SelfTurnKongOptions.cs" Link="SelfTurnKongOptions.cs" />
