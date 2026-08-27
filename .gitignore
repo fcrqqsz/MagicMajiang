@@ -108,6 +108,7 @@ InitTestScene*.unity*
 
 #cache
 %SystemDrive%/
+tmp/
 
 # Codex isolated feature worktrees
 /.worktrees/
@@ -115,3 +116,4 @@ InitTestScene*.unity*
 # codely
 .codely*
 .com-unity-codely.json
+/CODELY.md
