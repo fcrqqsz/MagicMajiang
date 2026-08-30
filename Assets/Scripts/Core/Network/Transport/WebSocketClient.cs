@@ -17,6 +17,7 @@ namespace MahjongGame.Core.Network.Transport
         public event Action<string> OnDisconnected;
         public event Action<string> OnError;
         public event Action<string> OnMessageSent;
+        public event Action<string> OnMessageSendFailed;
 
         public string ActiveAddress => _activeAddress;
 
@@ -121,8 +122,9 @@ namespace MahjongGame.Core.Network.Transport
                 {
                     MainThreadDispatcher.Instance.Enqueue(() =>
                     {
-                        if (!completed || !IsCurrentSocket(socket, generation)) return;
-                        OnMessageSent?.Invoke(msg);
+                        if (!IsCurrentSocket(socket, generation)) return;
+                        if (completed) OnMessageSent?.Invoke(msg);
+                        else OnMessageSendFailed?.Invoke(msg);
                     });
                 });
             }

@@ -88,6 +88,7 @@ namespace MahjongGame.Core.Network.Transport
         public event System.Action<string> OnDisconnected;
         public event System.Action<string> OnError;
         public event System.Action<string> OnMessageSent;
+        public event System.Action<string> OnMessageSendFailed;
 
         public WebSocketClient() => Instance = this;
         public void Connect(string address)
@@ -113,12 +114,15 @@ namespace MahjongGame.Core.Network.Transport
             }
             if (completed)
                 OnMessageSent?.Invoke(message);
+            else
+                OnMessageSendFailed?.Invoke(message);
         }
         public void CompleteNextSend()
         {
             if (_pendingSendCompletions.Count == 0) return;
             (string message, bool completed) = _pendingSendCompletions.Dequeue();
             if (completed) OnMessageSent?.Invoke(message);
+            else OnMessageSendFailed?.Invoke(message);
         }
         public void Disconnect()
         {

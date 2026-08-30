@@ -26,6 +26,7 @@ internal static class ClientConnectionSettingsTests
         TestActiveRoomAndRecoveryRejectServerChanges(runner);
         TestRoomCommandsUseSelectedServer(runner);
         TestRecoveredRoomReturnsToSelectedServerAfterLeaveDelivery(runner);
+        TestFailedRecoveredLeaveDeliveryReturnsToSelectedServer(runner);
         TestTerminalRecoveryReturnsToSelectedServer(runner);
     }
 
@@ -314,6 +315,52 @@ internal static class ClientConnectionSettingsTests
 
         runner.Check(!service.TryReconnectSelectedServer("RecoveryUser"),
             "Server switching and retesting must remain blocked until the selected-server return handshake completes.");
+
+        client.Fail("Selected target refused the return handshake.");
+        runner.Check(
+            service.ConnectionDiagnostics.Phase == ClientConnectionPhase.Failed
+            && service.CanSubmitCommands
+            && service.TryReconnectSelectedServer("RecoveryUser"),
+            "A selected-target return handshake failure must settle the transition so the user can retry.");
+    }
+
+    private static void TestFailedRecoveredLeaveDeliveryReturnsToSelectedServer(RegressionRunner runner)
+    {
+        var client = CreateClient();
+        var tickets = new InMemoryClientReconnectTicketStore();
+        tickets.Save(new ClientReconnectTicket
+        {
+            serverAddress = LocalAddress,
+            username = "LeaveFailureUser",
+            roomId = "R2100",
+            streamId = "leave-failure-stream"
+        });
+        using var service = new ClientRoomService(OnlineAddress, tickets);
+
+        service.ReconnectSavedRoom("LeaveFailureUser");
+        service.Tick(0f);
+        client.CompleteConnect();
+        client.Receive(MessageSerializer.Serialize("HelloAccepted", 0, new HelloAcceptedMessage()));
+        client.Receive(MessageSerializer.Serialize("ReconnectState", 0, new ReconnectStateMessage
+        {
+            baselineSeq = 0,
+            snapshot = CreateRecoveredRoomSnapshot(),
+            missedMessages = Array.Empty<NetworkMessageEnvelope>()
+        }));
+
+        client.SendCompletionResults.Enqueue(false);
+        client.AutoCompleteSends = false;
+        service.LeaveRoom();
+        client.CompleteNextSend();
+        client.CompleteConnect();
+        client.Receive(MessageSerializer.Serialize("HelloAccepted", 0, new HelloAcceptedMessage()));
+
+        runner.Check(
+            client.ConnectAddresses.Last() == OnlineAddress
+            && service.SelectedServerAddress == OnlineAddress
+            && !tickets.TryLoad(out _)
+            && service.CanSubmitCommands,
+            "A failed recovered-room LeaveRoom delivery must deterministically return to the selected target without leaving command authority latched.");
     }
 
     private static void TestTerminalRecoveryReturnsToSelectedServer(RegressionRunner runner)

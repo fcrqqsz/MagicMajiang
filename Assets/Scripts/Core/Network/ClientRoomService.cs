@@ -108,6 +108,7 @@ namespace MahjongGame.Core.Network
             client.OnDisconnected += HandleDisconnected;
             client.OnError += HandleSocketError;
             client.OnMessageSent += HandleMessageSent;
+            client.OnMessageSendFailed += HandleMessageSendFailed;
         }
 
         public bool TrySwitchServer(string address, string username)
@@ -359,6 +360,15 @@ namespace MahjongGame.Core.Network
                 _pendingHeartbeatSentAt.Enqueue(Time.unscaledTime);
         }
 
+        private void HandleMessageSendFailed(string json)
+        {
+            var envelope = MessageSerializer.DeserializeEnvelope(json);
+            if (!_awaitingRecoveryLeaveDelivery || envelope?.type != "LeaveRoom") return;
+
+            _awaitingRecoveryLeaveDelivery = false;
+            FinishReturnToSelectedServer();
+        }
+
         private void ApplyEnvelope(NetworkMessageEnvelope envelope)
         {
             if (envelope == null) return;
@@ -539,6 +549,12 @@ namespace MahjongGame.Core.Network
                 {
                     _awaitingRecoveryLeaveDelivery = false;
                     FinishReturnToSelectedServer();
+                }
+                else if (_nonRecoveryHandshakeInFlight)
+                {
+                    FailNonRecoveryHandshake(string.IsNullOrWhiteSpace(reason)
+                        ? "Connection closed before authentication completed."
+                        : $"Connection closed before authentication completed: {reason}");
                 }
                 return;
             }
@@ -787,6 +803,7 @@ namespace MahjongGame.Core.Network
             _hasHelloAccepted = false;
             _helloHandshake.Reset();
             _pendingHeartbeatSentAt.Clear();
+            _isReturningToSelectedServer = false;
             PublishConnectionDiagnostics(ClientConnectionPhase.Failed, error);
         }
 
@@ -1061,6 +1078,7 @@ namespace MahjongGame.Core.Network
             WebSocketClient.Instance.OnDisconnected -= HandleDisconnected;
             WebSocketClient.Instance.OnError -= HandleSocketError;
             WebSocketClient.Instance.OnMessageSent -= HandleMessageSent;
+            WebSocketClient.Instance.OnMessageSendFailed -= HandleMessageSendFailed;
         }
     }
 }
