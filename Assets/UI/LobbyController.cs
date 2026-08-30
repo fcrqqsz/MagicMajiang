@@ -79,11 +79,17 @@ namespace MahjongGame.UI
         private Button btnRoomPresetNext;
         private AlienationPreset _pendingRoomAlienationPreset = AlienationPreset.Standard;
         
-        // Settings Elements
-        private Slider masterVolumeSlider;
-        private Slider musicVolumeSlider;
-        private Slider sfxVolumeSlider;
-        private Toggle debugModeToggle;
+        // Connection settings elements
+        private Toggle localServerToggle;
+        private Label connectionStatusPill;
+        private Label connectionAddressLabel;
+        private Button retestConnectionButton;
+        private Label connectionSocketPhaseLabel;
+        private Label connectionHandshakeLabel;
+        private Label connectionRttLabel;
+        private Label connectionLastCheckedLabel;
+        private Label connectionErrorLabel;
+        private Label connectionReadinessLabel;
 
         // Compendium Elements
         private Button subtabBtnMcr;
@@ -118,10 +124,7 @@ namespace MahjongGame.UI
         private List<string> _cachedSortedTalentIds;
 
         // Cached callbacks for unregistration
-        private EventCallback<ChangeEvent<float>> _onMasterVolumeChanged;
-        private EventCallback<ChangeEvent<float>> _onMusicVolumeChanged;
-        private EventCallback<ChangeEvent<float>> _onSfxVolumeChanged;
-        private EventCallback<ChangeEvent<bool>> _onDebugModeChanged;
+        private EventCallback<ChangeEvent<bool>> _onLocalServerChanged;
         private EventCallback<ChangeEvent<string>> _onFanSearchChanged;
         private EventCallback<ChangeEvent<string>> _onTalentSearchChanged;
         private EventCallback<FocusInEvent> _onFanSearchFocusIn;
@@ -189,10 +192,16 @@ namespace MahjongGame.UI
             btnRoomPresetPrev = root.Q<Button>("BtnRoomPresetPrev");
             btnRoomPresetNext = root.Q<Button>("BtnRoomPresetNext");
 
-            masterVolumeSlider = root.Q<Slider>("MasterVolumeSlider");
-            musicVolumeSlider = root.Q<Slider>("MusicVolumeSlider");
-            sfxVolumeSlider = root.Q<Slider>("SFXVolumeSlider");
-            debugModeToggle = root.Q<Toggle>("DebugModeToggle");
+            localServerToggle = root.Q<Toggle>("LocalServerToggle");
+            connectionStatusPill = root.Q<Label>("ConnectionStatusPill");
+            connectionAddressLabel = root.Q<Label>("ConnectionAddressLabel");
+            retestConnectionButton = root.Q<Button>("RetestConnectionButton");
+            connectionSocketPhaseLabel = root.Q<Label>("ConnectionSocketPhaseLabel");
+            connectionHandshakeLabel = root.Q<Label>("ConnectionHandshakeLabel");
+            connectionRttLabel = root.Q<Label>("ConnectionRttLabel");
+            connectionLastCheckedLabel = root.Q<Label>("ConnectionLastCheckedLabel");
+            connectionErrorLabel = root.Q<Label>("ConnectionErrorLabel");
+            connectionReadinessLabel = root.Q<Label>("ConnectionReadinessLabel");
 
             if (tabHome != null) tabHome.clicked += OnTabHomeClicked;
             if (tabWorkshop != null) tabWorkshop.clicked += OnTabWorkshopClicked;
@@ -216,10 +225,9 @@ namespace MahjongGame.UI
                 if (welcomeLabel != null)
                     welcomeLabel.text = $"Welcome, {ProfileManager.Instance.CurrentProfile.Nickname}";
                     
-                LoadSettingsUI();
             }
 
-            RegisterSettingsCallbacks();
+            RegisterConnectionSettingsCallbacks();
 
             InitializeCompendiumElements(root);
 
@@ -268,7 +276,7 @@ namespace MahjongGame.UI
                 deckEditorToolkit.OnExitRequested -= HandleDeckEditorExit;
             }
 
-            UnregisterSettingsCallbacks();
+            UnregisterConnectionSettingsCallbacks();
             UnregisterCompendiumCallbacks();
         }
 
@@ -814,46 +822,78 @@ namespace MahjongGame.UI
             ShowTab("Home");
         }
 
-        private void LoadSettingsUI()
+        private void RegisterConnectionSettingsCallbacks()
         {
-            var settings = ProfileManager.Instance.CurrentProfile.Settings;
-            if (masterVolumeSlider != null) masterVolumeSlider.value = settings.MasterVolume;
-            if (musicVolumeSlider != null) musicVolumeSlider.value = settings.MusicVolume;
-            if (sfxVolumeSlider != null) sfxVolumeSlider.value = settings.SFXVolume;
-            if (debugModeToggle != null) debugModeToggle.value = settings.DebugMode;
+            _onLocalServerChanged = OnLocalServerChanged;
+            if (localServerToggle != null)
+                localServerToggle.RegisterValueChangedCallback(_onLocalServerChanged);
+            if (retestConnectionButton != null)
+                retestConnectionButton.clicked += OnRetestConnectionClicked;
+
+            RefreshConnectionSettings(NetworkManager.Instance?.RoomService?.ConnectionDiagnostics);
         }
 
-        private void RegisterSettingsCallbacks()
+        private void UnregisterConnectionSettingsCallbacks()
         {
-            _onMasterVolumeChanged = evt => {
-                ProfileManager.Instance.CurrentProfile.Settings.MasterVolume = evt.newValue;
-                ProfileManager.Instance.SaveProfile();
-            };
-            _onMusicVolumeChanged = evt => {
-                ProfileManager.Instance.CurrentProfile.Settings.MusicVolume = evt.newValue;
-                ProfileManager.Instance.SaveProfile();
-            };
-            _onSfxVolumeChanged = evt => {
-                ProfileManager.Instance.CurrentProfile.Settings.SFXVolume = evt.newValue;
-                ProfileManager.Instance.SaveProfile();
-            };
-            _onDebugModeChanged = evt => {
-                ProfileManager.Instance.CurrentProfile.Settings.DebugMode = evt.newValue;
-                ProfileManager.Instance.SaveProfile();
-            };
-
-            if (masterVolumeSlider != null) masterVolumeSlider.RegisterValueChangedCallback(_onMasterVolumeChanged);
-            if (musicVolumeSlider != null) musicVolumeSlider.RegisterValueChangedCallback(_onMusicVolumeChanged);
-            if (sfxVolumeSlider != null) sfxVolumeSlider.RegisterValueChangedCallback(_onSfxVolumeChanged);
-            if (debugModeToggle != null) debugModeToggle.RegisterValueChangedCallback(_onDebugModeChanged);
+            if (localServerToggle != null && _onLocalServerChanged != null)
+                localServerToggle.UnregisterValueChangedCallback(_onLocalServerChanged);
+            if (retestConnectionButton != null)
+                retestConnectionButton.clicked -= OnRetestConnectionClicked;
         }
 
-        private void UnregisterSettingsCallbacks()
+        private void OnLocalServerChanged(ChangeEvent<bool> evt)
         {
-            if (masterVolumeSlider != null) masterVolumeSlider.UnregisterValueChangedCallback(_onMasterVolumeChanged);
-            if (musicVolumeSlider != null) musicVolumeSlider.UnregisterValueChangedCallback(_onMusicVolumeChanged);
-            if (sfxVolumeSlider != null) sfxVolumeSlider.UnregisterValueChangedCallback(_onSfxVolumeChanged);
-            if (debugModeToggle != null) debugModeToggle.UnregisterValueChangedCallback(_onDebugModeChanged);
+            var network = NetworkManager.Instance;
+            if (network == null
+                || !network.SelectServerEnvironment(
+                    evt.newValue ? ClientServerEnvironment.Local : ClientServerEnvironment.Online,
+                    GetNickname()))
+            {
+                RefreshConnectionSettings(network?.RoomService?.ConnectionDiagnostics);
+            }
+        }
+
+        private void OnRetestConnectionClicked()
+        {
+            var roomService = NetworkManager.Instance?.RoomService;
+            if (roomService == null || !roomService.TryReconnectSelectedServer(GetNickname()))
+                RefreshConnectionSettings(roomService?.ConnectionDiagnostics);
+        }
+
+        private void HandleConnectionDiagnosticsChanged(ClientConnectionDiagnostics diagnostics) =>
+            RefreshConnectionSettings(diagnostics);
+
+        private void RefreshConnectionSettings(ClientConnectionDiagnostics diagnostics)
+        {
+            LobbyConnectionPresentationView view = LobbyConnectionPresentationPolicy.Build(diagnostics);
+            if (localServerToggle != null)
+            {
+                bool localSelected = NetworkManager.Instance?.SelectedServerEnvironment == ClientServerEnvironment.Local;
+                localServerToggle.SetValueWithoutNotify(localSelected);
+                localServerToggle.SetEnabled(!view.ActionsDisabled && NetworkManager.Instance != null);
+            }
+
+            if (connectionStatusPill != null)
+            {
+                connectionStatusPill.text = view.StatusText;
+                connectionStatusPill.RemoveFromClassList("connection-status-gray");
+                connectionStatusPill.RemoveFromClassList("connection-status-yellow");
+                connectionStatusPill.RemoveFromClassList("connection-status-blue");
+                connectionStatusPill.RemoveFromClassList("connection-status-green");
+                connectionStatusPill.RemoveFromClassList("connection-status-red");
+                connectionStatusPill.AddToClassList(view.StatusClass);
+            }
+
+            if (connectionAddressLabel != null)
+                connectionAddressLabel.text = $"当前地址：{(string.IsNullOrWhiteSpace(diagnostics?.Address) ? "--" : diagnostics.Address)}";
+            if (connectionSocketPhaseLabel != null) connectionSocketPhaseLabel.text = view.SocketPhaseText;
+            if (connectionHandshakeLabel != null) connectionHandshakeLabel.text = view.HandshakeText;
+            if (connectionRttLabel != null) connectionRttLabel.text = view.RoundTripTimeText;
+            if (connectionLastCheckedLabel != null) connectionLastCheckedLabel.text = view.LastCheckedText;
+            if (connectionErrorLabel != null) connectionErrorLabel.text = view.LastErrorText;
+            if (connectionReadinessLabel != null) connectionReadinessLabel.text = view.ReadinessText;
+            if (retestConnectionButton != null)
+                retestConnectionButton.SetEnabled(!view.ActionsDisabled && NetworkManager.Instance?.RoomService != null);
         }
 
         public void ShowTab(string tabName)
@@ -1149,6 +1189,8 @@ namespace MahjongGame.UI
             service.RoomError += HandleRoomError;
             service.RoomClosed += HandleRoomClosed;
             service.ReconnectSnapshotApplied += HandleReconnectSnapshotApplied;
+            service.ConnectionDiagnosticsChanged += HandleConnectionDiagnosticsChanged;
+            RefreshConnectionSettings(service.ConnectionDiagnostics);
         }
 
         private void UnsubscribeRoomService()
@@ -1160,6 +1202,7 @@ namespace MahjongGame.UI
             service.RoomError -= HandleRoomError;
             service.RoomClosed -= HandleRoomClosed;
             service.ReconnectSnapshotApplied -= HandleReconnectSnapshotApplied;
+            service.ConnectionDiagnosticsChanged -= HandleConnectionDiagnosticsChanged;
         }
 
         private void HandleRoomJoined(RoomJoinedMessage message)

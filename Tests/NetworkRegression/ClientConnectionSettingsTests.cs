@@ -2,8 +2,10 @@ using System;
 using System.Linq;
 using MahjongGame.Core;
 using MahjongGame.Core.Network;
+using MahjongGame.Core.Network.Data;
 using MahjongGame.Core.Network.Messages;
 using MahjongGame.Core.Network.Transport;
+using MahjongGame.UI;
 
 internal static class ClientConnectionSettingsTests
 {
@@ -14,6 +16,8 @@ internal static class ClientConnectionSettingsTests
     {
         TestEndpointSelection(runner);
         TestStartupConnectionDecision(runner);
+        TestLobbyPresentationMapping(runner);
+        TestLobbyProfileSettingsMigration(runner);
         TestSwitchConnectsAndRequiresHelloAcceptance(runner);
         TestTimeoutRetryAndFailureDiagnostics(runner);
         TestSocketFailureDuringAuthentication(runner);
@@ -45,6 +49,87 @@ internal static class ClientConnectionSettingsTests
             && !ClientServerStartupPolicy.ShouldConnectSelectedServerAfterLogin(reconnectStarted: true)
             && ClientServerStartupPolicy.ShouldConnectSelectedServerAfterLogin(reconnectStarted: false),
             "Startup must default to Online and only connect the selected server after login when saved-room recovery did not start.");
+    }
+
+    private static void TestLobbyPresentationMapping(RegressionRunner runner)
+    {
+        var ready = new ClientConnectionDiagnostics(
+            LocalAddress,
+            ClientConnectionPhase.Ready,
+            protocolVersion: 10,
+            roundTripTimeMilliseconds: 42,
+            lastCheckedUtc: new DateTime(2026, 8, 30, 12, 34, 56, DateTimeKind.Utc),
+            lastError: null);
+        LobbyConnectionPresentationView readyView = LobbyConnectionPresentationPolicy.Build(ready);
+
+        runner.Check(readyView.StatusText == "已就绪"
+            && readyView.StatusClass == "connection-status-green"
+            && readyView.SocketPhaseText == "套接字阶段：已就绪"
+            && readyView.HandshakeText == "v10 握手：已完成"
+            && readyView.RoundTripTimeText == "RTT：42 ms"
+            && readyView.LastCheckedText == "上次检查：2026-08-30 12:34:56 UTC"
+            && readyView.LastErrorText == "最近错误：--"
+            && readyView.ReadinessText == "就绪状态：可创建或加入房间"
+            && !readyView.ActionsDisabled,
+            "lobby diagnostics maps a Ready v10 snapshot to the green, actionable summary without inferring transport state");
+
+        var connecting = new ClientConnectionDiagnostics(
+            OnlineAddress,
+            ClientConnectionPhase.Connecting,
+            protocolVersion: 10,
+            roundTripTimeMilliseconds: null,
+            lastCheckedUtc: null,
+            lastError: "socket opening");
+        LobbyConnectionPresentationView connectingView = LobbyConnectionPresentationPolicy.Build(connecting);
+
+        runner.Check(connectingView.StatusText == "连接中"
+            && connectingView.StatusClass == "connection-status-yellow"
+            && connectingView.HandshakeText == "v10 握手：等待套接字连接"
+            && connectingView.RoundTripTimeText == "RTT：--"
+            && connectingView.LastCheckedText == "上次检查：--"
+            && connectingView.LastErrorText == "最近错误：socket opening"
+            && connectingView.ActionsDisabled,
+            "lobby diagnostics disables switching and retesting only while the authoritative phase is Connecting");
+
+        var failed = new ClientConnectionDiagnostics(
+            LocalAddress,
+            ClientConnectionPhase.Failed,
+            protocolVersion: 10,
+            roundTripTimeMilliseconds: null,
+            lastCheckedUtc: null,
+            lastError: "Connection refused.");
+        LobbyConnectionPresentationView failedView = LobbyConnectionPresentationPolicy.Build(failed);
+
+        runner.Check(failedView.StatusText == "连接失败"
+            && failedView.StatusClass == "connection-status-red"
+            && failedView.HandshakeText == "v10 握手：失败"
+            && failedView.ReadinessText == "就绪状态：请检查服务器后重试"
+            && !failedView.ActionsDisabled,
+            "a failed selection remains retryable and exposes the raw latest error through the presentation model");
+
+        LobbyConnectionPresentationView disconnectedView = LobbyConnectionPresentationPolicy.Build(
+            new ClientConnectionDiagnostics(OnlineAddress, ClientConnectionPhase.Disconnected, 10, null, null, null));
+        LobbyConnectionPresentationView authenticatingView = LobbyConnectionPresentationPolicy.Build(
+            new ClientConnectionDiagnostics(OnlineAddress, ClientConnectionPhase.Authenticating, 10, null, null, null));
+        runner.Check(disconnectedView.StatusClass == "connection-status-gray"
+            && authenticatingView.StatusClass == "connection-status-blue"
+            && authenticatingView.ActionsDisabled,
+            "the remaining authoritative phases map to gray Disconnected and blue Authenticating status pills");
+    }
+
+    private static void TestLobbyProfileSettingsMigration(RegressionRunner runner)
+    {
+        const string legacyProfileJson = "{\"Settings\":{\"MasterVolume\":0.35,\"MusicVolume\":0.5,\"SFXVolume\":0.75,\"DebugMode\":true,\"SelectedGameMode\":3}}";
+        PlayerProfile profile = UnityEngine.JsonUtility.FromJson<PlayerProfile>(legacyProfileJson);
+        profile.Normalize();
+
+        string persistedProfileJson = UnityEngine.JsonUtility.ToJson(profile);
+        runner.Check(profile.Settings.SelectedGameMode == 3
+            && !persistedProfileJson.Contains("MasterVolume", StringComparison.Ordinal)
+            && !persistedProfileJson.Contains("MusicVolume", StringComparison.Ordinal)
+            && !persistedProfileJson.Contains("SFXVolume", StringComparison.Ordinal)
+            && !persistedProfileJson.Contains("DebugMode", StringComparison.Ordinal),
+            "legacy profile JSON ignores removed audio and debug fields while retaining the selected game mode");
     }
 
     private static void TestSwitchConnectsAndRequiresHelloAcceptance(RegressionRunner runner)

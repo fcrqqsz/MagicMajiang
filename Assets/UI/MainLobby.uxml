@@ -204,12 +204,27 @@
 
             <!-- Settings View -->
             <ui:VisualElement name="ViewSettings" class="view-container" style="display: none;">
-                <ui:Label text="Settings" class="view-title" />
-                <ui:VisualElement class="settings-group">
-                    <ui:Slider name="MasterVolumeSlider" label="Master Volume" low-value="0" high-value="1" />
-                    <ui:Slider name="MusicVolumeSlider" label="Music Volume" low-value="0" high-value="1" />
-                    <ui:Slider name="SFXVolumeSlider" label="SFX Volume" low-value="0" high-value="1" />
-                    <ui:Toggle name="DebugModeToggle" label="Debug Mode" />
+                <ui:VisualElement class="connection-page-header">
+                    <ui:Label text="连接设置" class="view-title connection-title" />
+                    <ui:Label name="ConnectionStatusPill" text="已断开" class="connection-status-pill connection-status-gray" />
+                </ui:VisualElement>
+                <ui:VisualElement class="connection-columns">
+                    <ui:VisualElement class="connection-card connection-selection-card">
+                        <ui:Label text="服务器选择" class="connection-card-title" />
+                        <ui:Toggle name="LocalServerToggle" label="使用本地服务器" class="connection-toggle" />
+                        <ui:Label name="ConnectionAddressLabel" text="当前地址：--" class="connection-address" />
+                        <ui:Label text="仅在本次会话生效；重启客户端后恢复在线服务器。" class="connection-restart-hint" />
+                        <ui:Button name="RetestConnectionButton" text="重新测试连接" class="connection-retest-button" />
+                    </ui:VisualElement>
+                    <ui:VisualElement class="connection-card connection-diagnostics-card">
+                        <ui:Label text="连接诊断" class="connection-card-title" />
+                        <ui:Label name="ConnectionSocketPhaseLabel" text="套接字阶段：--" class="connection-detail" />
+                        <ui:Label name="ConnectionHandshakeLabel" text="v10 握手：--" class="connection-detail" />
+                        <ui:Label name="ConnectionRttLabel" text="RTT：--" class="connection-detail" />
+                        <ui:Label name="ConnectionLastCheckedLabel" text="上次检查：--" class="connection-detail" />
+                        <ui:Label name="ConnectionErrorLabel" text="最近错误：--" class="connection-detail connection-error" />
+                        <ui:Label name="ConnectionReadinessLabel" text="就绪状态：--" class="connection-readiness" />
+                    </ui:VisualElement>
                 </ui:VisualElement>
             </ui:VisualElement>
 

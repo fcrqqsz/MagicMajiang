@@ -1141,7 +1141,7 @@ internal static class TalentPresentationTests
 
         var profile = new PlayerProfile
         {
-            Settings = new ProfileSettings { MasterVolume = 0.35f, SelectedGameMode = 2 },
+            Settings = new ProfileSettings { SelectedGameMode = 2 },
             SavedDecks = new()
             {
                 new SavedDeck { AlienationPreset = (AlienationPreset)999 },
@@ -1149,8 +1149,7 @@ internal static class TalentPresentationTests
             }
         };
         profile.Normalize();
-        runner.Check(profile.Settings.MasterVolume == 0.35f
-            && profile.Settings.SelectedGameMode == 2
+        runner.Check(profile.Settings.SelectedGameMode == 2
             && profile.SavedDecks[0].AlienationPreset == AlienationPreset.Standard
             && profile.SavedDecks[1].AlienationPreset == AlienationPreset.High,
             "profile normalization migrates every saved deck and preserves unrelated settings");

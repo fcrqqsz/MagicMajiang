@@ -869,3 +869,138 @@
     color: rgb(180, 190, 205);
     white-space: normal;
 }
+
+/* Connection settings */
+.connection-page-header {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 18px;
+}
+
+.connection-title {
+    margin-bottom: 0;
+}
+
+.connection-status-pill {
+    min-width: 96px;
+    padding-top: 6px;
+    padding-bottom: 6px;
+    padding-left: 12px;
+    padding-right: 12px;
+    border-top-left-radius: 14px;
+    border-top-right-radius: 14px;
+    border-bottom-left-radius: 14px;
+    border-bottom-right-radius: 14px;
+    color: white;
+    font-size: 14px;
+    -unity-font-style: bold;
+    -unity-text-align: middle-center;
+}
+
+.connection-status-gray { background-color: rgb(86, 96, 110); }
+.connection-status-yellow { background-color: rgb(185, 137, 42); }
+.connection-status-blue { background-color: rgb(47, 107, 171); }
+.connection-status-green { background-color: rgb(49, 137, 88); }
+.connection-status-red { background-color: rgb(176, 63, 68); }
+
+.connection-columns {
+    flex-direction: row;
+    flex-grow: 1;
+    min-height: 0;
+}
+
+.connection-card {
+    flex-direction: column;
+    flex-grow: 1;
+    min-width: 0;
+    background-color: rgb(30, 35, 45);
+    border-top-width: 1px;
+    border-right-width: 1px;
+    border-bottom-width: 1px;
+    border-left-width: 1px;
+    border-top-color: rgb(58, 68, 84);
+    border-right-color: rgb(58, 68, 84);
+    border-bottom-color: rgb(58, 68, 84);
+    border-left-color: rgb(58, 68, 84);
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
+    border-bottom-left-radius: 8px;
+    border-bottom-right-radius: 8px;
+    padding-top: 20px;
+    padding-bottom: 20px;
+    padding-left: 22px;
+    padding-right: 22px;
+}
+
+.connection-selection-card {
+    margin-right: 18px;
+}
+
+.connection-card-title {
+    color: white;
+    font-size: 20px;
+    -unity-font-style: bold;
+    margin-bottom: 16px;
+}
+
+.connection-toggle {
+    margin-bottom: 16px;
+    color: rgb(225, 232, 242);
+    font-size: 16px;
+}
+
+.connection-address {
+    color: rgb(150, 205, 247);
+    font-size: 15px;
+    margin-bottom: 10px;
+    white-space: normal;
+}
+
+.connection-restart-hint {
+    color: rgb(174, 187, 205);
+    font-size: 14px;
+    margin-bottom: 20px;
+    white-space: normal;
+}
+
+.connection-retest-button {
+    min-height: 40px;
+    padding-top: 8px;
+    padding-bottom: 8px;
+    padding-left: 18px;
+    padding-right: 18px;
+    align-self: flex-start;
+    background-color: rgb(44, 94, 156);
+    color: white;
+    font-size: 16px;
+    -unity-font-style: bold;
+    border-width: 0;
+    border-top-left-radius: 5px;
+    border-top-right-radius: 5px;
+    border-bottom-left-radius: 5px;
+    border-bottom-right-radius: 5px;
+}
+
+.connection-retest-button:hover { background-color: rgb(58, 114, 184); }
+.connection-retest-button:active { background-color: rgb(34, 76, 128); }
+.connection-retest-button:disabled { opacity: 0.45; }
+
+.connection-detail {
+    color: rgb(202, 213, 228);
+    font-size: 15px;
+    margin-bottom: 10px;
+    white-space: normal;
+}
+
+.connection-error {
+    color: rgb(246, 166, 166);
+}
+
+.connection-readiness {
+    margin-top: 6px;
+    color: rgb(141, 218, 175);
+    font-size: 15px;
+    -unity-font-style: bold;
+    white-space: normal;
+}
