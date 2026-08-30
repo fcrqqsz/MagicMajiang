@@ -24,6 +24,7 @@ internal static class ClientConnectionSettingsTests
         TestSocketFailureDuringAuthentication(runner);
         TestHeartbeatAcknowledgementsMeasureRoundTripTime(runner);
         TestFailedHeartbeatSendDoesNotPolluteRtt(runner);
+        TestLobbyHeartbeatTimeoutFailsOnceAndAllowsFreshHandshake(runner);
         TestReadyLobbyDisconnectPublishesDisconnected(runner);
         TestServerSwitchDoesNotPublishIntermediateDisconnect(runner);
         TestRoomCommandDuringConnectionDoesNotReplaceHandshake(runner);
@@ -33,6 +34,8 @@ internal static class ClientConnectionSettingsTests
         TestRecoveredRoomReturnsToSelectedServerAfterLeaveDelivery(runner);
         TestFailedRecoveredLeaveDeliveryReturnsToSelectedServer(runner);
         TestTerminalRecoveryReturnsToSelectedServer(runner);
+        TestRecoveredRoomClosureReturnsToSelectedServerBeforeNotification(runner);
+        TestReconnectClearsPendingHeartbeatMeasurements(runner);
     }
 
     private static void TestEndpointSelection(RegressionRunner runner)
@@ -292,6 +295,41 @@ internal static class ClientConnectionSettingsTests
             "A failed asynchronous heartbeat send must not enter the RTT acknowledgement queue.");
     }
 
+    private static void TestLobbyHeartbeatTimeoutFailsOnceAndAllowsFreshHandshake(RegressionRunner runner)
+    {
+        var client = CreateClient();
+        using var service = CreateReadyService(client, "LobbyLivenessUser");
+        var phases = new System.Collections.Generic.List<ClientConnectionPhase>();
+        int terminalRecoveryCount = 0;
+        int roomErrorCount = 0;
+        service.ConnectionDiagnosticsChanged += diagnostics => phases.Add(diagnostics.Phase);
+        service.RecoveryProgressChanged += progress =>
+        {
+            if (progress.Stage == ClientRecoveryStage.TerminalFailure) terminalRecoveryCount++;
+        };
+        service.RoomError += _ => roomErrorCount++;
+
+        service.Tick(10f);
+        service.Tick(11f);
+
+        runner.Check(phases.SequenceEqual(new[] { ClientConnectionPhase.Failed })
+            && terminalRecoveryCount == 0
+            && roomErrorCount == 0
+            && client.ConnectAddresses.Count == 1,
+            "A selected-server lobby heartbeat timeout must publish one retryable failure without entering saved-room terminal recovery on later ticks.");
+
+        runner.Check(service.TryReconnectSelectedServer("LobbyLivenessUser")
+            && client.ConnectAddresses.Count == 2
+            && service.ConnectionDiagnostics.Phase == ClientConnectionPhase.Connecting,
+            "A selected-server lobby heartbeat timeout must admit a fresh retry handshake.");
+
+        client.CompleteConnect();
+        client.Receive(MessageSerializer.Serialize("HelloAccepted", 0, new HelloAcceptedMessage()));
+        runner.Check(service.ConnectionDiagnostics.Phase == ClientConnectionPhase.Ready
+            && GetSentTypes(client).Last() == "Hello",
+            "The retry after a lobby heartbeat timeout must require and accept a fresh Hello handshake.");
+    }
+
     private static void TestReadyLobbyDisconnectPublishesDisconnected(RegressionRunner runner)
     {
         var client = CreateClient();
@@ -520,6 +558,88 @@ internal static class ClientConnectionSettingsTests
             && !tickets.TryLoad(out _)
             && terminalProgress?.Stage == ClientRecoveryStage.TerminalFailure,
             "A terminal recovery rejection must clear the authoritative ticket, preserve terminal UI progress, and return to the selected server.");
+    }
+
+    private static void TestRecoveredRoomClosureReturnsToSelectedServerBeforeNotification(RegressionRunner runner)
+    {
+        var client = CreateClient();
+        var tickets = new InMemoryClientReconnectTicketStore();
+        tickets.Save(new ClientReconnectTicket
+        {
+            serverAddress = LocalAddress,
+            username = "ClosedRecoveryUser",
+            roomId = "R2000",
+            streamId = "closed-recovery-stream"
+        });
+        using var service = new ClientRoomService(OnlineAddress, tickets);
+        string notifiedReason = null;
+        bool returnStartedBeforeNotification = false;
+        service.RoomClosed += reason =>
+        {
+            notifiedReason = reason;
+            returnStartedBeforeNotification = !service.HasRoom
+                && !tickets.TryLoad(out _)
+                && client.ConnectAddresses.SequenceEqual(new[] { LocalAddress, OnlineAddress })
+                && service.ConnectionDiagnostics.Phase == ClientConnectionPhase.Connecting;
+        };
+
+        service.ReconnectSavedRoom("ClosedRecoveryUser");
+        service.Tick(0f);
+        client.CompleteConnect();
+        client.Receive(MessageSerializer.Serialize("HelloAccepted", 0, new HelloAcceptedMessage()));
+        client.Receive(MessageSerializer.Serialize("ReconnectState", 0, new ReconnectStateMessage
+        {
+            baselineSeq = 0,
+            snapshot = CreateRecoveredRoomSnapshot(),
+            missedMessages = Array.Empty<NetworkMessageEnvelope>()
+        }));
+
+        client.Receive(MessageSerializer.Serialize("RoomClosed", 1, new RoomClosedMessage
+        {
+            roomId = "R2000",
+            reason = "The recovered room expired."
+        }));
+
+        runner.Check(notifiedReason == "The recovered room expired."
+            && service.LastRoomClosureReason == "The recovered room expired."
+            && returnStartedBeforeNotification
+            && client.ActiveAddress == OnlineAddress
+            && !GetSentTypes(client).Contains("LeaveRoom"),
+            "A recovered RoomClosed must preserve its reason and notify only after clearing the ticket and starting the selected-target return without sending LeaveRoom.");
+
+        client.CompleteConnect();
+        client.Receive(MessageSerializer.Serialize("HelloAccepted", 0, new HelloAcceptedMessage()));
+        runner.Check(service.ConnectionDiagnostics.Phase == ClientConnectionPhase.Ready,
+            "The selected target reached after recovered RoomClosed must complete a fresh Hello handshake.");
+    }
+
+    private static void TestReconnectClearsPendingHeartbeatMeasurements(RegressionRunner runner)
+    {
+        var client = CreateClient();
+        var tickets = new InMemoryClientReconnectTicketStore();
+        using var service = new ClientRoomService(LocalAddress, tickets);
+        service.TrySwitchServer(LocalAddress, "HeartbeatRecoveryUser");
+        client.CompleteConnect();
+        client.Receive(MessageSerializer.Serialize("HelloAccepted", 0, new HelloAcceptedMessage()));
+        client.Receive(MessageSerializer.Serialize("RoomJoined", 1, new RoomJoinedMessage
+        {
+            roomId = "R4000",
+            streamId = "heartbeat-recovery-stream",
+            seatIndex = 0,
+            seats = new RoomSeatMessage[4]
+        }));
+
+        UnityEngine.Time.unscaledTime = 1f;
+        service.Tick(1f);
+        service.ReconnectSavedRoom("HeartbeatRecoveryUser");
+        service.Tick(1f);
+        client.Receive(MessageSerializer.Serialize("HelloAccepted", 0, new HelloAcceptedMessage()));
+        UnityEngine.Time.unscaledTime = 5f;
+        client.Receive(MessageSerializer.Serialize("HeartbeatAck", 0, new HeartbeatAckMessage()));
+
+        runner.Check(!service.ConnectionDiagnostics.RoundTripTimeMilliseconds.HasValue
+            && !service.ConnectionDiagnostics.LastCheckedUtc.HasValue,
+            "Beginning room recovery must discard pending heartbeat timestamps so a post-recovery ACK cannot measure the replaced socket.");
     }
 
     private static RoomGameSnapshot CreateRecoveredRoomSnapshot() => new RoomGameSnapshot

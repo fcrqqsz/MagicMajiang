@@ -2,7 +2,7 @@ var runner = new RegressionRunner();
 
 if (args.Length == 1 && string.Equals(args[0], "connection-settings", StringComparison.OrdinalIgnoreCase))
 {
-    ClientConnectionSettingsTests.Run(runner);
+    runner.RunSuite("connection-settings", ClientConnectionSettingsTests.Run);
     return runner.Complete();
 }
 
@@ -61,6 +61,7 @@ if (args.Length == 1 && string.Equals(args[0], "private-tile-knowledge", StringC
     return runner.Complete();
 }
 
+runner.RunSuite("connection-settings", ClientConnectionSettingsTests.Run);
 IdentityConnectionTests.Run(runner);
 RoomSessionTests.Run(runner);
 NetworkAuthorityBoundaryTests.Run(runner);
@@ -81,4 +82,5 @@ GameTableLayoutPolicyTests.Run(runner);
 PrivateTileKnowledgeTrackerTests.Run(runner);
 OpponentKnownTileDisplayPolicyTests.Run(runner);
 
+runner.RequireSuite("connection-settings");
 return runner.Complete();

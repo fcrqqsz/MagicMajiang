@@ -291,7 +291,8 @@ namespace MahjongGame.Core.Network
                 const string reason = "The server did not acknowledge a heartbeat within 10 seconds.";
                 if (!_ticketStore.TryLoad(out var ticket))
                 {
-                    HandleTerminalReconnectFailure(NetworkErrorCodes.RoomNotFound, "The saved room information is unavailable.");
+                    FailSelectedServerConnection(reason);
+                    WebSocketClient.Instance?.Disconnect();
                     return;
                 }
 
@@ -439,7 +440,10 @@ namespace MahjongGame.Core.Network
                     var closed = MessageSerializer.DeserializePayload<RoomClosedMessage>(envelope.data);
                     if (closed == null || closed.roomId != RoomId) return;
                     LastRoomClosureReason = string.IsNullOrWhiteSpace(closed.reason) ? "The room was closed." : closed.reason;
-                    ResetRoomState(true);
+                    if (_isUsingRecoveryServerOverride)
+                        BeginReturnToSelectedServerAfterRecovery(leaveRecoveredRoomIfConnected: false);
+                    else
+                        ResetRoomState(true);
                     RoomClosed?.Invoke(LastRoomClosureReason);
                     break;
                 case "RoomError":
@@ -796,6 +800,11 @@ namespace MahjongGame.Core.Network
 
         private void FailNonRecoveryHandshake(string error)
         {
+            FailSelectedServerConnection(error);
+        }
+
+        private void FailSelectedServerConnection(string error)
+        {
             _nonRecoveryHandshakeInFlight = false;
             _nonRecoveryHandshakeDeadlineAt = 0f;
             _pendingAfterConnect = null;
@@ -936,6 +945,7 @@ namespace MahjongGame.Core.Network
             _reconnectAttemptInFlight = false;
             _reconnectRetryScheduled = false;
             _reconnectAttemptIndex = 0;
+            _pendingHeartbeatSentAt.Clear();
             EnterConnectionRecoveryRequired(reason);
             ScheduleReconnect(Time.unscaledTime, reason);
         }
@@ -1019,13 +1029,14 @@ namespace MahjongGame.Core.Network
             RoomError?.Invoke(display);
         }
 
-        private void BeginReturnToSelectedServerAfterRecovery()
+        private void BeginReturnToSelectedServerAfterRecovery(bool leaveRecoveredRoomIfConnected = true)
         {
             if (_isReturningToSelectedServer) return;
             _isReturningToSelectedServer = true;
 
             var client = WebSocketClient.Instance;
-            if (_isUsingRecoveryServerOverride
+            if (leaveRecoveredRoomIfConnected
+                && _isUsingRecoveryServerOverride
                 && HasRoom
                 && _hasHelloAccepted
                 && client?.ReadyState == WebSocketState.Open)
