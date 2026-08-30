@@ -15,6 +15,7 @@ internal static class TalentCommandClientTests
         RemoteProxySerializesTalentActionFromAuthoritativeMainDecision(runner);
         RemoteProxyForwardsKongReplacementDrawAuthority(runner);
         RemoteProxyRejectsPrivateRevealForAnotherViewer(runner);
+        RemoteProxyForwardsPrivateKnownHandsOnlyToMatchingViewer(runner);
         RemoteProxyBindsAndUnbindsTalentPresentationClient(runner);
         SameSceneRecoveryPublishesTalentProjectionOnce(runner);
         CurrentSnapshotTalentProjectionReplaysAfterSceneConstruction(runner);
@@ -76,6 +77,35 @@ internal static class TalentCommandClientTests
 
         runner.Check(local.LastPrivateTileReveal == null,
             "RemoteServerProxy refuses a private tile reveal addressed to another viewer seat");
+    }
+
+    private static void RemoteProxyForwardsPrivateKnownHandsOnlyToMatchingViewer(RegressionRunner runner)
+    {
+        using ClientRoomService service = CreateLiveRoomService();
+        var local = new TalentPresentationClientStub();
+        using var proxy = new ProxyLifetime(new RemoteServerProxy(local, service));
+
+        WebSocketClient.Instance.Receive(MessageSerializer.Serialize("PrivateKnownTiles", 3,
+            new PrivateKnownTilesMessage
+            {
+                viewerSeatIndex = 0,
+                hands = new[]
+                {
+                    new SnapshotKnownHand
+                    {
+                        targetSeatIndex = 2,
+                        tiles = new[]
+                        {
+                            new SnapshotKnownTile { suit = (int)Suit.Pin, value = 6, isModified = true }
+                        }
+                    }
+                }
+            }));
+
+        runner.Check(local.LastPrivateKnownTiles?.ViewerSeatIndex == 0
+                     && local.LastPrivateKnownTiles.Hands.Single().TargetSeatIndex == 2
+                     && local.LastPrivateKnownTiles.Hands.Single().Tiles.Single().Value == 6,
+            "RemoteServerProxy forwards an ordered private known-hand projection to its matching local viewer");
     }
 
     private static void CurrentSnapshotTalentProjectionReplaysAfterSceneConstruction(RegressionRunner runner)
@@ -579,6 +609,7 @@ internal static class TalentCommandClientTests
         public RemoteServerProxy LastProxy { get; private set; }
         public bool LastDrawWasKongReplacement { get; private set; }
         public TalentPrivateTileReveal LastPrivateTileReveal { get; private set; }
+        public PrivateKnownTilesProjection LastPrivateKnownTiles { get; private set; }
 
         public int PlayerId => 0;
         public System.Threading.CancellationToken TurnCancellationToken { get; set; }
@@ -615,5 +646,7 @@ internal static class TalentCommandClientTests
         public void OnPeekWallTiles(List<TileData> topTiles) { }
         public void OnPrivateTileReveal(MahjongGame.Talents.TalentPrivateTileReveal reveal) =>
             LastPrivateTileReveal = reveal;
+        public void OnPrivateKnownTilesChanged(PrivateKnownTilesProjection projection) =>
+            LastPrivateKnownTiles = projection;
     }
 }

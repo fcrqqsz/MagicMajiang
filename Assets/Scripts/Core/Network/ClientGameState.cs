@@ -166,6 +166,7 @@ namespace MahjongGame.Core.Network
                     privateSeat.melds = Array.Empty<SnapshotMeld>();
                     privateSeat.peekWallTiles = Array.Empty<SimpleTileData>();
                     privateSeat.privateTileReveal = null;
+                    privateSeat.knownOpponentHands = Array.Empty<SnapshotKnownHand>();
                     foreach (RoomSnapshotSeat seat in snapshot.seats ?? Array.Empty<RoomSnapshotSeat>())
                     {
                         if (seat == null) continue;
@@ -242,6 +243,13 @@ namespace MahjongGame.Core.Network
                         tiles = message.tiles?.Select(CloneRevealedTile).Where(t => t != null).ToArray()
                             ?? Array.Empty<SnapshotRevealedTile>()
                     };
+                    return;
+                }
+                case "PrivateKnownTiles":
+                {
+                    var message = MessageSerializer.DeserializePayload<PrivateKnownTilesMessage>(envelope.data);
+                    if (message == null || message.viewerSeatIndex != snapshot.requestingSeatIndex) return;
+                    EnsurePrivateSeat(snapshot).knownOpponentHands = CloneKnownHands(message.hands);
                     return;
                 }
                 case "SideboardStarted":
@@ -834,7 +842,8 @@ namespace MahjongGame.Core.Network
                 peekWallTiles = CloneTiles(seat.peekWallTiles),
                 ownTalents = CloneOwnTalents(seat.ownTalents),
                 availableTalentActions = CloneTalentActionOptions(seat.availableTalentActions),
-                privateTileReveal = ClonePrivateTileReveal(seat.privateTileReveal)
+                privateTileReveal = ClonePrivateTileReveal(seat.privateTileReveal),
+                knownOpponentHands = CloneKnownHands(seat.knownOpponentHands)
             };
         }
 
@@ -881,6 +890,29 @@ namespace MahjongGame.Core.Network
                 tiles = reveal.tiles?.Select(CloneRevealedTile).Where(t => t != null).ToArray()
                     ?? Array.Empty<SnapshotRevealedTile>()
             };
+        }
+
+        private static SnapshotKnownHand[] CloneKnownHands(SnapshotKnownHand[] hands)
+        {
+            return (hands ?? Array.Empty<SnapshotKnownHand>())
+                .Where(hand => hand != null
+                               && hand.targetSeatIndex >= 0
+                               && hand.targetSeatIndex < 4)
+                .Select(hand => new SnapshotKnownHand
+                {
+                    targetSeatIndex = hand.targetSeatIndex,
+                    tiles = (hand.tiles ?? Array.Empty<SnapshotKnownTile>())
+                        .Where(tile => tile != null)
+                        .Select(tile => new SnapshotKnownTile
+                        {
+                            suit = tile.suit,
+                            value = tile.value,
+                            isModified = tile.isModified
+                        })
+                        .ToArray()
+                })
+                .Where(hand => hand.tiles.Length > 0)
+                .ToArray();
         }
 
         private static SnapshotRevealedTile CloneRevealedTile(SnapshotRevealedTile tile)

@@ -5,7 +5,7 @@ using MahjongGame.Core;
 
 namespace MahjongGame.Talents.Impl
 {
-    [TalentRule("piercing_insight", "洞若观火", "每小局一次，选择一名其他玩家，私下查看其当前暗手中的所有数牌。",
+    [TalentRule("piercing_insight", "洞若观火", "每小局一次，选择一名其他玩家，私下查看其当前暗手中的所有数牌；已知牌会持续显示至公开离手或失效。明牌排序仅用于整理信息，不代表真实手牌位置。",
         TalentTier.Large, 26,
         StateScope = TalentStateScope.Round,
         ActivationWindow = TalentActivationWindow.MainTurn,

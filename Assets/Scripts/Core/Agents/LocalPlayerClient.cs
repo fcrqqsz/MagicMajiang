@@ -262,27 +262,14 @@ namespace MahjongGame.Core.Agents
             {
                 if (seat == null || seat.seatIndex == PlayerId) continue;
                 var view = GameManager.Instance?.GetOpponentView(seat.seatIndex);
+                SnapshotKnownHand knownHand = (snapshot.privateSeat?.knownOpponentHands
+                                               ?? Array.Empty<SnapshotKnownHand>())
+                    .FirstOrDefault(hand => hand != null && hand.targetSeatIndex == seat.seatIndex);
                 view?.RebuildFromSnapshot(
                     seat.concealedTileCount,
+                    ToKnownFaces(knownHand?.tiles),
                     ToMelds(seat.publicMelds),
                     ToTiles(GetRiverTiles(snapshot.rivers, seat.seatIndex)));
-            }
-
-            SnapshotPrivateTileReveal privateReveal = snapshot.privateSeat?.privateTileReveal;
-            if (privateReveal != null
-                && privateReveal.viewerSeatIndex == PlayerId
-                && privateReveal.roundNumber == snapshot.roundNumber)
-            {
-                OnPrivateTileReveal(new TalentPrivateTileReveal(
-                    privateReveal.talentId,
-                    privateReveal.viewerSeatIndex,
-                    privateReveal.targetSeatIndex,
-                    privateReveal.roundNumber,
-                    (privateReveal.tiles ?? Array.Empty<SnapshotRevealedTile>())
-                    .Select(tile => new TileData((Suit)tile.suit, tile.value, 0)
-                    {
-                        IsModified = tile.isModified
-                    })));
             }
 
             var localSeat = (snapshot.seats ?? Array.Empty<RoomSnapshotSeat>()).FirstOrDefault(seat => seat?.seatIndex == PlayerId);
@@ -898,6 +885,27 @@ namespace MahjongGame.Core.Agents
                     reveal.Tiles ?? Array.Empty<TileData>(),
                     8f);
             }
+        }
+
+        public void OnPrivateKnownTilesChanged(PrivateKnownTilesProjection projection)
+        {
+            if (projection == null || projection.ViewerSeatIndex != PlayerId) return;
+            for (int targetSeatIndex = 0; targetSeatIndex < 4; targetSeatIndex++)
+            {
+                if (targetSeatIndex == PlayerId) continue;
+                PrivateKnownHandProjection hand = projection.Hands
+                    .FirstOrDefault(candidate => candidate != null
+                                                 && candidate.TargetSeatIndex == targetSeatIndex);
+                GameManager.Instance?.GetOpponentView(targetSeatIndex)
+                    ?.ApplyKnownTiles(hand?.Tiles ?? Array.Empty<PrivateKnownTileFace>());
+            }
+        }
+
+        private static IEnumerable<PrivateKnownTileFace> ToKnownFaces(IEnumerable<SnapshotKnownTile> tiles)
+        {
+            return (tiles ?? Array.Empty<SnapshotKnownTile>())
+                .Where(tile => tile != null)
+                .Select(tile => new PrivateKnownTileFace((Suit)tile.suit, tile.value, tile.isModified));
         }
     }
 }

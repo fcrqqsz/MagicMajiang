@@ -25,9 +25,10 @@
 - 服务端链路：`ServerBootstrap -> WebSocketService -> ConnectionRegistry -> RoomManager -> Room -> GameServer`
 - `ConnectionRegistry` 分离物理 WebSocket、连接代次、开发期身份和逻辑席位；旧 endpoint 的迟到回调必须被代次校验丢弃
 - `RoomManager` 管理房间生命周期，`Room` 持有四席构筑、`GameSession`、跨小局复用的 `TalentMatchRuntime`、`GameServer`、席位消息流及断线托管状态
-- 协议版本为 v9，携带构筑 schema 为 v3；连接必须先完成 `Hello`，开发期以规范化 username 生成稳定 `playerId`
+- 协议版本为 v10，携带构筑 schema 为 v3；连接必须先完成 `Hello`，开发期以规范化 username 生成稳定 `playerId`
 - 每个真人席位使用独立、连续递增的 `SeatMessageStream`；公共消息也按席序列化，私有手牌、牌库、天赋和窥探结果不得串席
 - `RoomGameSnapshot` 只向本家暴露完整暗手牌；客户端使用纯 C# `ClientGameState` 原子应用快照和有序消息
+- `PrivateTileKnowledgeTracker` 由每小局 `GameServer` 持有，按观察者隔离追踪窥探/洞若观火获得的已知对手暗手；客户端只收到不含物理牌 ID 的当前全量投影，重连不重放过期揭示弹窗
 - 所有网络动作携带 `decisionId`；服务端拒绝过期、重复、错误阶段、错误席位和 AI 控制期间的人类动作
 - 断线后保留逻辑席位并在安全决策边界由 AI 临时托管；重连通过 username + roomId + streamId 重绑新 endpoint
 - 当前重连采用完整权威快照恢复；Dedicated Server 重启不恢复房间，客户端收到终止错误后清理本地票据
@@ -161,6 +162,7 @@ Assets/UI/                   # UI Toolkit 面板
 - **超时取消**: 客户端 async 方法通过 `CancellationToken` 实现可取消（`ct.Register(() => tcs.TrySetCanceled())`），外层统一 `catch (OperationCanceledException)`
 - **服务端快照**: `ServerGameState` 镜像每个玩家手牌/副露，超时时从快照取真实牌自动出牌，避免虚构兜底牌
 - `HandController.ForceRemoveTile()`: 超时自动出牌专用，移除牌到牌河但不触发 `OnTileDiscardedEvent` 避免竞态
+- **对手已知牌表现**: `OpponentViewController` 必须按权威暗手总数连续排列“未知牌背 + 末端排序明牌”。布局刷新时须按槽位视觉类型分别恢复朝向；不得对明牌使用会被布局 `DOKill()` 截断的缩放翻牌动画，否则会出现侧向薄片或摸弃牌后全部翻回牌背
 - **网络消息顺序**: 房间内服务端消息必须经过席位 `SeatMessageStream`；客户端只消费 `ClientRoomService` 完成排序、去重后的状态
 - **快照隐私**: 新增快照字段时必须检查本家/他家可见性，禁止包含其他真人的完整手牌、牌库、天赋或私有窥探结果
 - **决策边界**: AI 托管和真人交还只在新决策边界切换，不得中途抢占已经打开的决策

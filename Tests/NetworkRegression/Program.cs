@@ -48,6 +48,13 @@ if (args.Length == 1 && string.Equals(args[0], "compendium", StringComparison.Or
     return runner.Complete();
 }
 
+if (args.Length == 1 && string.Equals(args[0], "private-tile-knowledge", StringComparison.OrdinalIgnoreCase))
+{
+    PrivateTileKnowledgeTrackerTests.Run(runner);
+    OpponentKnownTileDisplayPolicyTests.Run(runner);
+    return runner.Complete();
+}
+
 IdentityConnectionTests.Run(runner);
 RoomSessionTests.Run(runner);
 NetworkAuthorityBoundaryTests.Run(runner);
@@ -65,5 +72,7 @@ AiTalentPolicyTests.Run(runner);
 AuthoritativePublicTileTransitionTests.Run(runner);
 CompendiumPresentationTests.Run(runner);
 GameTableLayoutPolicyTests.Run(runner);
+PrivateTileKnowledgeTrackerTests.Run(runner);
+OpponentKnownTileDisplayPolicyTests.Run(runner);
 
 return runner.Complete();

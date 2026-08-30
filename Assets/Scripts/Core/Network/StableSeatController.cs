@@ -151,6 +151,8 @@ namespace MahjongGame.Core.Network
         }
         public void OnPeekWallTiles(List<TileData> topTiles) => _remote.OnPeekWallTiles(topTiles);
         public void OnPrivateTileReveal(TalentPrivateTileReveal reveal) => _remote.OnPrivateTileReveal(reveal);
+        public void OnPrivateKnownTilesChanged(PrivateKnownTilesProjection projection) =>
+            _remote.OnPrivateKnownTilesChanged(projection);
 
         private bool Participates(NetworkDecisionContext decision)
         {

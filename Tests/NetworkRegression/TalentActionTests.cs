@@ -2983,20 +2983,16 @@ internal static class TalentActionTests
             // Snapshot test
             RoomGameSnapshot snapshot0 = room.BuildSnapshot(0);
             RoomGameSnapshot snapshot1 = room.BuildSnapshot(1);
-            runner.Check(snapshot0.privateSeat.privateTileReveal != null
-                && snapshot0.privateSeat.privateTileReveal.talentId == "piercing_insight"
-                && snapshot0.privateSeat.privateTileReveal.targetSeatIndex == 1
-                && snapshot0.privateSeat.privateTileReveal.tiles.Length == 2,
-                "Snapshot for Seat 0 contains privateTileReveal");
+            runner.Check(snapshot0.privateSeat.privateTileReveal == null,
+                "reconnect snapshot does not replay the stale privateTileReveal popup");
             runner.Check(snapshot1.privateSeat.privateTileReveal == null,
                 "Snapshot for Seat 1 contains null privateTileReveal");
 
             // ClientGameState application
             var clientState0 = new ClientGameState();
             clientState0.ApplySnapshot(snapshot0, 10);
-            runner.Check(clientState0.Snapshot.privateSeat.privateTileReveal != null
-                && clientState0.Snapshot.privateSeat.privateTileReveal.talentId == "piercing_insight",
-                "ClientGameState atomically applies snapshot with privateTileReveal");
+            runner.Check(clientState0.Snapshot.privateSeat.privateTileReveal == null,
+                "ClientGameState snapshot recovery does not restore the transient reveal popup");
 
             var clientState1 = new ClientGameState();
             clientState1.ApplySnapshot(snapshot1, 10);
@@ -3008,9 +3004,7 @@ internal static class TalentActionTests
                 RoomId = "mismatched-private-reveal",
                 RoomState = RoomState.InRound,
                 GameMode = GameMode.Single,
-                Session = new GameSession(GameMode.Single),
-                PrivateTileReveal = new TalentPrivateTileReveal(
-                    "piercing_insight", 0, 1, 1, new[] { new TileData(Suit.Man, 5, 0) })
+                Session = new GameSession(GameMode.Single)
             }, 1);
             runner.Check(mismatchedRevealSnapshot.privateSeat.privateTileReveal == null,
                 "snapshot builder refuses a private reveal owned by another requesting seat");

@@ -326,6 +326,11 @@ namespace MahjongGame.Core.Agents
             // AI 暂不使用私有揭示
         }
 
+        public void OnPrivateKnownTilesChanged(Network.PrivateKnownTilesProjection projection)
+        {
+            // AI 暂不使用仅供人类记忆辅助的桌面投影。
+        }
+
         // --- 本地内部逻辑 ---
 
         private void SortHand()

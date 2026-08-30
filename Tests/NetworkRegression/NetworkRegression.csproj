@@ -27,6 +27,8 @@
     <Compile Include="AuthoritativePublicTileTransitionTests.cs" />
     <Compile Include="CompendiumPresentationTests.cs" />
     <Compile Include="GameTableLayoutPolicyTests.cs" />
+    <Compile Include="PrivateTileKnowledgeTrackerTests.cs" />
+    <Compile Include="OpponentKnownTileDisplayPolicyTests.cs" />
     <Compile Include="UnityEngineStubs.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\ActionValidator.cs" Link="ActionValidator.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\MahjongLogic.cs" Link="MahjongLogic.cs" />
@@ -45,6 +47,8 @@
     <Compile Include="..\..\Assets\Scripts\Core\Network\RoomLifecyclePolicy.cs" Link="RoomLifecyclePolicy.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\GameRoundCompletion.cs" Link="GameRoundCompletion.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\GameRoundSetupSequence.cs" Link="GameRoundSetupSequence.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\Network\PrivateTileKnowledgeTracker.cs" Link="PrivateTileKnowledgeTracker.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\Network\OpponentKnownTileDisplayPolicy.cs" Link="OpponentKnownTileDisplayPolicy.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\AuthoritativePublicTileTransition.cs" Link="AuthoritativePublicTileTransition.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\RoomMembershipPolicy.cs" Link="RoomMembershipPolicy.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\SeatDecisionControlLatch.cs" Link="SeatDecisionControlLatch.cs" />

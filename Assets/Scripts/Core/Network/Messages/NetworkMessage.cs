@@ -568,4 +568,26 @@ namespace MahjongGame.Core.Network.Messages
         public int roundNumber;
         public SnapshotRevealedTile[] tiles;
     }
+
+    [Serializable]
+    public sealed class SnapshotKnownTile
+    {
+        public int suit;
+        public int value;
+        public bool isModified;
+    }
+
+    [Serializable]
+    public sealed class SnapshotKnownHand
+    {
+        public int targetSeatIndex;
+        public SnapshotKnownTile[] tiles;
+    }
+
+    [Serializable]
+    public sealed class PrivateKnownTilesMessage
+    {
+        public int viewerSeatIndex;
+        public SnapshotKnownHand[] hands;
+    }
 }

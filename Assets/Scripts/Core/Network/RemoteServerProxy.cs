@@ -151,6 +151,31 @@ namespace MahjongGame.Core.Network
                         _localClient.OnPrivateTileReveal(reveal);
                     }
                     break;
+                case "PrivateKnownTiles":
+                    var knownTilesMsg = MessageSerializer.DeserializePayload<PrivateKnownTilesMessage>(envelope.data);
+                    if (knownTilesMsg != null
+                        && _localClient != null
+                        && knownTilesMsg.viewerSeatIndex == _localClient.PlayerId)
+                    {
+                        var hands = (knownTilesMsg.hands ?? System.Array.Empty<SnapshotKnownHand>())
+                            .Where(hand => hand != null
+                                           && hand.targetSeatIndex >= 0
+                                           && hand.targetSeatIndex < 4
+                                           && hand.targetSeatIndex != knownTilesMsg.viewerSeatIndex)
+                            .Select(hand => new PrivateKnownHandProjection(
+                                hand.targetSeatIndex,
+                                (hand.tiles ?? System.Array.Empty<SnapshotKnownTile>())
+                                    .Where(tile => tile != null)
+                                    .Select(tile => new PrivateKnownTileFace(
+                                        (Suit)tile.suit,
+                                        tile.value,
+                                        tile.isModified))))
+                            .ToArray();
+                        _localClient.OnPrivateKnownTilesChanged(new PrivateKnownTilesProjection(
+                            knownTilesMsg.viewerSeatIndex,
+                            hands));
+                    }
+                    break;
                 case "TileDrawn":
                     var drawnMsg = MessageSerializer.DeserializePayload<TileDrawnMessage>(envelope.data);
                     _activeDecisionId = drawnMsg?.decisionId ?? 0;

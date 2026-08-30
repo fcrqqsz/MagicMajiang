@@ -606,7 +606,7 @@ namespace MahjongGame.Core.Network
                 IsDrawGame = GameServer?.IsDrawGame ?? false,
                 WinningHand = GameServer?.WinningHandSnapshot,
                 TalentFanBreakdown = TalentFanBreakdownMessage.Clone(GameServer?.WinTalentFanBreakdown),
-                PrivateTileReveal = _talentRuntime?.GetPrivateTileReveal(requestingSeatIndex)
+                PrivateKnownTiles = GameServer?.GetPrivateKnownTilesProjection(requestingSeatIndex)
             };
 
             for (int i = 0; i < _seats.Length; i++)

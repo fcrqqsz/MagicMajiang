@@ -196,6 +196,7 @@ namespace MahjongGame.Core.Agents
         public void OnTalentInfo(MahjongGame.Core.ScoringOptions scoringOptions) { }
         public void OnPeekWallTiles(System.Collections.Generic.List<MahjongGame.Core.TileData> topTiles) { }
         public void OnPrivateTileReveal(MahjongGame.Talents.TalentPrivateTileReveal reveal) { }
+        public void OnPrivateKnownTilesChanged(MahjongGame.Core.Network.PrivateKnownTilesProjection projection) { }
     }
 
     public sealed class SimpleAIClient : StubPlayerClient
@@ -362,6 +363,8 @@ namespace MahjongGame.Core.Network
         public System.Collections.Generic.List<MahjongGame.Core.TileData> GetPeekWallSnapshot(int seatIndex) =>
             TalentRuntime?.GetPrivatePeekTiles(seatIndex).ToList()
             ?? new System.Collections.Generic.List<MahjongGame.Core.TileData>();
+        public PrivateKnownTilesProjection GetPrivateKnownTilesProjection(int seatIndex) =>
+            new(seatIndex, System.Array.Empty<PrivateKnownHandProjection>());
         public void StartGame(System.Collections.Generic.List<IPlayerClient> clients,
             System.Collections.Generic.List<MahjongGame.Core.DeckConfig> deckConfigs,
             GameSession session,

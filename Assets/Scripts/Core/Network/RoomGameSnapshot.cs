@@ -23,7 +23,7 @@ namespace MahjongGame.Core.Network
         public int RemainingWallCount;
         public ScoringOptions[] ScoringOptions;
         public List<TileData>[] PeekWallTiles;
-        public TalentPrivateTileReveal PrivateTileReveal;
+        public PrivateKnownTilesProjection PrivateKnownTiles;
         public NetworkDecisionContext ActiveDecision;
         public RoomSnapshotTalentSource[] Talents;
         public IReadOnlyList<TalentActionOption> AvailableTalentActions;
@@ -108,9 +108,8 @@ namespace MahjongGame.Core.Network
                     melds = ToOwnerPrivateMeldSnapshots(GetAt(source.Melds, requestingSeatIndex)),
                     scoringOptions = ToScoringOptions(GetAt(source.ScoringOptions, requestingSeatIndex)),
                     peekWallTiles = ToOwnerPrivateTiles(GetAt(source.PeekWallTiles, requestingSeatIndex)),
-                    privateTileReveal = source.PrivateTileReveal?.ViewerSeatIndex == requestingSeatIndex
-                        ? CreatePrivateTileRevealSnapshot(source.PrivateTileReveal)
-                        : null,
+                    privateTileReveal = null,
+                    knownOpponentHands = CreateKnownHandSnapshots(source.PrivateKnownTiles, requestingSeatIndex),
                     ownTalents = BuildOwnTalents(source, requestingSeatIndex),
                     availableTalentActions = BuildTalentActionOptions(source.AvailableTalentActions)
                 },
@@ -360,6 +359,35 @@ namespace MahjongGame.Core.Network
             };
         }
 
+        private static SnapshotKnownHand[] CreateKnownHandSnapshots(
+            PrivateKnownTilesProjection projection,
+            int requestingSeatIndex)
+        {
+            if (projection == null || projection.ViewerSeatIndex != requestingSeatIndex)
+                return Array.Empty<SnapshotKnownHand>();
+
+            return (projection.Hands ?? Array.Empty<PrivateKnownHandProjection>())
+                .Where(hand => hand != null
+                               && hand.TargetSeatIndex >= 0
+                               && hand.TargetSeatIndex < 4
+                               && hand.TargetSeatIndex != requestingSeatIndex)
+                .Select(hand => new SnapshotKnownHand
+                {
+                    targetSeatIndex = hand.TargetSeatIndex,
+                    tiles = (hand.Tiles ?? Array.Empty<PrivateKnownTileFace>())
+                        .Where(tile => tile != null)
+                        .Select(tile => new SnapshotKnownTile
+                        {
+                            suit = (int)tile.Suit,
+                            value = tile.Value,
+                            isModified = tile.IsModified
+                        })
+                        .ToArray()
+                })
+                .Where(hand => hand.tiles.Length > 0)
+                .ToArray();
+        }
+
         private static T GetAt<T>(T[] values, int index) where T : class
         {
             return values != null && index >= 0 && index < values.Length ? values[index] : null;
@@ -423,6 +451,7 @@ namespace MahjongGame.Core.Network.Messages
         public SnapshotScoringOptions scoringOptions;
         public SimpleTileData[] peekWallTiles;
         public SnapshotPrivateTileReveal privateTileReveal;
+        public SnapshotKnownHand[] knownOpponentHands;
         public SnapshotOwnTalent[] ownTalents;
         public SnapshotTalentActionOption[] availableTalentActions;
     }

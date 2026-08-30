@@ -1076,8 +1076,8 @@ internal static class TalentPresentationTests
 
     private static void RunLoadoutPresetTests(RegressionRunner runner)
     {
-        runner.Check(NetworkProtocol.IsSupported(9) && !NetworkProtocol.IsSupported(8),
-            "protocol v9 rejects protocol v8 before room loadout admission");
+        runner.Check(NetworkProtocol.IsSupported(10) && !NetworkProtocol.IsSupported(9),
+            "protocol v10 rejects protocol v9 before room loadout admission");
 
         var legacy = new SavedDeck { Config = DeckConfig.CreateStandard(), Talents = new TalentSlotConfig() };
         legacy.Normalize();
@@ -1162,15 +1162,15 @@ internal static class TalentPresentationTests
         using var manager = new RoomManager(4, true, connections, messageCacheSize: 8);
 
         var legacyProtocolEndpoint = new GameEndpoint();
-        legacyProtocolEndpoint.Connect("protocol-v8", 1);
-        legacyProtocolEndpoint.Receive("protocol-v8", 1, MessageSerializer.Serialize("Hello", 0,
-            new HelloMessage { protocolVersion = 8, username = "Legacy" }));
+        legacyProtocolEndpoint.Connect("protocol-v9", 1);
+        legacyProtocolEndpoint.Receive("protocol-v9", 1, MessageSerializer.Serialize("Hello", 0,
+            new HelloMessage { protocolVersion = 9, username = "Legacy" }));
         RoomErrorMessage protocolError = GetLastRoomError(legacyProtocolEndpoint);
-        connections.TryGet("protocol-v8", out ConnectionRegistry.ConnectionRecord legacyRecord);
+        connections.TryGet("protocol-v9", out ConnectionRegistry.ConnectionRecord legacyRecord);
         runner.Check(protocolError.code == NetworkErrorCodes.ProtocolMismatch
-            && protocolError.message.Contains("version 9", StringComparison.Ordinal)
+            && protocolError.message.Contains("version 10", StringComparison.Ordinal)
             && legacyRecord != null && !legacyRecord.IsAuthenticated,
-            "protocol v8 fails during Hello before room admission");
+            "protocol v9 fails during Hello before room admission");
 
         GameEndpoint host = ConnectAuthenticated("preset-host", "Host");
 

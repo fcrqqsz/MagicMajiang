@@ -109,6 +109,7 @@ namespace MahjongGame.Core.Network
         private readonly int[] _drawCounts = new int[4];
         private readonly Dictionary<int, List<TileData>> _privateWallPreviewTiles =
             new Dictionary<int, List<TileData>>();
+        private PrivateTileKnowledgeTracker _privateTileKnowledge;
         private TileData _lastDiscardedTile; // 响应阶段：被打出的那张牌
         private TileData _pendingRobKongTile; // 加杠声明阶段：尚未落副露、可被抢胡的牌
 
@@ -143,6 +144,12 @@ namespace MahjongGame.Core.Network
             return _privateWallPreviewTiles.TryGetValue(seatIndex, out var tiles)
                 ? CloneTiles(tiles)
                 : new List<TileData>();
+        }
+
+        public PrivateKnownTilesProjection GetPrivateKnownTilesProjection(int seatIndex)
+        {
+            return _privateTileKnowledge?.GetProjection(seatIndex)
+                   ?? new PrivateKnownTilesProjection(seatIndex, Array.Empty<PrivateKnownHandProjection>());
         }
 
         public async void StartGame(
@@ -181,6 +188,7 @@ namespace MahjongGame.Core.Network
 
             // 初始化服务端场面快照
             _gameState = new ServerGameState(clients.Count);
+            _privateTileKnowledge = new PrivateTileKnowledgeTracker(clients.Count);
             _publicTileTransition = new AuthoritativePublicTileTransition(
                 _gameState,
                 _talentRuntime,
@@ -272,6 +280,8 @@ namespace MahjongGame.Core.Network
             {
                 _responsesTcs.TrySetCanceled();
             }
+
+            ClearPrivateKnowledgeAndPublish();
         }
 
         private void DealStartingHands()
@@ -368,6 +378,7 @@ namespace MahjongGame.Core.Network
                 if (!_skipNextDraw)
                 {
                     _lastDrawnTile = _wallService.DrawTile();
+                    TileData drawnTileBeforeTalents = CloneTile(_lastDrawnTile);
                     if (_currentPlayerIndex >= 0 && _currentPlayerIndex < _drawCounts.Length)
                         _drawCounts[_currentPlayerIndex]++;
                     BroadcastWallCount();
@@ -394,6 +405,12 @@ namespace MahjongGame.Core.Network
                             _clients[i].OnPlayerDrawn(_currentPlayerIndex);
                         }
                     }
+                    IReadOnlyList<int> changedKnowledgeViewers = _privateTileKnowledge.ProcessDraw(
+                        _currentPlayerIndex,
+                        drawnTileBeforeTalents,
+                        _lastDrawnTile);
+                    RefreshPeekSnapshots(changedKnowledgeViewers);
+                    PublishPrivateKnowledge(changedKnowledgeViewers);
                 }
                 else
                 {
@@ -456,6 +473,9 @@ namespace MahjongGame.Core.Network
                         committedConcealedKong,
                         sourceSeatIndex: null,
                         wasAutomatic: mainActionWasAutomatic);
+                    PublishPrivateKnowledge(_privateTileKnowledge.ProcessConcealedTilesBecamePublic(
+                        _currentPlayerIndex,
+                        GetResolvedMeldTiles(committedConcealedKong)));
                     _pendingKongReplacementDraw = true;
                     OnTalentEventsAvailable?.Invoke();
                     continue; // 直接重新循环
@@ -517,6 +537,7 @@ namespace MahjongGame.Core.Network
                         Debug.LogError($"[GameServer] Validated discard no longer resolves for player {action.PlayerId}.");
                         continue;
                     }
+                    TileData discardedTileBeforeTalents = CloneTile(discardedTile);
                     _gameState.RemoveTile(action.PlayerId, discardedTile);
                     discardedTile = _talentRuntime.ApplyDiscard(
                         new TalentDiscardContext(_session, action.PlayerId),
@@ -556,6 +577,10 @@ namespace MahjongGame.Core.Network
                     {
                         _clients[i].OnOtherPlayerDiscarded(_currentPlayerIndex, discardedTile);
                     }
+                    PublishPrivateKnowledge(_privateTileKnowledge.ProcessHiddenPipelineTileBecamePublic(
+                        _currentPlayerIndex,
+                        discardedTileBeforeTalents,
+                        discardedTile));
                     NotifyTileBecamePublic(_currentPlayerIndex, discardedTile);
 
                     // 等待所有其他3家回复（带超时）
@@ -617,6 +642,9 @@ namespace MahjongGame.Core.Network
                             NotifyTilesBecamePublic(
                                 resolvedAction.PlayerId,
                                 handTilesBecomingPublic);
+                            PublishPrivateKnowledge(_privateTileKnowledge.ProcessConcealedTilesBecamePublic(
+                                resolvedAction.PlayerId,
+                                handTilesBecomingPublic));
                             CommitTalentAction(
                                 responseDecision.DecisionId,
                                 resolvedAction,
@@ -692,6 +720,9 @@ namespace MahjongGame.Core.Network
                     for (int i = 0; i < _clients.Count; i++)
                         _clients[i].OnAddedKongDeclared(_currentPlayerIndex, publicTile);
                 });
+            PublishPrivateKnowledge(_privateTileKnowledge.ProcessConcealedTilesBecamePublic(
+                _currentPlayerIndex,
+                new[] { targetTile }));
             OnTalentEventsAvailable?.Invoke();
 
             try
@@ -871,6 +902,12 @@ namespace MahjongGame.Core.Network
                 if (reveal != null && boundSeatIndex >= 0 && boundSeatIndex < _clients.Count)
                 {
                     _clients[boundSeatIndex]?.OnPrivateTileReveal(reveal);
+                    IReadOnlyList<TileData> revealedPhysicalTiles = ResolvePhysicalRevealTiles(reveal);
+                    _privateTileKnowledge.ObserveConcealedHand(
+                        boundSeatIndex,
+                        reveal.TargetSeatIndex,
+                        revealedPhysicalTiles);
+                    PublishPrivateKnowledge(boundSeatIndex);
                 }
             }
             return result.Accepted;
@@ -1240,8 +1277,66 @@ namespace MahjongGame.Core.Network
 
                 List<TileData> snapshot = CloneTiles(privateTiles);
                 _privateWallPreviewTiles[seatIndex] = snapshot;
+                _privateTileKnowledge.ObserveWallTiles(seatIndex, privateTiles);
                 _clients[seatIndex].OnPeekWallTiles(CloneTiles(snapshot));
             }
+        }
+
+        private IReadOnlyList<TileData> ResolvePhysicalRevealTiles(TalentPrivateTileReveal reveal)
+        {
+            if (reveal == null || reveal.TargetSeatIndex < 0 || reveal.TargetSeatIndex >= _clients.Count)
+                return Array.Empty<TileData>();
+
+            List<TileData> remainingHand = _gameState.GetHand(reveal.TargetSeatIndex);
+            var resolved = new List<TileData>();
+            foreach (TileData visibleTile in reveal.Tiles)
+            {
+                int index = remainingHand.FindIndex(tile =>
+                    tile.TileSuit == visibleTile.TileSuit
+                    && tile.Value == visibleTile.Value
+                    && tile.IsModified == visibleTile.IsModified);
+                if (index < 0) continue;
+                resolved.Add(remainingHand[index]);
+                remainingHand.RemoveAt(index);
+            }
+            return resolved;
+        }
+
+        private void PublishPrivateKnowledge(int viewerSeatIndex)
+        {
+            if (_privateTileKnowledge == null
+                || viewerSeatIndex < 0
+                || viewerSeatIndex >= (_clients?.Count ?? 0))
+            {
+                return;
+            }
+            _clients[viewerSeatIndex]?.OnPrivateKnownTilesChanged(
+                _privateTileKnowledge.GetProjection(viewerSeatIndex));
+        }
+
+        private void PublishPrivateKnowledge(IEnumerable<int> viewerSeatIndices)
+        {
+            foreach (int viewerSeatIndex in (viewerSeatIndices ?? Enumerable.Empty<int>()).Distinct())
+                PublishPrivateKnowledge(viewerSeatIndex);
+        }
+
+        private void RefreshPeekSnapshots(IEnumerable<int> viewerSeatIndices)
+        {
+            foreach (int viewerSeatIndex in (viewerSeatIndices ?? Enumerable.Empty<int>()).Distinct())
+            {
+                _privateWallPreviewTiles[viewerSeatIndex] = CloneTiles(
+                    _privateTileKnowledge.GetObservedWallTiles(viewerSeatIndex));
+            }
+        }
+
+        private void ClearPrivateKnowledgeAndPublish()
+        {
+            if (_privateTileKnowledge == null) return;
+            _privateTileKnowledge.ClearRound();
+            _privateWallPreviewTiles.Clear();
+            if (_clients == null) return;
+            for (int viewerSeatIndex = 0; viewerSeatIndex < _clients.Count; viewerSeatIndex++)
+                PublishPrivateKnowledge(viewerSeatIndex);
         }
 
         private List<TileData> GetHandTilesBecomingPublic(ClientAction action, TileData targetTile)
@@ -1403,6 +1498,11 @@ namespace MahjongGame.Core.Network
                 IsModified = tile.IsModified,
                 SpecialEffectID = tile.SpecialEffectID
             }).ToList();
+        }
+
+        private static TileData CloneTile(TileData tile)
+        {
+            return tile == null ? null : CloneTiles(new[] { tile })[0];
         }
 
         private bool TryResolveWin(
@@ -1673,6 +1773,7 @@ namespace MahjongGame.Core.Network
         {
             if (!_roundCompletionLatch.TryComplete(kind, error, out GameRoundCompletion completion))
                 return false;
+            ClearPrivateKnowledgeAndPublish();
             OnRoundFinished?.Invoke(completion);
             return true;
         }

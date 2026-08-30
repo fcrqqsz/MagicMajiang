@@ -105,6 +105,31 @@ namespace MahjongGame.Core.Network
             Send("PrivateTileReveal", msg);
         }
 
+        public void OnPrivateKnownTilesChanged(PrivateKnownTilesProjection projection)
+        {
+            if (projection == null || projection.ViewerSeatIndex != _playerId) return;
+            Send("PrivateKnownTiles", new PrivateKnownTilesMessage
+            {
+                viewerSeatIndex = projection.ViewerSeatIndex,
+                hands = (projection.Hands ?? System.Array.Empty<PrivateKnownHandProjection>())
+                    .Where(hand => hand != null)
+                    .Select(hand => new SnapshotKnownHand
+                    {
+                        targetSeatIndex = hand.TargetSeatIndex,
+                        tiles = (hand.Tiles ?? System.Array.Empty<PrivateKnownTileFace>())
+                            .Where(tile => tile != null)
+                            .Select(tile => new SnapshotKnownTile
+                            {
+                                suit = (int)tile.Suit,
+                                value = tile.Value,
+                                isModified = tile.IsModified
+                            })
+                            .ToArray()
+                    })
+                    .ToArray()
+            });
+        }
+
         public void OnTileDrawn(TileData drawnTile, bool isKongReplacementDraw)
         {
             var msg = new TileDrawnMessage

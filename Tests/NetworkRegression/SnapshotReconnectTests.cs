@@ -33,6 +33,7 @@ internal static class SnapshotReconnectTests
         TestTalentRuntimeEventProjection(runner);
         TestRemoteWinningHandNotification(runner);
         TestReconnectStream(runner);
+        TestReplayOnlyRecoveryPublishesFinalPrivateKnowledge(runner);
         TestSeatLifecycleAndControl(runner);
         TestTicketAndRecoveryPolicies(runner);
         TestConcealedKanProjection(runner);
@@ -1947,6 +1948,66 @@ internal static class SnapshotReconnectTests
             && payload.tile.suit == (int)Suit.Wind
             && payload.tile.value == 1,
             "Remote added-kong declarations must preserve the declaring seat and public target tile.");
+    }
+
+    private static void TestReplayOnlyRecoveryPublishesFinalPrivateKnowledge(RegressionRunner runner)
+    {
+        WebSocketClient.ResetForTests();
+        var service = new ClientRoomService("ws://test", new InMemoryClientReconnectTicketStore());
+        RoomGameSnapshot initial = RoomGameSnapshotBuilder.Build(new RoomGameSnapshotSource
+        {
+            RoomId = "replay-private-knowledge",
+            RoomState = RoomState.InRound,
+            GameMode = GameMode.Single,
+            Session = new GameSession(GameMode.Single)
+        }, 0);
+        WebSocketClient.Instance.Receive(MessageSerializer.Serialize("ReconnectState", 0,
+            new ReconnectStateMessage
+            {
+                baselineSeq = 10,
+                snapshot = initial,
+                missedMessages = Array.Empty<NetworkMessageEnvelope>()
+            }));
+
+        int presentations = 0;
+        RoomGameSnapshot presented = null;
+        service.ReconnectSnapshotApplied += snapshot =>
+        {
+            presentations++;
+            presented = snapshot;
+        };
+
+        NetworkMessageEnvelope knowledgeEnvelope = MessageSerializer.DeserializeEnvelope(
+            MessageSerializer.Serialize("PrivateKnownTiles", 11, new PrivateKnownTilesMessage
+            {
+                viewerSeatIndex = 0,
+                hands = new[]
+                {
+                    new SnapshotKnownHand
+                    {
+                        targetSeatIndex = 2,
+                        tiles = new[]
+                        {
+                            new SnapshotKnownTile { suit = (int)Suit.Sou, value = 8, isModified = true }
+                        }
+                    }
+                }
+            }));
+        WebSocketClient.Instance.Receive(MessageSerializer.Serialize("ReconnectState", 0,
+            new ReconnectStateMessage
+            {
+                baselineSeq = 10,
+                snapshot = null,
+                missedMessages = new[] { knowledgeEnvelope }
+            }));
+
+        SnapshotKnownHand knownHand = presented?.privateSeat?.knownOpponentHands?.SingleOrDefault();
+        runner.Check(presentations == 1
+                     && knownHand != null
+                     && knownHand.targetSeatIndex == 2
+                     && knownHand.tiles.Single().value == 8,
+            "replay-only reconnect publishes one final durable private-knowledge presentation after suppressed envelopes are composed");
+        service.Dispose();
     }
 
     private static List<TileData>[] EmptyTileLists() =>

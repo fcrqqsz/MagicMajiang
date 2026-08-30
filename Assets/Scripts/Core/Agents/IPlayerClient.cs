@@ -99,6 +99,9 @@ namespace MahjongGame.Core.Agents
         /// 通用私有牌面揭示（如洞若观火天赋）
         /// </summary>
         void OnPrivateTileReveal(TalentPrivateTileReveal reveal);
+
+        /// <summary>本席私有的持续已知对手手牌投影。</summary>
+        void OnPrivateKnownTilesChanged(Network.PrivateKnownTilesProjection projection);
     }
 
     /// <summary>Optional exact physical meld projection for clients that track owner-private tile state.</summary>

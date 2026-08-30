@@ -620,7 +620,6 @@ namespace MahjongGame.Core.Network
             _isComposingRecovery = true;
             try
             {
-                bool hasSnapshot = recovery.snapshot != null;
                 if (recovery.snapshot != null)
                 {
                     _gameState.ApplySnapshot(recovery.snapshot, recovery.baselineSeq);
@@ -641,7 +640,7 @@ namespace MahjongGame.Core.Network
 
                 // Present only after the projector has incorporated the authoritative baseline and
                 // every contiguous envelope that arrived while recovery was being composed.
-                if (hasSnapshot)
+                if (_gameState.Snapshot != null)
                 {
                     RecoveryPresentationVersion++;
                     ReconnectSnapshotApplied?.Invoke(_gameState.Snapshot);
