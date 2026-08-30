@@ -27,6 +27,7 @@ namespace MahjongGame.Core.Network
         private readonly Queue<float> _pendingHeartbeatSentAt = new Queue<float>();
         private bool _nonRecoveryHandshakeInFlight;
         private float _nonRecoveryHandshakeDeadlineAt;
+        private bool _isReplacingNonRecoverySocket;
         private bool _resyncRequiredRaised;
         private bool _pendingReconnect;
         private bool _isComposingRecovery;
@@ -100,6 +101,7 @@ namespace MahjongGame.Core.Network
             client.OnMessageReceived += HandleMessage;
             client.OnDisconnected += HandleDisconnected;
             client.OnError += HandleSocketError;
+            client.OnMessageSent += HandleMessageSent;
         }
 
         public bool TrySwitchServer(string address, string username)
@@ -278,7 +280,6 @@ namespace MahjongGame.Core.Network
 
             if (unscaledTime < _nextHeartbeatAt) return;
             Send("Heartbeat", new HeartbeatMessage());
-            _pendingHeartbeatSentAt.Enqueue(unscaledTime);
             _nextHeartbeatAt = unscaledTime + HeartbeatIntervalSeconds;
         }
 
@@ -319,6 +320,14 @@ namespace MahjongGame.Core.Network
                 PrepareForRoomJoined(MessageSerializer.DeserializePayload<RoomJoinedMessage>(envelope.data));
 
             ApplyEnvelope(envelope);
+        }
+
+        private void HandleMessageSent(string json)
+        {
+            if (!_hasHelloAccepted) return;
+            var envelope = MessageSerializer.DeserializeEnvelope(json);
+            if (envelope?.type == "Heartbeat")
+                _pendingHeartbeatSentAt.Enqueue(Time.unscaledTime);
         }
 
         private void ApplyEnvelope(NetworkMessageEnvelope envelope)
@@ -397,7 +406,7 @@ namespace MahjongGame.Core.Network
                 case "RoomError":
                     var error = MessageSerializer.DeserializePayload<RoomErrorMessage>(envelope.data);
                     if (_nonRecoveryHandshakeInFlight
-                        || (!_pendingReconnect && !HasRoom)
+                        || (!_hasHelloAccepted && !_pendingReconnect)
                         || error?.code == NetworkErrorCodes.ProtocolMismatch)
                         FailNonRecoveryHandshake(RoomErrorPresentationPolicy.GetDisplayMessage(error));
                     if (_helloHandshake.RejectHello()) _pendingRoomCommandAfterHello = null;
@@ -517,7 +526,12 @@ namespace MahjongGame.Core.Network
                 BeginReconnect(ticket, string.IsNullOrWhiteSpace(reason)
                     ? "Disconnected from the room server."
                     : $"Disconnected from the room server: {reason}");
+                return;
             }
+
+            if (!_isReplacingNonRecoverySocket
+                && ConnectionDiagnostics.Phase == ClientConnectionPhase.Ready)
+                PublishConnectionDiagnostics(ClientConnectionPhase.Disconnected, null, clearMeasurement: true);
         }
 
         private void ResetRoomState()
@@ -696,14 +710,26 @@ namespace MahjongGame.Core.Network
             var pendingRoomCommand = resetPendingRoomCommand ? null : _pendingRoomCommandAfterHello;
             _nonRecoveryHandshakeInFlight = false;
             _nonRecoveryHandshakeDeadlineAt = 0f;
-            client.Disconnect();
+            _isReplacingNonRecoverySocket = true;
+            try
+            {
+                client.Disconnect();
+            }
+            finally
+            {
+                _isReplacingNonRecoverySocket = false;
+            }
 
             _activeUsername = username?.Trim();
             _activeServerAddress = address;
             _pendingAfterConnect = null;
             _pendingRoomCommandAfterHello = pendingRoomCommand;
             _hasHelloAccepted = false;
-            if (resetHelloHandshake) _helloHandshake.Reset();
+            if (resetHelloHandshake)
+            {
+                _helloHandshake.Reset();
+                _helloHandshake.BeginRoomCommand();
+            }
             _pendingHeartbeatSentAt.Clear();
             _nonRecoveryHandshakeInFlight = true;
             _nonRecoveryHandshakeDeadlineAt = Time.unscaledTime + ConnectionHandshakeTimeoutSeconds;
@@ -957,6 +983,7 @@ namespace MahjongGame.Core.Network
             WebSocketClient.Instance.OnMessageReceived -= HandleMessage;
             WebSocketClient.Instance.OnDisconnected -= HandleDisconnected;
             WebSocketClient.Instance.OnError -= HandleSocketError;
+            WebSocketClient.Instance.OnMessageSent -= HandleMessageSent;
         }
     }
 }

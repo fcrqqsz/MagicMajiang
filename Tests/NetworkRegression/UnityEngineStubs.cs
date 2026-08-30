@@ -79,6 +79,7 @@ namespace MahjongGame.Core.Network.Transport
         public bool AutoCompleteConnect { get; set; } = true;
         public readonly System.Collections.Generic.List<string> SentMessages = new();
         public readonly System.Collections.Generic.List<string> ConnectAddresses = new();
+        public readonly System.Collections.Generic.Queue<bool> SendCompletionResults = new();
 
         public event System.Action OnConnected;
         public event System.Action<string> OnMessageReceived;
@@ -102,7 +103,8 @@ namespace MahjongGame.Core.Network.Transport
         public void SendNetworkMessage(string message)
         {
             SentMessages.Add(message);
-            OnMessageSent?.Invoke(message);
+            if (SendCompletionResults.Count == 0 || SendCompletionResults.Dequeue())
+                OnMessageSent?.Invoke(message);
         }
         public void Disconnect()
         {

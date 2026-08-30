@@ -16,6 +16,11 @@ internal static class ClientConnectionSettingsTests
         TestTimeoutRetryAndFailureDiagnostics(runner);
         TestSocketFailureDuringAuthentication(runner);
         TestHeartbeatAcknowledgementsMeasureRoundTripTime(runner);
+        TestFailedHeartbeatSendDoesNotPolluteRtt(runner);
+        TestReadyLobbyDisconnectPublishesDisconnected(runner);
+        TestServerSwitchDoesNotPublishIntermediateDisconnect(runner);
+        TestRoomCommandDuringConnectionDoesNotReplaceHandshake(runner);
+        TestLobbyRoomErrorKeepsReadyDiagnostics(runner);
         TestActiveRoomAndRecoveryRejectServerChanges(runner);
         TestRoomCommandsUseSelectedServer(runner);
     }
@@ -133,6 +138,72 @@ internal static class ClientConnectionSettingsTests
             "Switching servers must clear stale heartbeat latency diagnostics.");
     }
 
+    private static void TestFailedHeartbeatSendDoesNotPolluteRtt(RegressionRunner runner)
+    {
+        var client = CreateClient();
+        using var service = CreateReadyService(client, "SendFailureUser");
+
+        client.SendCompletionResults.Enqueue(false);
+        UnityEngine.Time.unscaledTime = 1f;
+        service.Tick(1f);
+        UnityEngine.Time.unscaledTime = 4f;
+        service.Tick(4f);
+        UnityEngine.Time.unscaledTime = 6f;
+        client.Receive(MessageSerializer.Serialize("HeartbeatAck", 0, new HeartbeatAckMessage()));
+
+        runner.Check(service.ConnectionDiagnostics.RoundTripTimeMilliseconds == 2000,
+            "A failed asynchronous heartbeat send must not enter the RTT acknowledgement queue.");
+    }
+
+    private static void TestReadyLobbyDisconnectPublishesDisconnected(RegressionRunner runner)
+    {
+        var client = CreateClient();
+        using var service = CreateReadyService(client, "LobbyDisconnectUser");
+
+        client.Disconnect();
+        runner.Check(service.ConnectionDiagnostics.Phase == ClientConnectionPhase.Disconnected,
+            "A post-Ready disconnect without a room must stop exposing stale Ready diagnostics.");
+    }
+
+    private static void TestServerSwitchDoesNotPublishIntermediateDisconnect(RegressionRunner runner)
+    {
+        var client = CreateClient();
+        using var service = CreateReadyService(client, "SwitchingUser");
+        var phases = new System.Collections.Generic.List<ClientConnectionPhase>();
+        service.ConnectionDiagnosticsChanged += diagnostics => phases.Add(diagnostics.Phase);
+
+        service.TrySwitchServer(OnlineAddress, "SwitchingUser");
+        runner.Check(phases.SequenceEqual(new[] { ClientConnectionPhase.Connecting }),
+            "An intentional selected-server switch must begin Connecting without reporting its replaced socket as disconnected.");
+    }
+
+    private static void TestRoomCommandDuringConnectionDoesNotReplaceHandshake(RegressionRunner runner)
+    {
+        var client = CreateClient();
+        using var service = new ClientRoomService(OnlineAddress, new InMemoryClientReconnectTicketStore());
+
+        service.TrySwitchServer(LocalAddress, "InflightUser");
+        runner.Check(!service.QueryRoomList("InflightUser")
+            && client.ConnectAddresses.Count == 1,
+            "A room command during a selected-server handshake must be rejected without replacing its connection attempt.");
+    }
+
+    private static void TestLobbyRoomErrorKeepsReadyDiagnostics(RegressionRunner runner)
+    {
+        var client = CreateClient();
+        using var service = CreateReadyService(client, "LobbyErrorUser");
+
+        service.QueryRoomList("LobbyErrorUser");
+        client.Receive(MessageSerializer.Serialize("RoomError", 0, new RoomErrorMessage
+        {
+            code = NetworkErrorCodes.RoomNotFound,
+            message = "The requested room no longer exists."
+        }));
+
+        runner.Check(service.ConnectionDiagnostics.Phase == ClientConnectionPhase.Ready,
+            "A normal lobby RoomError after HelloAccepted must not invalidate healthy connection diagnostics.");
+    }
+
     private static void TestActiveRoomAndRecoveryRejectServerChanges(RegressionRunner runner)
     {
         var client = CreateClient();
@@ -186,6 +257,15 @@ internal static class ClientConnectionSettingsTests
         WebSocketClient.ResetForTests();
         UnityEngine.Time.unscaledTime = 0f;
         return new WebSocketClient { AutoCompleteConnect = false };
+    }
+
+    private static ClientRoomService CreateReadyService(WebSocketClient client, string username)
+    {
+        var service = new ClientRoomService(OnlineAddress, new InMemoryClientReconnectTicketStore());
+        service.TrySwitchServer(LocalAddress, username);
+        client.CompleteConnect();
+        client.Receive(MessageSerializer.Serialize("HelloAccepted", 0, new HelloAcceptedMessage()));
+        return service;
     }
 
     private static string[] GetSentTypes(WebSocketClient client) => client.SentMessages
