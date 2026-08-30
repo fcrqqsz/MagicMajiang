@@ -85,9 +85,11 @@ namespace MahjongGame.Systems
         {
             if (RoomService == null) return false;
             string address = ClientServerEndpointPolicy.Resolve(environment);
-            if (!RoomService.TrySwitchServer(address, LoginUsernamePolicy.Normalize(username))) return false;
-            SelectedServerEnvironment = environment;
-            return true;
+            return ClientServerEnvironmentSelectionPolicy.TrySwitch(
+                SelectedServerEnvironment,
+                environment,
+                () => RoomService.TrySwitchServer(address, LoginUsernamePolicy.Normalize(username)),
+                selectedEnvironment => SelectedServerEnvironment = selectedEnvironment);
         }
 
         /// <summary>Restores a matching saved room first; otherwise starts the selected server connection immediately.</summary>

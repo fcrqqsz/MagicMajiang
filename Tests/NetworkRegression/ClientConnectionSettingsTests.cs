@@ -16,6 +16,7 @@ internal static class ClientConnectionSettingsTests
     {
         TestEndpointSelection(runner);
         TestStartupConnectionDecision(runner);
+        TestEnvironmentSelectionPublishesAttemptBeforeSynchronousDiagnostics(runner);
         TestLobbyPresentationMapping(runner);
         TestLobbyProfileSettingsMigration(runner);
         TestSwitchConnectsAndRequiresHelloAcceptance(runner);
@@ -49,6 +50,43 @@ internal static class ClientConnectionSettingsTests
             && !ClientServerStartupPolicy.ShouldConnectSelectedServerAfterLogin(reconnectStarted: true)
             && ClientServerStartupPolicy.ShouldConnectSelectedServerAfterLogin(reconnectStarted: false),
             "Startup must default to Online and only connect the selected server after login when saved-room recovery did not start.");
+    }
+
+    private static void TestEnvironmentSelectionPublishesAttemptBeforeSynchronousDiagnostics(RegressionRunner runner)
+    {
+        ClientServerEnvironment selected = ClientServerEnvironment.Online;
+        ClientServerEnvironment observedDuringSwitch = ClientServerEnvironment.Online;
+        bool started = ClientServerEnvironmentSelectionPolicy.TrySwitch(
+            selected,
+            ClientServerEnvironment.Local,
+            () =>
+            {
+                observedDuringSwitch = selected;
+                return true;
+            },
+            environment => selected = environment);
+
+        runner.Check(started
+            && observedDuringSwitch == ClientServerEnvironment.Local
+            && selected == ClientServerEnvironment.Local,
+            "server selection publishes the requested environment before a synchronous diagnostics callback and keeps it after a successful switch");
+
+        selected = ClientServerEnvironment.Online;
+        observedDuringSwitch = ClientServerEnvironment.Online;
+        bool rejected = ClientServerEnvironmentSelectionPolicy.TrySwitch(
+            selected,
+            ClientServerEnvironment.Local,
+            () =>
+            {
+                observedDuringSwitch = selected;
+                return false;
+            },
+            environment => selected = environment);
+
+        runner.Check(!rejected
+            && observedDuringSwitch == ClientServerEnvironment.Local
+            && selected == ClientServerEnvironment.Online,
+            "a rejected switch still exposes the attempted environment during the call and restores the previous authoritative selection afterward");
     }
 
     private static void TestLobbyPresentationMapping(RegressionRunner runner)
