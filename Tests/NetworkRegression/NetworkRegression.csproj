@@ -10,6 +10,7 @@
     <Compile Include="Program.cs" />
     <Compile Include="AssemblyInfo.cs" />
     <Compile Include="RegressionRunner.cs" />
+    <Compile Include="ClientConnectionSettingsTests.cs" />
     <Compile Include="IdentityConnectionTests.cs" />
     <Compile Include="RoomSessionTests.cs" />
     <Compile Include="NetworkAuthorityBoundaryTests.cs" />
@@ -59,6 +60,7 @@
     <Compile Include="..\..\Assets\Scripts\Core\Network\ClientRecoverySceneRoutingPolicy.cs" Link="ClientRecoverySceneRoutingPolicy.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\ConnectionRegistry.cs" Link="ConnectionRegistry.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\ClientHelloProtocol.cs" Link="ClientHelloProtocol.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\Network\ClientConnectionDiagnostics.cs" Link="ClientConnectionDiagnostics.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\ClientHelloHandshakePolicy.cs" Link="ClientHelloHandshakePolicy.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\RoomErrorPresentationPolicy.cs" Link="RoomErrorPresentationPolicy.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\NetworkMessageLimits.cs" Link="NetworkMessageLimits.cs" />

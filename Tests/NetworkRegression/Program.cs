@@ -1,5 +1,11 @@
 var runner = new RegressionRunner();
 
+if (args.Length == 1 && string.Equals(args[0], "connection-settings", StringComparison.OrdinalIgnoreCase))
+{
+    ClientConnectionSettingsTests.Run(runner);
+    return runner.Complete();
+}
+
 if (args.Length == 1 && string.Equals(args[0], "talent-services", StringComparison.OrdinalIgnoreCase))
 {
     TalentServiceFoundationTests.Run(runner);

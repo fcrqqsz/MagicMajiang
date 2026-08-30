@@ -74,18 +74,45 @@ namespace MahjongGame.Core.Network.Transport
     public sealed class WebSocketClient
     {
         public static WebSocketClient Instance { get; private set; }
-        public WebSocketSharp.WebSocketState ReadyState { get; private set; } = WebSocketSharp.WebSocketState.Open;
+        public WebSocketSharp.WebSocketState ReadyState { get; private set; } = WebSocketSharp.WebSocketState.Closed;
+        public string ActiveAddress { get; private set; }
+        public bool AutoCompleteConnect { get; set; } = true;
         public readonly System.Collections.Generic.List<string> SentMessages = new();
+        public readonly System.Collections.Generic.List<string> ConnectAddresses = new();
 
         public event System.Action OnConnected;
         public event System.Action<string> OnMessageReceived;
         public event System.Action<string> OnDisconnected;
+        public event System.Action<string> OnError;
+        public event System.Action<string> OnMessageSent;
 
         public WebSocketClient() => Instance = this;
-        public void Connect(string address) { ReadyState = WebSocketSharp.WebSocketState.Open; OnConnected?.Invoke(); }
-        public void SendNetworkMessage(string message) => SentMessages.Add(message);
-        public void Disconnect() { ReadyState = WebSocketSharp.WebSocketState.Closed; OnDisconnected?.Invoke(string.Empty); }
+        public void Connect(string address)
+        {
+            ActiveAddress = address;
+            ConnectAddresses.Add(address);
+            ReadyState = WebSocketSharp.WebSocketState.Connecting;
+            if (AutoCompleteConnect) CompleteConnect();
+        }
+        public void CompleteConnect()
+        {
+            ReadyState = WebSocketSharp.WebSocketState.Open;
+            OnConnected?.Invoke();
+        }
+        public void SendNetworkMessage(string message)
+        {
+            SentMessages.Add(message);
+            OnMessageSent?.Invoke(message);
+        }
+        public void Disconnect()
+        {
+            bool wasConnected = ReadyState != WebSocketSharp.WebSocketState.Closed;
+            ReadyState = WebSocketSharp.WebSocketState.Closed;
+            ActiveAddress = null;
+            if (wasConnected) OnDisconnected?.Invoke(string.Empty);
+        }
         public void Receive(string message) => OnMessageReceived?.Invoke(message);
+        public void Fail(string message) => OnError?.Invoke(message);
         public static void ResetForTests() => Instance = null;
     }
 }

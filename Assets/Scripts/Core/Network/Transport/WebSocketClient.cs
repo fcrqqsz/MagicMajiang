@@ -10,10 +10,15 @@ namespace MahjongGame.Core.Network.Transport
 
         private WebSocket _ws;
         private long _connectionGeneration;
+        private string _activeAddress;
 
         public event Action OnConnected;
         public event Action<string> OnMessageReceived;
         public event Action<string> OnDisconnected;
+        public event Action<string> OnError;
+        public event Action<string> OnMessageSent;
+
+        public string ActiveAddress => _activeAddress;
 
         public WebSocketState ReadyState
         {
@@ -57,6 +62,7 @@ namespace MahjongGame.Core.Network.Transport
             var socket = new WebSocket(url);
             long generation = ++_connectionGeneration;
             _ws = socket;
+            _activeAddress = url;
 
             socket.OnOpen += (sender, e) =>
             {
@@ -97,6 +103,7 @@ namespace MahjongGame.Core.Network.Transport
                 {
                     if (!IsCurrentSocket(socket, generation)) return;
                     Debug.LogError($"[WebSocketClient] Socket error: {e.Message}, Exception: {e.Exception}");
+                    OnError?.Invoke(string.IsNullOrWhiteSpace(e.Message) ? e.Exception?.Message : e.Message);
                 });
             };
 
@@ -108,7 +115,16 @@ namespace MahjongGame.Core.Network.Transport
         {
             if (_ws != null && _ws.ReadyState == WebSocketState.Open)
             {
-                _ws.SendAsync(msg, null);
+                var socket = _ws;
+                long generation = _connectionGeneration;
+                socket.SendAsync(msg, completed =>
+                {
+                    MainThreadDispatcher.Instance.Enqueue(() =>
+                    {
+                        if (!completed || !IsCurrentSocket(socket, generation)) return;
+                        OnMessageSent?.Invoke(msg);
+                    });
+                });
             }
             else
             {
@@ -120,6 +136,7 @@ namespace MahjongGame.Core.Network.Transport
         {
             var socket = _ws;
             _ws = null;
+            _activeAddress = null;
             _connectionGeneration++;
             socket?.CloseAsync();
         }
