@@ -33,6 +33,9 @@ namespace MahjongGame.Core.Network
         private bool _isComposingRecovery;
         private bool _reconnectAttemptInFlight;
         private bool _reconnectRetryScheduled;
+        private bool _isUsingRecoveryServerOverride;
+        private bool _isReturningToSelectedServer;
+        private bool _awaitingRecoveryLeaveDelivery;
         private int _reconnectAttemptIndex;
         private float _nextReconnectAt;
         private float _reconnectHandshakeDeadlineAt;
@@ -62,7 +65,10 @@ namespace MahjongGame.Core.Network
         public bool IsResyncRequired => _sequenceGate.IsResyncRequired;
         public bool IsConnectionRecoveryRequired { get; private set; }
         public string ConnectionRecoveryReason { get; private set; }
-        public bool CanSubmitCommands => !_pendingReconnect && !IsResyncRequired && !IsConnectionRecoveryRequired;
+        public bool CanSubmitCommands => !_pendingReconnect
+                                         && !IsResyncRequired
+                                         && !IsConnectionRecoveryRequired
+                                         && !_isReturningToSelectedServer;
         public ClientGameState GameState => _gameState;
         public SnapshotSideboardState Sideboard => _roomState.Sideboard;
         public TalentActionOption[] AvailableTalentActions => _gameState.AvailableTalentActions;
@@ -107,7 +113,7 @@ namespace MahjongGame.Core.Network
         public bool TrySwitchServer(string address, string username)
         {
             if (string.IsNullOrWhiteSpace(address)) return false;
-            if (HasRoom || _pendingReconnect || IsConnectionRecoveryRequired) return false;
+            if (HasRoom || _pendingReconnect || IsConnectionRecoveryRequired || _isReturningToSelectedServer) return false;
 
             _selectedServerAddress = address.Trim();
             StartNonRecoveryHandshake(_selectedServerAddress, username);
@@ -151,6 +157,7 @@ namespace MahjongGame.Core.Network
 
         public bool QueryRoomList(string nickname = null)
         {
+            if (!CanSubmitRoomCommand()) return false;
             if (string.IsNullOrWhiteSpace(nickname))
                 nickname = !string.IsNullOrWhiteSpace(_activeUsername) ? _activeUsername : "Player";
 
@@ -213,7 +220,16 @@ namespace MahjongGame.Core.Network
             if (!CanSubmitRoomCommand()) return;
             if (!HasRoom)
             {
-                if (IsSessionCompleted) ResetRoomState();
+                if (IsSessionCompleted)
+                {
+                    if (_isUsingRecoveryServerOverride) BeginReturnToSelectedServerAfterRecovery();
+                    else ResetRoomState();
+                }
+                return;
+            }
+            if (_isUsingRecoveryServerOverride)
+            {
+                BeginReturnToSelectedServerAfterRecovery();
                 return;
             }
             Send("LeaveRoom", new LeaveRoomMessage());
@@ -240,6 +256,12 @@ namespace MahjongGame.Core.Network
         /// </summary>
         public void LeaveRoomOrAbandonRecovery()
         {
+            if (_isUsingRecoveryServerOverride || _pendingReconnect || IsConnectionRecoveryRequired)
+            {
+                BeginReturnToSelectedServerAfterRecovery();
+                return;
+            }
+
             var client = WebSocketClient.Instance;
             if (HasRoom && _hasHelloAccepted && client?.ReadyState == WebSocketState.Open)
                 Send("LeaveRoom", new LeaveRoomMessage());
@@ -256,6 +278,7 @@ namespace MahjongGame.Core.Network
                 WebSocketClient.Instance?.Disconnect();
                 return;
             }
+            if (_isReturningToSelectedServer) return;
             if (_pendingReconnect || IsConnectionRecoveryRequired)
             {
                 TickReconnect(unscaledTime);
@@ -324,8 +347,14 @@ namespace MahjongGame.Core.Network
 
         private void HandleMessageSent(string json)
         {
-            if (!_hasHelloAccepted) return;
             var envelope = MessageSerializer.DeserializeEnvelope(json);
+            if (_awaitingRecoveryLeaveDelivery && envelope?.type == "LeaveRoom")
+            {
+                FinishReturnToSelectedServer();
+                return;
+            }
+
+            if (!_hasHelloAccepted) return;
             if (envelope?.type == "Heartbeat")
                 _pendingHeartbeatSentAt.Enqueue(Time.unscaledTime);
         }
@@ -504,6 +533,16 @@ namespace MahjongGame.Core.Network
             _helloHandshake.Reset();
             _pendingHeartbeatSentAt.Clear();
 
+            if (_isReturningToSelectedServer)
+            {
+                if (_awaitingRecoveryLeaveDelivery)
+                {
+                    _awaitingRecoveryLeaveDelivery = false;
+                    FinishReturnToSelectedServer();
+                }
+                return;
+            }
+
             if (_nonRecoveryHandshakeInFlight)
             {
                 FailNonRecoveryHandshake(string.IsNullOrWhiteSpace(reason)
@@ -631,6 +670,8 @@ namespace MahjongGame.Core.Network
             }
 
             _pendingReconnect = false;
+            if (_isReturningToSelectedServer)
+                _isReturningToSelectedServer = false;
 
             if (shouldSendPendingRoomCommand)
             {
@@ -751,6 +792,13 @@ namespace MahjongGame.Core.Network
 
         private void HandleSocketError(string error)
         {
+            if (_isReturningToSelectedServer && _awaitingRecoveryLeaveDelivery)
+            {
+                _awaitingRecoveryLeaveDelivery = false;
+                FinishReturnToSelectedServer();
+                return;
+            }
+
             if (_nonRecoveryHandshakeInFlight)
             {
                 FailNonRecoveryHandshake(string.IsNullOrWhiteSpace(error) ? "Socket error." : error);
@@ -864,6 +912,7 @@ namespace MahjongGame.Core.Network
 
             _activeUsername = ticket.username;
             _activeServerAddress = ticket.serverAddress;
+            _isUsingRecoveryServerOverride = true;
             _pendingReconnect = true;
             _hasHelloAccepted = false;
             _helloHandshake.Reset();
@@ -947,26 +996,54 @@ namespace MahjongGame.Core.Network
         private void HandleTerminalReconnectFailure(string errorCode, string message)
         {
             string display = RoomErrorPresentationPolicy.GetDisplayMessage(new RoomErrorMessage { code = errorCode, message = message });
-            var pendingCommand = _pendingRoomCommandAfterHello;
             _pendingRoomCommandAfterHello = null;
-            _pendingReconnect = false;
-            _ticketStore.Clear();
-            ResetRoomState(true);
+            BeginReturnToSelectedServerAfterRecovery();
+            PublishRecoveryProgress(ClientRecoveryStage.TerminalFailure, display);
+            RoomError?.Invoke(display);
+        }
 
-            if (pendingCommand != null)
+        private void BeginReturnToSelectedServerAfterRecovery()
+        {
+            if (_isReturningToSelectedServer) return;
+            _isReturningToSelectedServer = true;
+
+            var client = WebSocketClient.Instance;
+            if (_isUsingRecoveryServerOverride
+                && HasRoom
+                && _hasHelloAccepted
+                && client?.ReadyState == WebSocketState.Open)
             {
-                // A new user action was waiting for connection. Hello has been accepted,
-                // so execute the pending action instead of closing the socket.
-                pendingCommand.Invoke();
+                _awaitingRecoveryLeaveDelivery = true;
+                Send("LeaveRoom", new LeaveRoomMessage());
                 return;
             }
 
-            _hasHelloAccepted = false;
-            _helloHandshake.Reset();
-            _pendingAfterConnect = null;
-            WebSocketClient.Instance?.Disconnect();
-            PublishRecoveryProgress(ClientRecoveryStage.TerminalFailure, display);
-            RoomError?.Invoke(display);
+            FinishReturnToSelectedServer();
+        }
+
+        private void FinishReturnToSelectedServer()
+        {
+            _awaitingRecoveryLeaveDelivery = false;
+            var client = WebSocketClient.Instance;
+            bool selectedTargetIsAlreadyReady = _hasHelloAccepted
+                                                && client?.ReadyState == WebSocketState.Open
+                                                && string.Equals(client.ActiveAddress, _selectedServerAddress, StringComparison.Ordinal);
+
+            ResetRoomState(true);
+            _isUsingRecoveryServerOverride = false;
+            if (selectedTargetIsAlreadyReady)
+            {
+                _isReturningToSelectedServer = false;
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(_selectedServerAddress))
+            {
+                _isReturningToSelectedServer = false;
+                return;
+            }
+
+            StartNonRecoveryHandshake(_selectedServerAddress, _activeUsername);
         }
 
         private void PublishRecoveryProgress(ClientRecoveryStage stage, string message, int attempt = 0, int retryDelaySeconds = 0)

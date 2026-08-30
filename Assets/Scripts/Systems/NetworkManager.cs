@@ -17,6 +17,8 @@ namespace MahjongGame.Systems
         public IAuthService AuthService { get; private set; }
         public IMatchmakingService MatchmakingService { get; private set; }
         public ClientRoomService RoomService { get; private set; }
+        /// <summary>Session-only UI selection; reconnect tickets never replace it.</summary>
+        public ClientServerEnvironment SelectedServerEnvironment { get; private set; }
         private bool _isRoutingRecoverySnapshot;
         private RoomGameSnapshot _queuedRecoverySnapshot;
         private LoadingScreenController _loadingScreen;
@@ -32,7 +34,8 @@ namespace MahjongGame.Systems
                 // Initialize Mock Services
                 AuthService = new MockAuthService();
                 MatchmakingService = new MockMatchmakingService();
-                RoomService = new ClientRoomService("ws://127.0.0.1:9876/game");
+                SelectedServerEnvironment = ClientServerStartupPolicy.InitialEnvironment;
+                RoomService = new ClientRoomService(ClientServerEndpointPolicy.Resolve(SelectedServerEnvironment));
                 RoomService.RoomReady += HandleRoomReady;
                 RoomService.RoomClosed += HandleRoomClosed;
                 RoomService.ReconnectSnapshotApplied += HandleReconnectSnapshotApplied;
@@ -75,6 +78,26 @@ namespace MahjongGame.Systems
         {
             AttachLoadingScreen();
             RoomService?.Tick(Time.unscaledTime);
+        }
+
+        /// <summary>Switches the session-only online/local selection and starts its Hello handshake.</summary>
+        public bool SelectServerEnvironment(ClientServerEnvironment environment, string username)
+        {
+            if (RoomService == null) return false;
+            string address = ClientServerEndpointPolicy.Resolve(environment);
+            if (!RoomService.TrySwitchServer(address, LoginUsernamePolicy.Normalize(username))) return false;
+            SelectedServerEnvironment = environment;
+            return true;
+        }
+
+        /// <summary>Restores a matching saved room first; otherwise starts the selected server connection immediately.</summary>
+        public bool ConnectAfterLogin(string username)
+        {
+            if (RoomService == null) return false;
+            string normalizedUsername = LoginUsernamePolicy.Normalize(username);
+            bool reconnectStarted = RoomService.ReconnectSavedRoom(normalizedUsername);
+            if (!ClientServerStartupPolicy.ShouldConnectSelectedServerAfterLogin(reconnectStarted)) return true;
+            return RoomService.TryReconnectSelectedServer(normalizedUsername);
         }
 
         private void HandleRecoveryProgressChanged(ClientRecoveryProgress progress)

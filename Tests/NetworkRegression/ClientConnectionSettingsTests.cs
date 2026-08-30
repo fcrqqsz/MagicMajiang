@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using MahjongGame.Core;
 using MahjongGame.Core.Network;
 using MahjongGame.Core.Network.Messages;
 using MahjongGame.Core.Network.Transport;
@@ -12,6 +13,7 @@ internal static class ClientConnectionSettingsTests
     public static void Run(RegressionRunner runner)
     {
         TestEndpointSelection(runner);
+        TestStartupConnectionDecision(runner);
         TestSwitchConnectsAndRequiresHelloAcceptance(runner);
         TestTimeoutRetryAndFailureDiagnostics(runner);
         TestSocketFailureDuringAuthentication(runner);
@@ -23,6 +25,8 @@ internal static class ClientConnectionSettingsTests
         TestLobbyRoomErrorKeepsReadyDiagnostics(runner);
         TestActiveRoomAndRecoveryRejectServerChanges(runner);
         TestRoomCommandsUseSelectedServer(runner);
+        TestRecoveredRoomReturnsToSelectedServerAfterLeaveDelivery(runner);
+        TestTerminalRecoveryReturnsToSelectedServer(runner);
     }
 
     private static void TestEndpointSelection(RegressionRunner runner)
@@ -31,6 +35,15 @@ internal static class ClientConnectionSettingsTests
             ClientServerEndpointPolicy.Resolve(ClientServerEnvironment.Online) == OnlineAddress
             && ClientServerEndpointPolicy.Resolve(ClientServerEnvironment.Local) == LocalAddress,
             "Endpoint policy must resolve online and local server choices to their real game routes.");
+    }
+
+    private static void TestStartupConnectionDecision(RegressionRunner runner)
+    {
+        runner.Check(
+            ClientServerStartupPolicy.InitialEnvironment == ClientServerEnvironment.Online
+            && !ClientServerStartupPolicy.ShouldConnectSelectedServerAfterLogin(reconnectStarted: true)
+            && ClientServerStartupPolicy.ShouldConnectSelectedServerAfterLogin(reconnectStarted: false),
+            "Startup must default to Online and only connect the selected server after login when saved-room recovery did not start.");
     }
 
     private static void TestSwitchConnectsAndRequiresHelloAcceptance(RegressionRunner runner)
@@ -251,6 +264,125 @@ internal static class ClientConnectionSettingsTests
         runner.Check(GetSentTypes(client).Last() == "QueryRoomList",
             "A room command queued for a selected-server reconnect must be sent only after its new Hello is accepted.");
     }
+
+    private static void TestRecoveredRoomReturnsToSelectedServerAfterLeaveDelivery(RegressionRunner runner)
+    {
+        var client = CreateClient();
+        var tickets = new InMemoryClientReconnectTicketStore();
+        tickets.Save(new ClientReconnectTicket
+        {
+            serverAddress = LocalAddress,
+            username = "RecoveryUser",
+            roomId = "R2000",
+            streamId = "recovery-stream"
+        });
+        using var service = new ClientRoomService(OnlineAddress, tickets);
+
+        runner.Check(service.ReconnectSavedRoom("RecoveryUser"),
+            "A matching saved ticket must start recovery before any selected-server connection.");
+        service.Tick(0f);
+        client.CompleteConnect();
+        client.Receive(MessageSerializer.Serialize("HelloAccepted", 0, new HelloAcceptedMessage()));
+        client.Receive(MessageSerializer.Serialize("ReconnectState", 0, new ReconnectStateMessage
+        {
+            baselineSeq = 0,
+            snapshot = CreateRecoveredRoomSnapshot(),
+            missedMessages = Array.Empty<NetworkMessageEnvelope>()
+        }));
+
+        client.AutoCompleteSends = false;
+        service.LeaveRoom();
+
+        bool selectedTargetPreserved = service.SelectedServerAddress == OnlineAddress;
+        bool recoverySocketPreserved = client.ActiveAddress == LocalAddress;
+        bool leaveWasSent = GetSentTypes(client).Last() == "LeaveRoom";
+        bool commandsBlocked = !service.QueryRoomList("RecoveryUser");
+        bool noReplacementConnection = client.ConnectAddresses.Count == 1;
+        runner.Check(selectedTargetPreserved
+            && recoverySocketPreserved
+            && leaveWasSent
+            && commandsBlocked
+            && noReplacementConnection,
+            "Leaving a recovered room must block commands and keep its socket active until LeaveRoom delivery succeeds.");
+
+        client.CompleteNextSend();
+        runner.Check(
+            client.ConnectAddresses.Last() == OnlineAddress
+            && service.SelectedServerAddress == OnlineAddress
+            && !tickets.TryLoad(out _),
+            "After LeaveRoom delivery, recovery must clear its ticket and return to the selected server without replacing the selection.");
+
+        runner.Check(!service.TryReconnectSelectedServer("RecoveryUser"),
+            "Server switching and retesting must remain blocked until the selected-server return handshake completes.");
+    }
+
+    private static void TestTerminalRecoveryReturnsToSelectedServer(RegressionRunner runner)
+    {
+        var client = CreateClient();
+        var tickets = new InMemoryClientReconnectTicketStore();
+        tickets.Save(new ClientReconnectTicket
+        {
+            serverAddress = LocalAddress,
+            username = "TerminalRecoveryUser",
+            roomId = "R3000",
+            streamId = "terminal-recovery-stream"
+        });
+        using var service = new ClientRoomService(OnlineAddress, tickets);
+        ClientRecoveryProgress terminalProgress = null;
+        service.RecoveryProgressChanged += progress =>
+        {
+            if (progress.Stage == ClientRecoveryStage.TerminalFailure) terminalProgress = progress;
+        };
+
+        service.ReconnectSavedRoom("TerminalRecoveryUser");
+        service.Tick(0f);
+        client.CompleteConnect();
+        client.Receive(MessageSerializer.Serialize("HelloAccepted", 0, new HelloAcceptedMessage()));
+        client.Receive(MessageSerializer.Serialize("ReconnectRejected", 0, new ReconnectRejectedMessage
+        {
+            code = NetworkErrorCodes.RoomNotFound,
+            message = "The saved room is unavailable."
+        }));
+
+        runner.Check(
+            client.ConnectAddresses.SequenceEqual(new[] { LocalAddress, OnlineAddress })
+            && service.SelectedServerAddress == OnlineAddress
+            && !tickets.TryLoad(out _)
+            && terminalProgress?.Stage == ClientRecoveryStage.TerminalFailure,
+            "A terminal recovery rejection must clear the authoritative ticket, preserve terminal UI progress, and return to the selected server.");
+    }
+
+    private static RoomGameSnapshot CreateRecoveredRoomSnapshot() => new RoomGameSnapshot
+    {
+        roomId = "R2000",
+        roomState = (int)RoomState.WaitingForPlayers,
+        gameMode = (int)GameMode.Single,
+        alienationPreset = (int)AlienationPreset.Standard,
+        requestingSeatIndex = 0,
+        seats = new[]
+        {
+            new RoomSnapshotSeat { seatIndex = 0, isOccupied = true, isOnline = true, displayName = "RecoveryUser" },
+            new RoomSnapshotSeat { seatIndex = 1 },
+            new RoomSnapshotSeat { seatIndex = 2 },
+            new RoomSnapshotSeat { seatIndex = 3 }
+        },
+        knownTalents = Array.Empty<SnapshotKnownTalent>(),
+        scores = new int[4],
+        rivers = Array.Empty<SeatRiverSnapshot>(),
+        privateSeat = new SnapshotPrivateSeat
+        {
+            seatIndex = 0,
+            concealedHand = Array.Empty<SimpleTileData>(),
+            melds = Array.Empty<SnapshotMeld>(),
+            scoringOptions = new SnapshotScoringOptions(),
+            peekWallTiles = Array.Empty<SimpleTileData>(),
+            knownOpponentHands = Array.Empty<SnapshotKnownHand>(),
+            ownTalents = Array.Empty<SnapshotOwnTalent>(),
+            availableTalentActions = Array.Empty<SnapshotTalentActionOption>()
+        },
+        sideboard = new SnapshotSideboardState { seatLocked = Array.Empty<bool>() },
+        result = new RoundResultSnapshot { fanDetails = Array.Empty<string>() }
+    };
 
     private static WebSocketClient CreateClient()
     {

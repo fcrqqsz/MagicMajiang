@@ -77,9 +77,11 @@ namespace MahjongGame.Core.Network.Transport
         public WebSocketSharp.WebSocketState ReadyState { get; private set; } = WebSocketSharp.WebSocketState.Closed;
         public string ActiveAddress { get; private set; }
         public bool AutoCompleteConnect { get; set; } = true;
+        public bool AutoCompleteSends { get; set; } = true;
         public readonly System.Collections.Generic.List<string> SentMessages = new();
         public readonly System.Collections.Generic.List<string> ConnectAddresses = new();
         public readonly System.Collections.Generic.Queue<bool> SendCompletionResults = new();
+        private readonly System.Collections.Generic.Queue<(string Message, bool Completed)> _pendingSendCompletions = new();
 
         public event System.Action OnConnected;
         public event System.Action<string> OnMessageReceived;
@@ -103,8 +105,20 @@ namespace MahjongGame.Core.Network.Transport
         public void SendNetworkMessage(string message)
         {
             SentMessages.Add(message);
-            if (SendCompletionResults.Count == 0 || SendCompletionResults.Dequeue())
+            bool completed = SendCompletionResults.Count == 0 || SendCompletionResults.Dequeue();
+            if (!AutoCompleteSends)
+            {
+                _pendingSendCompletions.Enqueue((message, completed));
+                return;
+            }
+            if (completed)
                 OnMessageSent?.Invoke(message);
+        }
+        public void CompleteNextSend()
+        {
+            if (_pendingSendCompletions.Count == 0) return;
+            (string message, bool completed) = _pendingSendCompletions.Dequeue();
+            if (completed) OnMessageSent?.Invoke(message);
         }
         public void Disconnect()
         {

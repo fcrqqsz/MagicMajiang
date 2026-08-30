@@ -61,6 +61,7 @@
     <Compile Include="..\..\Assets\Scripts\Core\Network\ConnectionRegistry.cs" Link="ConnectionRegistry.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\ClientHelloProtocol.cs" Link="ClientHelloProtocol.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\ClientConnectionDiagnostics.cs" Link="ClientConnectionDiagnostics.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\Network\ClientServerStartupPolicy.cs" Link="ClientServerStartupPolicy.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\ClientHelloHandshakePolicy.cs" Link="ClientHelloHandshakePolicy.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\RoomErrorPresentationPolicy.cs" Link="RoomErrorPresentationPolicy.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\NetworkMessageLimits.cs" Link="NetworkMessageLimits.cs" />
