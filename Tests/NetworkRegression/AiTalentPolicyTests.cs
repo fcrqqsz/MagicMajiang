@@ -238,13 +238,17 @@ internal static class AiTalentPolicyTests
                            "host", endpoint, "dev:telemetry-host", "Host", loadout, out _)
                        && room.SetReady("host", ReadyPhase.MatchStart, out _)
                        && room.SetReady("host", ReadyPhase.GameSceneLoaded, out _);
-        room.GameServer?.CompleteDrawRound();
+        GameServer server = room.GameServer;
+        server?.CompleteDrawRound();
 
         runner.Check(started
-                     && room.State == RoomState.SessionCompleted
+                     && room.State == RoomState.Closed
                      && room.Session.TotalRoundsPlayed == 1
-                     && room.GameServer?.CompletionNotifications == 1,
-            "throwing telemetry sink cannot interrupt Room round completion or completion latch delivery");
+                     && server?.CompletionNotifications == 1
+                     && endpoint.SentMessages
+                         .Select(MessageSerializer.DeserializeEnvelope)
+                         .Count(message => message?.type == "SessionEnd") == 1,
+            "throwing telemetry sink cannot interrupt terminal delivery, Room cleanup, or completion latching");
     }
 
     private sealed class ThrowingTalentTelemetrySink : ITalentTelemetrySink

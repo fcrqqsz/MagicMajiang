@@ -250,16 +250,34 @@ internal static class TalentActionTests
                 .Select(MessageSerializer.DeserializeEnvelope)
                 .Where(envelope => envelope != null)
                 .ToArray();
-            TalentActionResolvedMessage resolved = newMessages.Length == 1
-                && newMessages[0].type == "TalentActionResolved"
-                    ? MessageSerializer.DeserializePayload<TalentActionResolvedMessage>(newMessages[0].data)
-                    : null;
+            RoomErrorMessage terminalError = newMessages.Length == 1
+                                              && newMessages[0].type == "RoomError"
+                ? MessageSerializer.DeserializePayload<RoomErrorMessage>(newMessages[0].data)
+                : null;
             runner.Check(
-                newMessages.Length == 1
-                && newMessages[0].seq > 0
-                && resolved?.accepted == false
-                && resolved.errorCode == NetworkErrorCodes.NoActiveDecision,
-                "a bound-seat TalentAction in the wrong room phase emits exactly one ordered NoActiveDecision resolution");
+                room.State == RoomState.Closed
+                && terminalError?.code == "NotInRoom",
+                "a terminal room is removed before another TalentAction and rejects it as unbound");
+
+            int beforeCreateCount = endpoint.SentMessages.Count;
+            TrustedPlayerLoadout loadout = PlayerLoadoutCodec.CreateStandardLoadout();
+            endpoint.Receive(
+                "talent-route-wrong-phase",
+                1,
+                MessageSerializer.Serialize("CreateRoom", 0, new CreateRoomMessage
+                {
+                    gameMode = (int)GameMode.EastOnly,
+                    alienationPreset = (int)AlienationPreset.Standard,
+                    loadout = PlayerLoadoutCodec.CreateMessage(
+                        loadout.DeckConfig,
+                        loadout.TalentConfig,
+                        AlienationPreset.Standard)
+                }));
+            runner.Check(endpoint.SentMessages
+                    .Skip(beforeCreateCount)
+                    .Select(MessageSerializer.DeserializeEnvelope)
+                    .Any(envelope => envelope?.type == "RoomJoined"),
+                "the same authenticated WebSocket can create a new room after terminal unbinding");
         }
 
         using (var manager = new RoomManager(1, true, new ConnectionRegistry(int.MaxValue), messageCacheSize: 64))

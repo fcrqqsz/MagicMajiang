@@ -31,11 +31,36 @@ internal static class SideboardTests
         TestLoadoutPolicyRejectsEveryInvalidShape(runner);
         TestLoadoutPolicyEnforcesLockedTalentsAndBudget(runner);
         TestRoomOpensSideboardBeforeNextRoundAndAppliesSelection(runner);
+        TestFourthRoundBustSkipsSideboard(runner);
         TestInvalidSelectionLocksOriginalAndCannotRetry(runner);
         TestSideboardMessagesKeepOtherSeatsPrivate(runner);
         TestDisconnectLocksOriginal(runner);
         TestTimeoutLocksOriginal(runner);
         TestRoomManagerRoutesSubmitAndDeadline(runner);
+    }
+
+    private static void TestFourthRoundBustSkipsSideboard(RegressionRunner runner)
+    {
+        TrustedPlayerLoadout loadout = CreateTrustedLoadout(
+            new string[TalentSlotConfig.MainSlotCount],
+            new string[TalentSlotConfig.ReserveSlotCount]);
+        using Room room = CreateStartedRoom(
+            "sideboard-bust", GameMode.HalfGame, loadout, out GameEndpoint endpoint);
+
+        CompleteRounds(room, 3, "host");
+        room.SetReady("host", ReadyPhase.NextRound, out _);
+        room.Session.Scores[0] = 0;
+        room.GameServer?.CompleteDrawRound();
+
+        runner.Check(room.State == RoomState.Closed,
+            $"a fourth-round depleted score closes the room (actual={room.State})");
+        runner.Check(room.Session.TotalRoundsPlayed == 4
+                     && room.Session.EndReason == SessionEndReason.ScoreDepleted,
+            $"a fourth-round depleted score sets terminal progress (rounds={room.Session.TotalRoundsPlayed}, reason={room.Session.EndReason})");
+        runner.Check(endpoint.SentMessages
+                .Select(MessageSerializer.DeserializeEnvelope)
+                .All(envelope => envelope?.type != "SideboardStarted"),
+            "a fourth-round depleted score ends the match before the halftime sideboard can open");
     }
 
     private static void TestDraftPolicyEditsImmutableLocalCopy(RegressionRunner runner)
@@ -714,11 +739,11 @@ internal static class SideboardTests
                      && locked.reason == "accepted"
                      && locked.ownTotalAlienation == 10,
             "a valid selection atomically replaces the runtime set, privately locks the owner, then starts the second half without another ready gate");
-        runner.Check(room.Session.Scores[0] == 50,
+        runner.Check(room.Session.Scores[0] == 200,
             "sideboarding does not replay StartingCapital or any match-start effect");
 
         room.GameServer?.CompleteDrawRound();
-        runner.Check(room.Session.TotalRoundsPlayed == 5 && room.Session.Scores[0] == 50,
+        runner.Check(room.Session.TotalRoundsPlayed == 5 && room.Session.Scores[0] == 200,
             "the next round uses the replacement set, with the deactivated draw reward no longer firing");
     }
 

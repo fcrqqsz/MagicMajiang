@@ -31,7 +31,7 @@
                 <ui:Label name="ScoreLabel" text="异化值: 0" class="view-subtitle" />
                 <ui:VisualElement name="GameModeSelector" class="deck-selector">
                     <ui:Button name="BtnModePrev" text="&lt;" class="deck-arrow-btn" />
-                    <ui:Label name="ModeNameLabel" text="对战模式: 单局" class="view-subtitle deck-name-display" />
+                    <ui:Label name="ModeNameLabel" text="对战模式: 单局 · 50 分" class="view-subtitle deck-name-display" />
                     <ui:Button name="BtnModeNext" text="&gt;" class="deck-arrow-btn" />
                 </ui:VisualElement>
                 <ui:VisualElement name="RoomPresetSelector" class="deck-selector room-preset-selector">
@@ -67,6 +67,7 @@
                     <ui:VisualElement class="room-summary-section">
                         <ui:Label text="房间信息" class="room-section-title" />
                         <ui:Label name="RoomModeLabel" class="room-detail-label" />
+                        <ui:Label name="RoomScoreRuleLabel" class="room-detail-label" />
                         <ui:Label name="RoomPresetPublicLabel" class="room-detail-label room-alienation-label" />
                         <ui:Label name="RoomAiFillLabel" class="room-detail-label" />
                         <ui:Label name="RoomHumanCountLabel" class="room-detail-label" />
@@ -150,9 +151,26 @@
                 <ui:VisualElement name="CompendiumRulesView" class="compendium-subview" style="display: none;">
                     <ui:ScrollView name="RulesScrollView" class="compendium-scroll-view">
                         <!-- 机制 1 -->
-                        <ui:VisualElement class="compendium-mechanic-card">
+                        <ui:VisualElement name="SessionScoreRulesCard" class="compendium-mechanic-card">
                             <ui:VisualElement class="compendium-mechanic-header">
                                 <ui:Label text="1" class="compendium-mechanic-badge" />
+                                <ui:Label text="模式起始分与击飞终局" class="compendium-mechanic-title" />
+                            </ui:VisualElement>
+                            <ui:Label text="每位玩家按所选对局模式获得起始分；「初始资金」等比赛开始天赋在此基础上继续叠加：" class="compendium-mechanic-desc" />
+                            <ui:VisualElement class="compendium-mechanic-box">
+                                <ui:Label text="四种模式起始分：" class="compendium-box-title" />
+                                <ui:Label text="• 单局 (Single)：50 分&#10;• 东风局 (East Only)：100 分&#10;• 半庄 (Half Game)：150 分&#10;• 全庄 (Full Game)：200 分" class="compendium-box-desc" />
+                            </ui:VisualElement>
+                            <ui:VisualElement class="compendium-mechanic-box">
+                                <ui:Label text="击飞与完整局末结算：" class="compendium-box-title" />
+                                <ui:Label text="• 判定顺序：基础计分 -&gt; 全部局末天赋 -&gt; 天赋事件 -&gt; 推进局数 -&gt; 终局判定。&#10;• 完整结算后，任一玩家最终分数 &lt;= 0，整场立即结束；实际负分不会截断为 0。&#10;• 局末返还若先将 0 或负分救回正数，则不会击飞；多人可以在同一局同时击飞。&#10;• 若同一局也完成全部预定局数，终局按正常打满记录，但耗尽玩家仍标记「击飞」。" class="compendium-box-desc" />
+                            </ui:VisualElement>
+                        </ui:VisualElement>
+
+                        <!-- 机制 2 -->
+                        <ui:VisualElement class="compendium-mechanic-card">
+                            <ui:VisualElement class="compendium-mechanic-header">
+                                <ui:Label text="2" class="compendium-mechanic-badge" />
                                 <ui:Label text="牌库异化值与预算体系 (Alienation System)" class="compendium-mechanic-title" />
                             </ui:VisualElement>
                             <ui:Label text="玩家可使用自定义的 34 张牌库进行对战。标准牌库包含 34 种牌各 1 张，异化值为 0 点。&#10;• 加减牌成本：增加或减少某张牌的数量均会产生异化值（例如加到同种牌 4 张或删除某张牌）。&#10;• 天赋成本叠加：当前激活的主天赋异化成本与牌库异化成本合并计入「总异化值」。" class="compendium-mechanic-desc" />
@@ -162,10 +180,10 @@
                             </ui:VisualElement>
                         </ui:VisualElement>
 
-                        <!-- 机制 2 -->
+                        <!-- 机制 3 -->
                         <ui:VisualElement class="compendium-mechanic-card">
                             <ui:VisualElement class="compendium-mechanic-header">
-                                <ui:Label text="2" class="compendium-mechanic-badge" />
+                                <ui:Label text="3" class="compendium-mechanic-badge" />
                                 <ui:Label text="国标算分与 8 番起胡门槛" class="compendium-mechanic-title" />
                             </ui:VisualElement>
                             <ui:Label text="游戏遵循国标麻将规则，胡牌必须满足基础番数达到 8 番（天赋如「快人一步」可降低门槛至 6 番）。&#10;• 算番最大化：系统采用多路径拆解算法，在所有合法的拆牌方案中选取番数最高的组合。&#10;• 番数逐项归因：最终番数拆分为「基础国标番 + 天赋门槛修正 + 天赋奖励加番 - 天赋惩罚扣番」。" class="compendium-mechanic-desc" />
@@ -175,22 +193,22 @@
                             </ui:VisualElement>
                         </ui:VisualElement>
 
-                        <!-- 机制 3 -->
-                        <ui:VisualElement class="compendium-mechanic-card">
-                            <ui:VisualElement class="compendium-mechanic-header">
-                                <ui:Label text="3" class="compendium-mechanic-badge" />
-                                <ui:Label text="多局对战制与门风轮转" class="compendium-mechanic-title" />
-                            </ui:VisualElement>
-                            <ui:Label text="国标麻将无传统日麻的连庄概念，无论谁胡牌，每小局结束后东风位置均按顺时针轮转：&#10;• 单局 (Single): 1 局定胜负，适合快速试玩。&#10;• 东风局 (East Only): 共 4 小局，每位玩家各坐东家一次。&#10;• 半庄 (Half Game): 共 8 小局（东风圈 4 局 + 南风圈 4 局）。&#10;• 全庄 (Full Game): 共 16 小局（东南西北四圈各 4 局）。" class="compendium-mechanic-desc" />
-                        </ui:VisualElement>
-
                         <!-- 机制 4 -->
                         <ui:VisualElement class="compendium-mechanic-card">
                             <ui:VisualElement class="compendium-mechanic-header">
                                 <ui:Label text="4" class="compendium-mechanic-badge" />
+                                <ui:Label text="多局对战制与门风轮转" class="compendium-mechanic-title" />
+                            </ui:VisualElement>
+                            <ui:Label text="国标麻将无传统日麻的连庄概念，无论谁胡牌，每小局结束后东风位置均按顺时针轮转：&#10;• 单局 (Single)：1 局定胜负。&#10;• 东风局 (East Only)：共 4 小局，每位玩家各坐东家一次。&#10;• 半庄 (Half Game)：共 8 小局（东风圈 4 局 + 南风圈 4 局）。&#10;• 全庄 (Full Game)：共 16 小局（东南西北四圈各 4 局）。" class="compendium-mechanic-desc" />
+                        </ui:VisualElement>
+
+                        <!-- 机制 5 -->
+                        <ui:VisualElement class="compendium-mechanic-card">
+                            <ui:VisualElement class="compendium-mechanic-header">
+                                <ui:Label text="5" class="compendium-mechanic-badge" />
                                 <ui:Label text="中场备牌机制 (Sideboard Phase)" class="compendium-mechanic-title" />
                             </ui:VisualElement>
-                            <ui:Label text="在多局对战（半庄或全庄）进行到第 4 小局结束时，比赛进入 45 秒的中场备牌阶段：&#10;• 玩家可根据前 4 局对手的打法风格与分数差距，从已携带的 6 主槽 + 3 备选槽中重新调配主槽天赋。&#10;• 备牌调整后总异化值不得超过房间预设档位，锁定后将在后半程比赛中持续生效。" class="compendium-mechanic-desc" />
+                            <ui:Label text="在多局对战（半庄或全庄）进行到第 4 小局结束时，比赛进入 45 秒的中场备牌阶段：&#10;• 玩家可根据前 4 局对手的打法风格与分数差距，从已携带的 6 主槽 + 3 备选槽中重新调配主槽天赋。&#10;• 备牌调整后总异化值不得超过房间预设档位，锁定后将在后半程比赛中持续生效。&#10;• 若第 4 小局完整结算后已有玩家被击飞，则整场先结束，不再进入备牌阶段。" class="compendium-mechanic-desc" />
                         </ui:VisualElement>
                     </ui:ScrollView>
                 </ui:VisualElement>
@@ -219,7 +237,7 @@
                     <ui:VisualElement class="connection-card connection-diagnostics-card">
                         <ui:Label text="连接诊断" class="connection-card-title" />
                         <ui:Label name="ConnectionSocketPhaseLabel" text="套接字阶段：--" class="connection-detail" />
-                        <ui:Label name="ConnectionHandshakeLabel" text="v10 握手：--" class="connection-detail" />
+                        <ui:Label name="ConnectionHandshakeLabel" text="v11 握手：--" class="connection-detail" />
                         <ui:Label name="ConnectionRttLabel" text="RTT：--" class="connection-detail" />
                         <ui:Label name="ConnectionLastCheckedLabel" text="上次检查：--" class="connection-detail" />
                         <ui:Label name="ConnectionErrorLabel" text="最近错误：--" class="connection-detail connection-error" />

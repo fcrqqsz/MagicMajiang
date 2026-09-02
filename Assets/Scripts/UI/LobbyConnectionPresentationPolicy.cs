@@ -11,7 +11,7 @@ namespace MahjongGame.UI
             if (diagnostics == null)
             {
                 return new LobbyConnectionPresentationView(
-                    "未知", "connection-status-gray", "套接字阶段：未知", "v10 握手：--", "RTT：--",
+                    "未知", "connection-status-gray", "套接字阶段：未知", $"v{NetworkProtocol.Version} 握手：--", "RTT：--",
                     "上次检查：--", "最近错误：--", "就绪状态：等待网络服务初始化", actionsDisabled: true);
             }
 

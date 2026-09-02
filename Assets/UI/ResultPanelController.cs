@@ -74,6 +74,16 @@ namespace MahjongGame.UI
             UpdateButtonText();
         }
 
+        /// <summary>Applies the authoritative terminal state without replacing the visible round result.</summary>
+        public void ApplySessionEnd(GameSession session)
+        {
+            _session = session;
+            UpdateButtonText();
+            if (!_isShowingFinalResult && _overlay != null
+                && _overlay.style.display != DisplayStyle.None)
+                AppendScoreInfo();
+        }
+
         /// <summary>Stops stale result animation before a recovered projection chooses the visible result.</summary>
         public void ResetForRecovery()
         {
@@ -121,7 +131,8 @@ namespace MahjongGame.UI
 
         private void UpdateButtonText()
         {
-            _btnRestart.text = ResultSessionPresentationPolicy.GetContinueButtonText(_session);
+            if (_btnRestart != null)
+                _btnRestart.text = ResultSessionPresentationPolicy.GetContinueButtonText(_session);
         }
 
         public void ShowDraw(List<string> playerStatuses = null)
@@ -197,26 +208,32 @@ namespace MahjongGame.UI
         }
 
         /// <summary>
-        /// 在列表底部追加当前分数信息 (多局模式)
+        /// 在列表底部追加当前权威分数信息
         /// </summary>
         private void AppendScoreInfo()
         {
-            if (_session == null || _session.Mode == GameMode.Single) return;
+            if (_session == null || _listContainer == null) return;
+
+            foreach (VisualElement item in _listContainer.contentContainer.Children()
+                         .Where(child => child.ClassListContains("session-score-item"))
+                         .ToArray())
+                item.RemoveFromHierarchy();
 
             // 分隔线
             Label separator = new Label("────────────");
             separator.AddToClassList("fan-item");
+            separator.AddToClassList("session-score-item");
             separator.style.color = new StyleColor(new Color(0.5f, 0.5f, 0.5f));
             _listContainer.Add(separator);
 
             // 当前分数
-            string[] windNames = { "东", "南", "西", "北" };
             for (int i = 0; i < 4; i++)
             {
                 string playerName = GetPlayerDisplayName(i);
                 string scoreText = $"{playerName}: {_session.Scores[i]:+#;-#;0} 分";
                 Label scoreLabel = new Label(scoreText);
                 scoreLabel.AddToClassList("fan-item");
+                scoreLabel.AddToClassList("session-score-item");
                 if (IsLocalSeat(i))
                     scoreLabel.style.color = new StyleColor(new Color(1f, 0.85f, 0.4f));
                 _listContainer.Add(scoreLabel);
@@ -236,17 +253,24 @@ namespace MahjongGame.UI
 
             _listContainer.Clear();
 
-            // 排名
-            var rankings = new List<(int id, int score)>();
-            for (int i = 0; i < 4; i++)
-                rankings.Add((i, _session.Scores[i]));
-            rankings.Sort((a, b) => b.score.CompareTo(a.score));
+            string endReason = ResultSessionPresentationPolicy.GetEndReasonText(
+                _session, GetPlayerDisplayName);
+            if (!string.IsNullOrEmpty(endReason))
+            {
+                Label reason = new Label(endReason);
+                reason.AddToClassList("fan-item");
+                _listContainer.Add(reason);
+            }
 
             int rank = 1;
-            foreach (var (id, score) in rankings)
+            foreach (int id in ResultSessionPresentationPolicy.GetRankedSeatIndices(_session))
             {
                 string playerName = GetPlayerDisplayName(id);
-                Label item = new Label($"第{rank}名  {playerName}    {score:+#;-#;0} 分");
+                string depletedMarker = ResultSessionPresentationPolicy.IsDepletedSeat(_session, id)
+                    ? "  [击飞]"
+                    : string.Empty;
+                Label item = new Label(
+                    $"第{rank}名  {playerName}    {_session.Scores[id]:+#;-#;0} 分{depletedMarker}");
                 item.AddToClassList("fan-item");
                 if (IsLocalSeat(id))
                     item.style.color = new StyleColor(new Color(1f, 0.85f, 0.4f));

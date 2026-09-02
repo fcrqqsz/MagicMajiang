@@ -58,6 +58,7 @@ namespace MahjongGame.UI
         private Label roomIdLabel;
         private Label roomStateLabel;
         private Label roomModeLabel;
+        private Label roomScoreRuleLabel;
         private Label roomPresetPublicLabel;
         private Label roomAiFillLabel;
         private Label roomHumanCountLabel;
@@ -175,6 +176,7 @@ namespace MahjongGame.UI
             roomIdLabel = root.Q<Label>("RoomIdLabel");
             roomStateLabel = root.Q<Label>("RoomStateLabel");
             roomModeLabel = root.Q<Label>("RoomModeLabel");
+            roomScoreRuleLabel = root.Q<Label>("RoomScoreRuleLabel");
             roomPresetPublicLabel = root.Q<Label>("RoomPresetPublicLabel");
             roomAiFillLabel = root.Q<Label>("RoomAiFillLabel");
             roomHumanCountLabel = root.Q<Label>("RoomHumanCountLabel");
@@ -781,7 +783,8 @@ namespace MahjongGame.UI
             if (modeIdx < 0 || modeIdx >= GameModeNames.Length)
                 modeIdx = 0;
 
-            modeNameLabel.text = $"对战模式: {GameModeNames[modeIdx]}";
+            var mode = (GameMode)modeIdx;
+            modeNameLabel.text = $"对战模式: {GameModeNames[modeIdx]} · {SessionScoreRules.GetInitialScore(mode)} 分";
         }
 
         private void OnRoomPresetPrevClicked() => CyclePendingRoomPreset(-1);
@@ -976,6 +979,8 @@ namespace MahjongGame.UI
             if (roomIdLabel != null) roomIdLabel.text = $"房间 {room.RoomId}";
             if (roomStateLabel != null) roomStateLabel.text = GetRoomStateText(room.RoomState);
             if (roomModeLabel != null) roomModeLabel.text = $"对局模式：{GetGameModeText(room.GameMode)}";
+            if (roomScoreRuleLabel != null)
+                roomScoreRuleLabel.text = $"起始分：{SessionScoreRules.GetInitialScore(room.GameMode)} ｜ 0 分及以下击飞";
             RoomAlienationVisibilityView roomAlienation = RoomAlienationPresentationPolicy.Build(
                 room.AlienationPreset, room.OwnTotalAlienation);
             if (roomPresetPublicLabel != null) roomPresetPublicLabel.text = roomAlienation.PublicSummary;

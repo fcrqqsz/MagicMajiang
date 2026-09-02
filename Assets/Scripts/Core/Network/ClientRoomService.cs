@@ -625,6 +625,7 @@ namespace MahjongGame.Core.Network
         private void CompleteSessionRoomState()
         {
             if (!HasRoom) return;
+            _ticketStore.Clear();
             _roomState.CompleteSession();
             SeatSnapshotChanged?.Invoke(Seats);
         }

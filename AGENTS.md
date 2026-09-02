@@ -25,7 +25,7 @@
 - 服务端链路：`ServerBootstrap -> WebSocketService -> ConnectionRegistry -> RoomManager -> Room -> GameServer`
 - `ConnectionRegistry` 分离物理 WebSocket、连接代次、开发期身份和逻辑席位；旧 endpoint 的迟到回调必须被代次校验丢弃
 - `RoomManager` 管理房间生命周期，`Room` 持有四席构筑、`GameSession`、跨小局复用的 `TalentMatchRuntime`、`GameServer`、席位消息流及断线托管状态
-- 协议版本为 v10，携带构筑 schema 为 v3；连接必须先完成 `Hello`，开发期以规范化 username 生成稳定 `playerId`
+- 协议版本为 v11，携带构筑 schema 为 v3；连接必须先完成 `Hello`，开发期以规范化 username 生成稳定 `playerId`
 - 每个真人席位使用独立、连续递增的 `SeatMessageStream`；公共消息也按席序列化，私有手牌、牌库、天赋和窥探结果不得串席
 - `RoomGameSnapshot` 只向本家暴露完整暗手牌；客户端使用纯 C# `ClientGameState` 原子应用快照和有序消息
 - `PrivateTileKnowledgeTracker` 由每小局 `GameServer` 持有，按观察者隔离追踪窥探/洞若观火获得的已知对手暗手；客户端只收到不含物理牌 ID 的当前全量投影，重连不重放过期揭示弹窗
@@ -36,6 +36,8 @@
 **多局对战系统**:
 - `GameSession`: 管理多局状态（圈风轮转、门风分配、累计分数）
 - 支持 `GameMode`: Single(单局) / EastOnly(东风局4局) / HalfGame(半庄8局) / FullGame(全庄16局)
+- 起始分由 `SessionScoreRules` 统一定义：Single 50 / EastOnly 100 / HalfGame 150 / FullGame 200；完整局末天赋结算后任一席 `<= 0` 即击飞终局，负分保留
+- `SessionEnd` 是客户端唯一终局权威；服务端发送后立即解绑并移除房间、保留 WebSocket，终局房间不支持重连或结果补领
 - `WindDirection` 枚举值与牌面 Value 对齐（East=1..North=4），番种规则无需转换
 - 国标规则：无庄家概念，东家仅决定先摸牌和门风分配，计分无翻倍
 - 计分：自摸三家各付(8+番数)；点炮放炮者付(8+番数)另两家各付底分8；流局不计分
@@ -58,7 +60,7 @@
 - 主动天赋使用服务端权威 `decisionId` 和目标投影；负面效果先经过目标席防御管道
 - 半庄/全庄第 4 小局后进入一次中场备牌，45 秒内从携带的 6+3 天赋中重新锁定生效集合；AI、断线和超时由服务端提交合法方案
 - 胡牌番数拆为基础番、天赋门槛/奖励/惩罚和最终番，最终值及逐项归因随权威结果与恢复快照下发
-- Dedicated Server 将匿名玩法事件写入紧凑 JSONL；遥测失败不得中断房间或小局生命周期
+- Dedicated Server 将匿名玩法事件及 `session_end` 写入紧凑 JSONL；遥测失败不得中断房间或小局生命周期
 
 **单例模式**: 逻辑层使用纯 C# 懒加载单例，不依赖 MonoBehaviour/场景状态
 

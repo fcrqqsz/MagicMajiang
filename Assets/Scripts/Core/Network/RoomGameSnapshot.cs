@@ -136,6 +136,9 @@ namespace MahjongGame.Core.Network
                     loserId = winResult.LoserId,
                     isDrawGame = source.IsDrawGame,
                     isSessionOver = session?.IsSessionOver() ?? false,
+                    completedRounds = session?.TotalRoundsPlayed ?? 0,
+                    sessionEndReason = session?.EndReason ?? SessionEndReason.None,
+                    depletedSeatIndices = session?.DepletedSeatIndices?.ToArray() ?? Array.Empty<int>(),
                     winningHand = source.WinnerId >= 0
                         ? WinningHandSnapshotCodec.Normalize(source.WinningHand)
                         : null,
@@ -571,6 +574,9 @@ namespace MahjongGame.Core.Network.Messages
         public int loserId = -1;
         public bool isDrawGame;
         public bool isSessionOver;
+        public int completedRounds;
+        public SessionEndReason sessionEndReason;
+        public int[] depletedSeatIndices;
         public WinningHandSnapshot winningHand;
         public TalentFanBreakdownMessage talentFanBreakdown;
     }

@@ -13,14 +13,160 @@ internal static class RoomSessionTests
         TestLoadoutValidation(runner);
         TestRoomAlienationAdmission(runner);
         TestRoomRevalidatesClonedLoadout(runner);
+        TestSessionStartingScoresAndBustRules(runner);
         TestWallAndSessionTalent(runner);
         TestRoomOwnsOneTalentRuntimeAcrossRounds(runner);
+        TestTerminalSessionMessageClosesRoom(runner);
+        TestTerminalSessionTelemetry(runner);
         TestAbnormalRoundCompletionUnwindsRoomOnce(runner);
         TestRoundFinalizationFailureTerminatesEveryHumanSeat(runner);
         TestRoomReadyAndDeparture(runner);
         TestResponseAndTurnPolicies(runner);
         TestClientRoomAndScoreProjection(runner);
         TestQueryRoomList(runner);
+    }
+
+    private static void TestTerminalSessionTelemetry(RegressionRunner runner)
+    {
+        var telemetry = new MemoryTalentTelemetrySink();
+        PlayerLoadoutCodec.TryDecode(
+            PlayerLoadoutCodec.CreateMessage(DeckConfig.CreateStandard(), new TalentSlotConfig()),
+            AlienationPreset.Standard,
+            out TrustedPlayerLoadout loadout,
+            out _);
+        var endpoints = Enumerable.Range(0, 4).Select(_ => new GameEndpoint()).ToArray();
+        using var room = new Room(
+            "terminal-telemetry", GameMode.Single, AlienationPreset.Standard,
+            "human-0", true, 16, telemetry);
+        for (int index = 0; index < 4; index++)
+            room.TryAddHuman($"human-{index}", endpoints[index], $"dev:telemetry-{index}", $"Human {index}", loadout, out _);
+        for (int index = 0; index < 4; index++)
+            room.SetReady($"human-{index}", ReadyPhase.MatchStart, out _);
+        for (int index = 0; index < 4; index++)
+            room.SetReady($"human-{index}", ReadyPhase.GameSceneLoaded, out _);
+        room.GameServer?.CompleteDrawRound();
+
+        TalentTelemetryRecord[] terminalRecords = telemetry.Records
+            .Where(record => record.eventType == "session_end")
+            .ToArray();
+        TalentTelemetryRecord terminal = terminalRecords.SingleOrDefault();
+        string endReason = terminal?.GetType().GetField("sessionEndReason")?.GetValue(terminal) as string;
+        int[] finalScores = terminal?.GetType().GetField("finalScores")?.GetValue(terminal) as int[];
+        runner.Check(terminalRecords.Length == 1
+                     && terminal?.mode == "single"
+                     && terminal.completedRound == 1
+                     && endReason == "scheduled_rounds_completed"
+                     && finalScores?.SequenceEqual(new[] { 50, 50, 50, 50 }) == true,
+            "terminal completion records one anonymous session_end with mode, reason, round, and final scores");
+    }
+
+    private static void TestTerminalSessionMessageClosesRoom(RegressionRunner runner)
+    {
+        VerifyTerminalRoomClose(runner, GameMode.Single, null,
+            "ScheduledRoundsCompleted", 1, Array.Empty<int>(), "scheduled completion");
+        VerifyTerminalRoomClose(runner, GameMode.EastOnly, session =>
+            {
+                session.Scores[1] = -100;
+                session.Scores[3] = -100;
+            },
+            "ScoreDepleted", 1, new[] { 1, 3 }, "score depletion");
+    }
+
+    private static void VerifyTerminalRoomClose(
+        RegressionRunner runner,
+        GameMode mode,
+        Action<GameSession> mutateScores,
+        string expectedReason,
+        int expectedCompletedRounds,
+        int[] expectedDepletedSeats,
+        string label)
+    {
+        PlayerLoadoutCodec.TryDecode(
+            PlayerLoadoutCodec.CreateMessage(DeckConfig.CreateStandard(), new TalentSlotConfig()),
+            AlienationPreset.Standard,
+            out TrustedPlayerLoadout loadout,
+            out _);
+        var endpoint = new GameEndpoint();
+        using var room = new Room($"terminal-{label}", mode, AlienationPreset.Standard, "host", true, 16);
+        room.TryAddHuman("host", endpoint, $"dev:{label}", "Host", loadout, out _);
+        room.SetReady("host", ReadyPhase.MatchStart, out _);
+        room.SetReady("host", ReadyPhase.GameSceneLoaded, out _);
+        mutateScores?.Invoke(room.Session);
+
+        room.GameServer?.CompleteDrawRound();
+
+        NetworkMessageEnvelope terminalEnvelope = endpoint.SentMessages
+            .Select(MessageSerializer.DeserializeEnvelope)
+            .LastOrDefault(envelope => envelope?.type == "SessionEnd");
+        SessionEndMessage terminal = terminalEnvelope == null
+            ? null
+            : MessageSerializer.DeserializePayload<SessionEndMessage>(terminalEnvelope.data);
+        object endReason = terminal?.GetType().GetField("endReason")?.GetValue(terminal);
+        object completedRounds = terminal?.GetType().GetField("completedRounds")?.GetValue(terminal);
+        int[] depletedSeats = terminal?.GetType().GetField("depletedSeatIndices")?.GetValue(terminal) as int[];
+
+        runner.Check(room.State == RoomState.Closed,
+            $"{label} must immediately close the authoritative room");
+        runner.Check(terminal != null
+                     && string.Equals(endReason?.ToString(), expectedReason, StringComparison.Ordinal)
+                     && completedRounds is int rounds
+                     && rounds == expectedCompletedRounds,
+            $"{label} must send the authoritative terminal reason and completed-round count");
+        runner.Check(depletedSeats?.SequenceEqual(expectedDepletedSeats) == true,
+            $"{label} must project every depleted seat in stable seat order "
+            + $"(expected={string.Join(",", expectedDepletedSeats)}, actual={string.Join(",", depletedSeats ?? Array.Empty<int>())})");
+        runner.Check(endpoint.SentMessages
+                .Select(MessageSerializer.DeserializeEnvelope)
+                .All(envelope => envelope?.type != "RoomClosed"),
+            $"{label} must not follow SessionEnd with an abnormal RoomClosed message");
+    }
+
+    private static void TestSessionStartingScoresAndBustRules(RegressionRunner runner)
+    {
+        var startingScores = new Dictionary<GameMode, int>
+        {
+            [GameMode.Single] = 50,
+            [GameMode.EastOnly] = 100,
+            [GameMode.HalfGame] = 150,
+            [GameMode.FullGame] = 200
+        };
+        runner.Check(startingScores.All(pair =>
+                new GameSession(pair.Key).Scores.SequenceEqual(Enumerable.Repeat(pair.Value, 4))),
+            "Each game mode must initialize every seat with its configured starting score.");
+
+        var positive = new GameSession(GameMode.EastOnly);
+        positive.Scores[1] = 1;
+        positive.AdvanceRound();
+        runner.Check(!positive.IsSessionOver(),
+            "A seat with one point remaining must not end the session early.");
+
+        var rescued = new GameSession(GameMode.EastOnly);
+        rescued.Scores[2] = 0;
+        rescued.Scores[2] += 8;
+        rescued.AdvanceRound();
+        runner.Check(!rescued.IsSessionOver(),
+            "The bust check must use the final post-talent score so a rescued seat can continue.");
+
+        var depleted = new GameSession(GameMode.EastOnly);
+        depleted.Scores[0] = 0;
+        depleted.Scores[2] = -7;
+        depleted.AdvanceRound();
+        object depletedReason = depleted.GetType().GetProperty("EndReason")?.GetValue(depleted);
+        int[] depletedSeats = (depleted.GetType().GetProperty("DepletedSeatIndices")?.GetValue(depleted)
+            as IEnumerable<int>)?.ToArray();
+        runner.Check(depleted.IsSessionOver()
+                     && string.Equals(depletedReason?.ToString(), "ScoreDepleted", StringComparison.Ordinal)
+                     && depletedSeats?.SequenceEqual(new[] { 0, 2 }) == true
+                     && depleted.Scores[2] == -7,
+            "Zero and negative final scores must end the session, preserve negatives, and capture every depleted seat.");
+
+        var scheduled = new GameSession(GameMode.Single);
+        scheduled.Scores[3] = 0;
+        scheduled.AdvanceRound();
+        object scheduledReason = scheduled.GetType().GetProperty("EndReason")?.GetValue(scheduled);
+        runner.Check(scheduled.IsSessionOver()
+                     && string.Equals(scheduledReason?.ToString(), "ScheduledRoundsCompleted", StringComparison.Ordinal),
+            "Completing the scheduled final round must take precedence over a simultaneous depleted score.");
     }
 
     private static void TestRoomRevalidatesClonedLoadout(RegressionRunner runner)
@@ -274,7 +420,7 @@ internal static class RoomSessionTests
         };
         var talentRuntime = new TalentMatchRuntime(talentConfigs, TalentRegistry.Instance);
         talentRuntime.BeginMatch(session);
-        runner.Check(session.Scores.SequenceEqual(new[] { 30, 0, 30, 0 }),
+        runner.Check(session.Scores.SequenceEqual(new[] { 130, 100, 130, 100 }),
             "Session-start talents must apply to every equipped seat.");
     }
 
@@ -313,7 +459,7 @@ internal static class RoomSessionTests
 
         runner.Check(hostAdded && guestAdded && hostSeat == 0 && guestSeat == 1 && matchReady,
             "two locked human loadouts establish the Room-owned runtime test match");
-        runner.Check(room.Session.Scores[0] == 30 && room.Session.Scores[1] == 0,
+        runner.Check(room.Session.Scores[0] == 130 && room.Session.Scores[1] == 100,
             "Room begins the talent match once after all four loadouts are locked");
         runner.Check(CountRuntimeEvents(hostEndpoint, ownerSeatIndex: 0) == 1
                      && CountRuntimeEvents(guestEndpoint, ownerSeatIndex: 0) == 1,
@@ -332,8 +478,8 @@ internal static class RoomSessionTests
 
         room.GameServer?.CompleteDrawRound();
         runner.Check(room.Session.TotalRoundsPlayed == 1
-                     && room.Session.Scores[0] == 35
-                     && room.Session.Scores[1] == 0
+                     && room.Session.Scores[0] == 135
+                     && room.Session.Scores[1] == 100
                      && CountRuntimeEvents(hostEndpoint, ownerSeatIndex: 0) == 2
                      && CountRuntimeEvents(guestEndpoint, ownerSeatIndex: 0) == 2,
             "Room ends a drawn round through the runtime before advancing the session");
@@ -345,14 +491,14 @@ internal static class RoomSessionTests
                      && ReferenceEquals(firstRuntime, secondRuntime)
                      && GameServer.ReceivedTalentRuntimes.Count == 2
                      && GameServer.ReceivedTalentRuntimes.All(runtime => ReferenceEquals(runtime, firstRuntime))
-                     && room.Session.Scores[0] == 35
-                     && room.Session.Scores[1] == 0,
+                     && room.Session.Scores[0] == 135
+                     && room.Session.Scores[1] == 100,
             "the second GameServer reuses the match runtime without repeating match-start effects");
 
         room.GameServer?.CompleteDrawRound();
         runner.Check(room.Session.TotalRoundsPlayed == 2
-                     && room.Session.Scores[0] == 40
-                     && room.Session.Scores[1] == 0
+                     && room.Session.Scores[0] == 140
+                     && room.Session.Scores[1] == 100
                      && CountRuntimeEvents(hostEndpoint, ownerSeatIndex: 0) == 3
                      && CountRuntimeEvents(guestEndpoint, ownerSeatIndex: 0) == 3,
             "draw rewards execute exactly once in each of two Room rounds and remain seat-stream ordered");
@@ -395,7 +541,7 @@ internal static class RoomSessionTests
         normalRoom.GameServer?.CompleteDrawRound();
         runner.Check(normalRoom.State == RoomState.WaitingForNextRound
                      && normalRoom.Session.TotalRoundsPlayed == 1
-                     && normalRoom.Session.Scores[0] == 5
+                     && normalRoom.Session.Scores[0] == 105
                      && normalRoom.GameServer?.CompletionNotifications == 1,
             "a normal round completion advances and applies round-end effects exactly once");
     }
@@ -408,7 +554,8 @@ internal static class RoomSessionTests
         using Room room = CreateRuntimeRoomWithDrawReward($"abnormal-{failure}", out GameEndpoint endpoint);
         GameServer.NextStartFailure = failure;
         room.SetReady("host", ReadyPhase.GameSceneLoaded, out _);
-        room.GameServer?.CompleteDrawRound();
+        GameServer server = room.GameServer;
+        server?.CompleteDrawRound();
 
         int terminalErrors = endpoint.SentMessages
             .Select(MessageSerializer.DeserializeEnvelope)
@@ -418,10 +565,9 @@ internal static class RoomSessionTests
         int sessionEnds = endpoint.SentMessages
             .Select(MessageSerializer.DeserializeEnvelope)
             .Count(envelope => envelope?.type == "SessionEnd");
-        runner.Check(room.State == RoomState.SessionCompleted
+        runner.Check(room.State == RoomState.Closed
                      && room.Session.TotalRoundsPlayed == 0
-                     && room.Session.Scores[0] == 0
-                     && room.GameServer?.CompletionNotifications == 1
+                     && room.Session.Scores[0] == 100
                      && terminalErrors == 1
                      && sessionEnds == 1,
             $"a {failure.ToString().ToLowerInvariant()} exception ends the runtime and room exactly once without draw rewards");
@@ -479,9 +625,10 @@ internal static class RoomSessionTests
             MessageSerializer.DeserializeEnvelope(message)?.type == "RoomError";
 
         bool exceptionLeaked = false;
+        GameServer server = room.GameServer;
         try
         {
-            room.GameServer?.CompleteDrawRound();
+            server?.CompleteDrawRound();
         }
         catch (InvalidOperationException)
         {
@@ -492,14 +639,13 @@ internal static class RoomSessionTests
         int guestSessionEnds = CountMessages(guestEndpoint, "SessionEnd");
         int guestAborts = CountMessages(guestEndpoint, "RoomError", NetworkErrorCodes.RoundAborted);
         int scoreAfterFailure = room.Session.Scores[0];
-        room.GameServer?.CompleteDrawRound();
+        server?.CompleteDrawRound();
 
         runner.Check(!exceptionLeaked
-                     && room.State == RoomState.SessionCompleted
+                     && room.State == RoomState.Closed
                      && room.Session.TotalRoundsPlayed == 0
-                     && scoreAfterFailure == 5
-                     && room.Session.Scores[0] == 5
-                     && room.GameServer?.CompletionNotifications == 1
+                     && scoreAfterFailure == 105
+                     && room.Session.Scores[0] == 105
                      && hostSessionEnds == 1
                      && guestSessionEnds == 1
                      && guestAborts == 1
@@ -613,11 +759,11 @@ internal static class RoomSessionTests
             && room.Seats[1].isReady,
             "Room seat updates must project Ready state.");
         room.CompleteSession();
-        runner.Check(room.HasRoom
+        runner.Check(!room.HasRoom
             && room.IsSessionCompleted
             && room.ResultSeatIndex == 1
             && room.RoomStateValue == (int)RoomState.SessionCompleted,
-            "Session completion must retain the room binding for recoverable final results.");
+            "Session completion must preserve a local result snapshot while clearing the active room binding.");
         room.Reset();
         runner.Check(!room.HasRoom && !room.IsSessionCompleted,
             "Leaving the result must clear active and completed room state.");

@@ -45,6 +45,7 @@ namespace MahjongGame.Core.Network
         private TalentMatchRuntime _talentRuntime;
         private SideboardDecisionTracker _sideboardTracker;
         private long _nextSideboardDecisionId = 1;
+        private bool _sessionEndTelemetryRecorded;
 
         private const int SideboardDurationSeconds = 45;
 
@@ -857,7 +858,9 @@ namespace MahjongGame.Core.Network
                 if (Session.IsSessionOver())
                 {
                     State = RoomState.SessionCompleted;
+                    RecordSessionEndTelemetryBestEffort();
                     NotifySessionEndBestEffort();
+                    Close();
                     return;
                 }
 
@@ -878,7 +881,10 @@ namespace MahjongGame.Core.Network
 
         private void CompleteAbortedSessionBestEffort()
         {
+            if (State == RoomState.Closed) return;
+            Session.MarkAborted();
             State = RoomState.SessionCompleted;
+            RecordSessionEndTelemetryBestEffort();
             foreach (RoomSeat seat in _seats.Where(candidate => candidate != null && !candidate.IsAi))
             {
                 TryTerminalCallback(seat, "RoundAborted", () => seat.MessageStream?.Send(
@@ -890,6 +896,24 @@ namespace MahjongGame.Core.Network
                     }));
                 TryTerminalCallback(seat, "SessionEnd", () => seat.Controller?.OnSessionEnd(Session.Scores));
             }
+            Close();
+        }
+
+        private void RecordSessionEndTelemetryBestEffort()
+        {
+            if (_sessionEndTelemetryRecorded) return;
+            _sessionEndTelemetryRecorded = true;
+            TalentTelemetry.RecordSafely(_telemetrySink, new TalentTelemetryRecord
+            {
+                anonymousSessionId = _anonymousSessionId,
+                preset = TalentTelemetry.FormatPreset(AlienationPreset),
+                mode = TalentTelemetry.FormatMode(GameMode),
+                completedRound = Session.TotalRoundsPlayed,
+                eventType = "session_end",
+                sessionEndReason = TalentTelemetry.FormatSessionEndReason(Session.EndReason),
+                finalScores = Session.Scores?.ToArray() ?? Array.Empty<int>(),
+                depletedSeatIndices = Session.DepletedSeatIndices?.ToArray() ?? Array.Empty<int>()
+            });
         }
 
         private void NotifySessionEndBestEffort()

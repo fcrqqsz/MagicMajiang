@@ -394,7 +394,10 @@ namespace MahjongGame.UI
 
             // Mode
             if (modeValue != null)
-                modeValue.text = GetModeDisplayName((GameMode)room.gameMode);
+            {
+                var mode = (GameMode)room.gameMode;
+                modeValue.text = $"{GetModeDisplayName(mode)} · {SessionScoreRules.GetInitialScore(mode)} 分";
+            }
 
             // Alienation Preset
             var preset = (AlienationPreset)room.alienationPreset;

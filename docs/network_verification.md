@@ -1,22 +1,21 @@
 # 联机框架验证指南
 
-本文档是 SuperMajiang 联机框架的长期验证入口，覆盖 Dedicated Server、房间、多真人、多小局、天赋/备牌和断线重连。协议当前为 v4，携带构筑 schema 为 v3，默认端口为 `9876`。
+本文档是 SuperMajiang 联机框架的长期验证入口，覆盖 Dedicated Server、房间、多真人、多小局、击飞终局、天赋/备牌和断线重连。协议当前为 v11，携带构筑 schema 为 v3，默认端口为 `9876`。v11 的 `SessionEnd` 携带最终分数、完成局数、终局原因和全部耗尽席位；v10 客户端在 `Hello` 阶段被拒绝。
 
 ## 1. 自动检查
 
 在项目根目录执行：
 
 ```powershell
-dotnet restore Assembly-CSharp.csproj
 dotnet run --project Tests\NetworkRegression\NetworkRegression.csproj --no-restore
-dotnet build Assembly-CSharp.csproj --no-restore
+dotnet run --project Tests\GameServerTelemetryRegression\GameServerTelemetryRegression.csproj --no-restore
 git diff --check
 ```
 
 预期结果：
 
 - NetworkRegression 输出 `Network regression tests passed.`
-- Assembly-CSharp 编译为 0 错误
+- GameServerTelemetryRegression 输出 `Real GameServer telemetry regression tests passed.`
 - `git diff --check` 无空白错误；LF/CRLF 提示不视为空白失败
 
 NetworkRegression 只覆盖可脱离 Unity 运行的协议、策略、快照和生命周期行为。真实 WebSocket、Unity 场景、3D 牌桌和 UI Toolkit 恢复必须执行后续人工矩阵。
@@ -52,6 +51,17 @@ pwsh -NoLogo -NoProfile -Command "dotnet run --project Tests/NetworkRegression/N
 4. 完成上半场后确认独立备牌面板全屏接管输入，四席锁定后进入下半场；重连时仅恢复本家构筑、公开情报、权威决策和锁定状态，不重播天赋 toast、音效或事件流。
 5. 胡牌后确认最终番置顶，基础番与各项天赋影响逐条展示；恢复结算时直接呈现权威结果，不重复播放强反馈。
 6. 完成至少两小局，确认同一个 Room runtime 跨局存在而小局状态按规则重置；人为触发异常终局路径，确认完成消息只发出一次，Room 仍以异常安全的终局回退收束。
+
+## 起始分与击飞终局验证
+
+1. 分别创建 Single / EastOnly / HalfGame / FullGame 房间，确认大厅、房间卡、等待页和首局 HUD 显示 50 / 100 / 150 / 200 起始分；装配“初始资金”后仅对应席位额外增加 30 分。
+2. 在完整小局结算边界验证：1 分继续；0 分与负分终局；多人同时耗尽时全部标记“击飞”，负分不得钳制为 0。
+3. 验证局末天赋在终局判定前执行：返还后恢复为正分则继续，返还后仍为 0 则终局。客户端不得依据胡牌消息中的暂态分数自行结束。
+4. 同一局同时达到预定局数和击飞条件时，`endReason` 必须为 `ScheduledRoundsCompleted`，同时保留 `depletedSeatIndices`。
+5. 半庄或全庄第 4 局击飞时不得出现 `SideboardStarted`、下一局或备牌选择；终局消息只发送一次。
+6. 收到 `SessionEnd` 后先保留本局结算并把按钮刷新为“查看总结算”，总结算展示原因及击飞标记；房间和重连票据清除，但 WebSocket 保持可用并可直接创建新房间。
+7. 服务端发送 `SessionEnd` 后立即解绑并移除房间，不发送异常性质的 `RoomClosed`。终局房间不支持重连或补领；恰好丢失终局消息的客户端直接返回大厅。
+8. Dedicated Server 的 JSONL 中应恰好出现一条 `session_end`，包含模式、终局原因、完成局数和四席最终分数；令遥测 sink 抛错时，终局发送和房间清理仍须完成。
 
 ## 2. 构建 Dedicated Server
 
@@ -105,7 +115,7 @@ HalfGame 和 FullGame 修改局数上限后沿用同一检查方法。
 
 使用两个不同 username 的客户端，至少覆盖：
 
-1. 等待房间、Loading、主回合、响应阶段、局间 Ready、普通结算和最终结算分别强制关闭客户端并重启。
+1. 等待房间、Loading、主回合、响应阶段、局间 Ready 和普通结算分别强制关闭客户端并重启；最终结算不支持重连或补领。
 2. 确认自动执行 `Hello + Reconnect`，等待房间恢复到大厅房间视图，对局状态恢复到游戏场景。
 3. 恢复后的本家手牌、副露、牌河、对手暗牌数量、风位、分数、牌山余量和结算信息必须一致。
 4. 仅当本家仍拥有未过期决策时恢复操作 UI；已提交、已过期或 AI 已锁定的决策不得重复操作。

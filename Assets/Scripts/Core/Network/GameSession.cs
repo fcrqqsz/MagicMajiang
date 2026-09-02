@@ -1,3 +1,6 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 
 namespace MahjongGame.Core.Network
@@ -11,6 +14,10 @@ namespace MahjongGame.Core.Network
         public int TotalRoundsPlayed;        // 已完成局数
         public int[] Scores;                 // 四家累计分数
         public const int BaseScore = 8;      // 底分
+        public SessionEndReason EndReason { get; private set; }
+        public IReadOnlyList<int> DepletedSeatIndices => _depletedSeatIndices;
+
+        private int[] _depletedSeatIndices = Array.Empty<int>();
 
         // 最近一局结果 (供 UI 读取)
         public int LastWinnerId = -1;
@@ -25,7 +32,8 @@ namespace MahjongGame.Core.Network
             DealerIndex = 0;
             RoundInWind = 0;
             TotalRoundsPlayed = 0;
-            Scores = new int[] { 0, 0, 0, 0 };
+            int initialScore = SessionScoreRules.GetInitialScore(mode);
+            Scores = Enumerable.Repeat(initialScore, 4).ToArray();
         }
 
         public void ResetRoundState()
@@ -56,7 +64,7 @@ namespace MahjongGame.Core.Network
 
         public bool IsSessionOver()
         {
-            return TotalRoundsPlayed >= GetTotalRounds();
+            return EndReason != SessionEndReason.None;
         }
 
         public void RestoreRoundProgress(int roundNumber, bool isSessionOver)
@@ -67,6 +75,10 @@ namespace MahjongGame.Core.Network
                 ? Mathf.Clamp(roundNumber, 0, totalRounds)
                 : displayedRoundIndex;
             RoundInWind = displayedRoundIndex % 4;
+            EndReason = isSessionOver
+                ? SessionEndReason.ScheduledRoundsCompleted
+                : SessionEndReason.None;
+            CaptureDepletedSeats();
         }
 
         /// <summary>
@@ -85,6 +97,57 @@ namespace MahjongGame.Core.Network
                 if (nextWind > 4) nextWind = 1;
                 PrevalentWind = (WindDirection)nextWind;
             }
+
+            CaptureDepletedSeats();
+            if (TotalRoundsPlayed >= GetTotalRounds())
+                EndReason = SessionEndReason.ScheduledRoundsCompleted;
+            else if (_depletedSeatIndices.Length > 0)
+                EndReason = SessionEndReason.ScoreDepleted;
+        }
+
+        public void RestoreAuthoritativeEndState(
+            int completedRounds,
+            SessionEndReason endReason,
+            IEnumerable<int> depletedSeatIndices)
+        {
+            SetAuthoritativeRoundProgress(completedRounds);
+            EndReason = endReason;
+            _depletedSeatIndices = (depletedSeatIndices ?? Array.Empty<int>())
+                .Where(index => index >= 0 && index < Scores.Length)
+                .Distinct()
+                .OrderBy(index => index)
+                .ToArray();
+        }
+
+        public void RestoreAuthoritativeRoundProgress(int completedRounds)
+        {
+            SetAuthoritativeRoundProgress(completedRounds);
+            EndReason = SessionEndReason.None;
+            _depletedSeatIndices = Array.Empty<int>();
+        }
+
+        public void MarkAborted()
+        {
+            CaptureDepletedSeats();
+            EndReason = SessionEndReason.Aborted;
+        }
+
+        private void CaptureDepletedSeats()
+        {
+            _depletedSeatIndices = Scores
+                .Select((score, index) => (score, index))
+                .Where(entry => entry.score <= 0)
+                .Select(entry => entry.index)
+                .ToArray();
+        }
+
+        private void SetAuthoritativeRoundProgress(int completedRounds)
+        {
+            TotalRoundsPlayed = Mathf.Clamp(completedRounds, 0, GetTotalRounds());
+            DealerIndex = TotalRoundsPlayed % 4;
+            RoundInWind = TotalRoundsPlayed % 4;
+            int windIndex = (TotalRoundsPlayed / 4) % 4;
+            PrevalentWind = (WindDirection)(windIndex + 1);
         }
 
         /// <summary>

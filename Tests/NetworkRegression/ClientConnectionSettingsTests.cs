@@ -97,7 +97,7 @@ internal static class ClientConnectionSettingsTests
         var ready = new ClientConnectionDiagnostics(
             LocalAddress,
             ClientConnectionPhase.Ready,
-            protocolVersion: 10,
+            protocolVersion: NetworkProtocol.Version,
             roundTripTimeMilliseconds: 42,
             lastCheckedUtc: new DateTime(2026, 8, 30, 12, 34, 56, DateTimeKind.Utc),
             lastError: null);
@@ -106,18 +106,18 @@ internal static class ClientConnectionSettingsTests
         runner.Check(readyView.StatusText == "已就绪"
             && readyView.StatusClass == "connection-status-green"
             && readyView.SocketPhaseText == "套接字阶段：已就绪"
-            && readyView.HandshakeText == "v10 握手：已完成"
+            && readyView.HandshakeText == "v11 握手：已完成"
             && readyView.RoundTripTimeText == "RTT：42 ms"
             && readyView.LastCheckedText == "上次检查：2026-08-30 12:34:56 UTC"
             && readyView.LastErrorText == "最近错误：--"
             && readyView.ReadinessText == "就绪状态：可创建或加入房间"
             && !readyView.ActionsDisabled,
-            "lobby diagnostics maps a Ready v10 snapshot to the green, actionable summary without inferring transport state");
+            "lobby diagnostics maps a Ready v11 snapshot to the green, actionable summary without inferring transport state");
 
         var connecting = new ClientConnectionDiagnostics(
             OnlineAddress,
             ClientConnectionPhase.Connecting,
-            protocolVersion: 10,
+            protocolVersion: NetworkProtocol.Version,
             roundTripTimeMilliseconds: null,
             lastCheckedUtc: null,
             lastError: "socket opening");
@@ -125,7 +125,7 @@ internal static class ClientConnectionSettingsTests
 
         runner.Check(connectingView.StatusText == "连接中"
             && connectingView.StatusClass == "connection-status-yellow"
-            && connectingView.HandshakeText == "v10 握手：等待套接字连接"
+            && connectingView.HandshakeText == "v11 握手：等待套接字连接"
             && connectingView.RoundTripTimeText == "RTT：--"
             && connectingView.LastCheckedText == "上次检查：--"
             && connectingView.LastErrorText == "最近错误：socket opening"
@@ -135,7 +135,7 @@ internal static class ClientConnectionSettingsTests
         var failed = new ClientConnectionDiagnostics(
             LocalAddress,
             ClientConnectionPhase.Failed,
-            protocolVersion: 10,
+            protocolVersion: NetworkProtocol.Version,
             roundTripTimeMilliseconds: null,
             lastCheckedUtc: null,
             lastError: "Connection refused.");
@@ -143,15 +143,15 @@ internal static class ClientConnectionSettingsTests
 
         runner.Check(failedView.StatusText == "连接失败"
             && failedView.StatusClass == "connection-status-red"
-            && failedView.HandshakeText == "v10 握手：失败"
+            && failedView.HandshakeText == "v11 握手：失败"
             && failedView.ReadinessText == "就绪状态：请检查服务器后重试"
             && !failedView.ActionsDisabled,
             "a failed selection remains retryable and exposes the raw latest error through the presentation model");
 
         LobbyConnectionPresentationView disconnectedView = LobbyConnectionPresentationPolicy.Build(
-            new ClientConnectionDiagnostics(OnlineAddress, ClientConnectionPhase.Disconnected, 10, null, null, null));
+            new ClientConnectionDiagnostics(OnlineAddress, ClientConnectionPhase.Disconnected, NetworkProtocol.Version, null, null, null));
         LobbyConnectionPresentationView authenticatingView = LobbyConnectionPresentationPolicy.Build(
-            new ClientConnectionDiagnostics(OnlineAddress, ClientConnectionPhase.Authenticating, 10, null, null, null));
+            new ClientConnectionDiagnostics(OnlineAddress, ClientConnectionPhase.Authenticating, NetworkProtocol.Version, null, null, null));
         runner.Check(disconnectedView.StatusClass == "connection-status-gray"
             && authenticatingView.StatusClass == "connection-status-blue"
             && authenticatingView.ActionsDisabled,

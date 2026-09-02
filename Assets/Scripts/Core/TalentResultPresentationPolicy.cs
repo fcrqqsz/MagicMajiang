@@ -52,6 +52,44 @@ namespace MahjongGame.Core
                 ? "查看总结算"
                 : "下一局";
         }
+
+        public static IReadOnlyList<int> GetRankedSeatIndices(Network.GameSession session)
+        {
+            if (session == null) return Array.Empty<int>();
+            return Enumerable.Range(0, session.Scores.Length)
+                .OrderByDescending(seatIndex => session.Scores[seatIndex])
+                .ThenBy(seatIndex => seatIndex)
+                .ToArray();
+        }
+
+        public static bool IsDepletedSeat(Network.GameSession session, int seatIndex)
+        {
+            return session != null
+                   && session.DepletedSeatIndices.Contains(seatIndex);
+        }
+
+        public static string GetEndReasonText(
+            Network.GameSession session,
+            Func<int, string> getPlayerDisplayName)
+        {
+            if (session == null) return string.Empty;
+            switch (session.EndReason)
+            {
+                case Network.SessionEndReason.ScheduledRoundsCompleted:
+                    return "已完成全部预定局数";
+                case Network.SessionEndReason.ScoreDepleted:
+                    string depletedNames = string.Join("、", session.DepletedSeatIndices
+                        .Select(seatIndex => getPlayerDisplayName?.Invoke(seatIndex))
+                        .Where(name => !string.IsNullOrWhiteSpace(name)));
+                    return string.IsNullOrEmpty(depletedNames)
+                        ? "有玩家分数耗尽，对战提前结束"
+                        : $"{depletedNames} 分数耗尽，对战提前结束";
+                case Network.SessionEndReason.Aborted:
+                    return "对战因服务端中止而结束";
+                default:
+                    return string.Empty;
+            }
+        }
     }
 
     public static class TalentResultPresentationPolicy

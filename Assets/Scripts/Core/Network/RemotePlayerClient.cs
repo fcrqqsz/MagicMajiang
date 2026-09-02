@@ -257,7 +257,10 @@ namespace MahjongGame.Core.Network
         {
             var msg = new SessionEndMessage
             {
-                scores = finalScores
+                scores = finalScores?.ToArray() ?? System.Array.Empty<int>(),
+                completedRounds = _session?.TotalRoundsPlayed ?? 0,
+                endReason = _session?.EndReason ?? SessionEndReason.Aborted,
+                depletedSeatIndices = _session?.DepletedSeatIndices?.ToArray() ?? System.Array.Empty<int>()
             };
             Send("SessionEnd", msg);
         }

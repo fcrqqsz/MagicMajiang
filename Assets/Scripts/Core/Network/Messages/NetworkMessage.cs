@@ -527,6 +527,9 @@ namespace MahjongGame.Core.Network.Messages
     public class SessionEndMessage
     {
         public int[] scores;
+        public int completedRounds;
+        public SessionEndReason endReason;
+        public int[] depletedSeatIndices;
     }
 
     // Client -> Server Action

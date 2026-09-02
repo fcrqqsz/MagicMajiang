@@ -438,6 +438,9 @@ namespace MahjongGame.Core.Network
                     snapshot.scores = CloneInts(message.scores);
                     var result = snapshot.result ?? new RoundResultSnapshot();
                     result.isSessionOver = true;
+                    result.completedRounds = message.completedRounds;
+                    result.sessionEndReason = message.endReason;
+                    result.depletedSeatIndices = CloneInts(message.depletedSeatIndices);
                     snapshot.result = result;
                     snapshot.activeDecision = null;
                     snapshot.mainTurnDrawnTile = null;
@@ -997,6 +1000,9 @@ namespace MahjongGame.Core.Network
                 loserId = winResult.LoserId,
                 isDrawGame = result.isDrawGame,
                 isSessionOver = result.isSessionOver,
+                completedRounds = result.completedRounds,
+                sessionEndReason = result.sessionEndReason,
+                depletedSeatIndices = CloneInts(result.depletedSeatIndices),
                 winningHand = WinningHandSnapshotCodec.Normalize(result.winningHand),
                 talentFanBreakdown = TalentFanBreakdownMessage.Clone(result.talentFanBreakdown)
             };

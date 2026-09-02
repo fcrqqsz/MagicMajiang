@@ -1,5 +1,5 @@
 麻将 Roguelike 项目进度快照 (Project Snapshot)
-日期: 2026-08-30 版本: Alpha - Strategy Talent Expansion 引擎: Unity (2022.3.61t9 / Tuanjie 1.6.8)
+日期: 2026-09-02 版本: Alpha - Session Score Depletion 引擎: Unity (2022.3.61t9 / Tuanjie 1.6.8)
 
 > **文档约定**: 已完成的任务统一记录在 `milestone.md`，`plan.md` 仅保留待办与未来规划。
 
@@ -8,7 +8,13 @@
 *   **核心规则**: 以国标麻将 (MCR) 为基础，支持81番种计算。
 *   **特色玩法**: Roguelike 天赋系统、自定义 34 张牌库及异化值机制。
 
-2. 最近进展 (Recent Progress, snapshot 2026-08-30)
+2. 最近进展 (Recent Progress, snapshot 2026-09-02)
+*   **模式起始分与击飞终局完成 (2026-09-02)**:
+    *   `SessionScoreRules` 统一提供 Single 50 / EastOnly 100 / HalfGame 150 / FullGame 200 起始分；初始资金仍在比赛开始阶段额外叠加 30 分。
+    *   完整小局严格在基础计分、全部局末天赋和事件投递后判定 `Scores <= 0`；负分不截断、多人可同时击飞，预定局数与击飞同局时以正常打满为主原因。
+    *   协议升级为 v11；`SessionEnd` 下发最终分数、完成局数、终局原因和耗尽席位。客户端只接受该终局权威，保存只读姓名/结算状态并清理活动房间与重连票据。
+    *   服务端终局消息后立即移除房间但保持 WebSocket；第 4 局击飞不进入备牌。大厅、房间卡、等待页、规则页和总结算已补齐起始分、终局原因及击飞标记。
+    *   JSONL 新增幂等 `session_end` 记录；完整 `NetworkRegression` 与真实 `GameServerTelemetryRegression` 已通过，Unity UI 人工验收待执行。
 *   **私有已知牌持续追踪完成 (2026-08-28)**:
     *   新增服务端按观察者隔离的知识账本：窥探牌随未暗改的对手摸牌迁移，洞若观火登记当时揭示的实体；公开出牌和实际副露贡献逐张消耗，隐藏变牌只使原知识失效。
     *   对手暗手按权威总数显示连续的“未知牌背 + 末端排序明牌”，重复牌保留，异常投影按总数截断；排序仅整理已知信息，不代表真实手牌位置。

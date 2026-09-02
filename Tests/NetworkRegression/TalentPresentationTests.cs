@@ -423,6 +423,36 @@ internal static class TalentPresentationTests
             "round and session-final recovery both request an immediate authoritative overlay");
         runner.Check(!live.ShowImmediately && live.Animate,
             "live result presentation retains the intentional fade animation");
+
+        var depletedSession = new GameSession(GameMode.HalfGame);
+        depletedSession.Scores[0] = 10;
+        depletedSession.Scores[1] = 10;
+        depletedSession.Scores[2] = 25;
+        depletedSession.Scores[3] = -3;
+        depletedSession.RestoreAuthoritativeEndState(
+            3,
+            SessionEndReason.ScoreDepleted,
+            new[] { 3 });
+        runner.Check(ResultSessionPresentationPolicy.GetRankedSeatIndices(depletedSession)
+                         .SequenceEqual(new[] { 2, 0, 1, 3 })
+                     && ResultSessionPresentationPolicy.IsDepletedSeat(depletedSession, 3)
+                     && !ResultSessionPresentationPolicy.IsDepletedSeat(depletedSession, 0),
+            "session summary ranks by score with stable seat-index ties and marks only authoritative depleted seats");
+        runner.Check(ResultSessionPresentationPolicy.GetEndReasonText(
+                         depletedSession,
+                         seatIndex => $"玩家{seatIndex + 1}")
+                     == "玩家4 分数耗尽，对战提前结束",
+            "score-depleted summary names every authoritative depleted seat");
+
+        depletedSession.RestoreAuthoritativeEndState(
+            8,
+            SessionEndReason.ScheduledRoundsCompleted,
+            new[] { 3 });
+        runner.Check(ResultSessionPresentationPolicy.GetEndReasonText(
+                         depletedSession,
+                         seatIndex => $"玩家{seatIndex + 1}")
+                     == "已完成全部预定局数",
+            "scheduled-round completion wins the displayed reason even when a seat is also depleted");
     }
 
     private static void RunTalentActionPanelPolicyTests(RegressionRunner runner)
@@ -1076,8 +1106,8 @@ internal static class TalentPresentationTests
 
     private static void RunLoadoutPresetTests(RegressionRunner runner)
     {
-        runner.Check(NetworkProtocol.IsSupported(10) && !NetworkProtocol.IsSupported(9),
-            "protocol v10 rejects protocol v9 before room loadout admission");
+        runner.Check(NetworkProtocol.IsSupported(11) && !NetworkProtocol.IsSupported(10),
+            "protocol v11 rejects protocol v10 before room loadout admission");
 
         var legacy = new SavedDeck { Config = DeckConfig.CreateStandard(), Talents = new TalentSlotConfig() };
         legacy.Normalize();
@@ -1161,15 +1191,15 @@ internal static class TalentPresentationTests
         using var manager = new RoomManager(4, true, connections, messageCacheSize: 8);
 
         var legacyProtocolEndpoint = new GameEndpoint();
-        legacyProtocolEndpoint.Connect("protocol-v9", 1);
-        legacyProtocolEndpoint.Receive("protocol-v9", 1, MessageSerializer.Serialize("Hello", 0,
-            new HelloMessage { protocolVersion = 9, username = "Legacy" }));
+        legacyProtocolEndpoint.Connect("protocol-v10", 1);
+        legacyProtocolEndpoint.Receive("protocol-v10", 1, MessageSerializer.Serialize("Hello", 0,
+            new HelloMessage { protocolVersion = 10, username = "Legacy" }));
         RoomErrorMessage protocolError = GetLastRoomError(legacyProtocolEndpoint);
-        connections.TryGet("protocol-v9", out ConnectionRegistry.ConnectionRecord legacyRecord);
+        connections.TryGet("protocol-v10", out ConnectionRegistry.ConnectionRecord legacyRecord);
         runner.Check(protocolError.code == NetworkErrorCodes.ProtocolMismatch
-            && protocolError.message.Contains("version 10", StringComparison.Ordinal)
+            && protocolError.message.Contains("version 11", StringComparison.Ordinal)
             && legacyRecord != null && !legacyRecord.IsAuthenticated,
-            "protocol v9 fails during Hello before room admission");
+            "protocol v10 fails during Hello before room admission");
 
         GameEndpoint host = ConnectAuthenticated("preset-host", "Host");
 

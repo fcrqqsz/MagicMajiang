@@ -102,6 +102,7 @@
     <Compile Include="..\..\Assets\Scripts\Core\Network\TalentLoadoutSlotPolicy.cs" Link="TalentLoadoutSlotPolicy.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\PlayerLoadoutErrorCodes.cs" Link="PlayerLoadoutErrorCodes.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\SessionScorePolicy.cs" Link="SessionScorePolicy.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\Network\SessionScoreRules.cs" Link="SessionScoreRules.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\GameSession.cs" Link="GameSession.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\ServerGameState.cs" Link="ServerGameState.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Interfaces\IWallService.cs" Link="IWallService.cs" />

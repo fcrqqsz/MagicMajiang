@@ -160,6 +160,7 @@ namespace MahjongGame.Core.Network
             ResultRoomId = RoomId;
             ResultSeatIndex = SeatIndex;
             ResultSeats = CloneSeats(Seats);
+            ClearActiveRoom();
             RoomStateValue = (int)RoomState.SessionCompleted;
         }
 

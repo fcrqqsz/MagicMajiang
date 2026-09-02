@@ -187,6 +187,7 @@ namespace MahjongGame.UI
     {
         public static ResultPanelController Instance { get; set; }
         public void SetSessionInfo(MahjongGame.Core.Network.GameSession session) { }
+        public void ApplySessionEnd(MahjongGame.Core.Network.GameSession session) { }
     }
 }
 
@@ -261,12 +262,14 @@ namespace MahjongGame.Core.Network
     public sealed class StableSeatController : StubPlayerClient
     {
         private readonly SeatMessageStream _messageStream;
+        private GameSession _session;
 
         public StableSeatController(int playerId, SeatMessageStream messageStream, GameSession session,
             System.Func<bool> isOnline, System.Action<DecisionControllerKind> controllerChanged)
         {
             PlayerId = playerId;
             _messageStream = messageStream;
+            _session = session;
         }
 
         public bool IsAiControllingActiveDecision => false;
@@ -275,11 +278,17 @@ namespace MahjongGame.Core.Network
         public void MarkOffline() { }
         public void MarkOnline() { }
         public void SetPermanentAi() { }
-        public void SetSession(GameSession session) { }
+        public void SetSession(GameSession session) => _session = session;
         public void SetServer(GameServer server) { }
         public new void OnSessionEnd(int[] finalScores) => _messageStream.Send(
             "SessionEnd",
-            new SessionEndMessage { scores = finalScores });
+            new SessionEndMessage
+            {
+                scores = finalScores,
+                completedRounds = _session?.TotalRoundsPlayed ?? 0,
+                endReason = _session?.EndReason ?? SessionEndReason.Aborted,
+                depletedSeatIndices = _session?.DepletedSeatIndices?.ToArray() ?? Array.Empty<int>()
+            });
     }
 
     public sealed class GameServerOptions

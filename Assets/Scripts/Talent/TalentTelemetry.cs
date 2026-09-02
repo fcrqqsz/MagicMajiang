@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using MahjongGame.Core;
+using MahjongGame.Core.Network;
 using UnityEngine;
 
 namespace MahjongGame.Talents
@@ -36,6 +37,9 @@ namespace MahjongGame.Talents
         public bool sideboardAccepted;
         public bool sideboardOriginal;
         public bool sideboardTimeout;
+        public string sessionEndReason;
+        public int[] finalScores = Array.Empty<int>();
+        public int[] depletedSeatIndices = Array.Empty<int>();
 
         public TalentTelemetryRecord Copy()
         {
@@ -60,7 +64,10 @@ namespace MahjongGame.Talents
                 controlBlocked = controlBlocked,
                 sideboardAccepted = sideboardAccepted,
                 sideboardOriginal = sideboardOriginal,
-                sideboardTimeout = sideboardTimeout
+                sideboardTimeout = sideboardTimeout,
+                sessionEndReason = sessionEndReason,
+                finalScores = (finalScores ?? Array.Empty<int>()).ToArray(),
+                depletedSeatIndices = (depletedSeatIndices ?? Array.Empty<int>()).ToArray()
             };
         }
     }
@@ -79,6 +86,21 @@ namespace MahjongGame.Talents
                 GameMode.FullGame => "full_game",
                 _ => "single"
             };
+        }
+
+        public static string FormatSessionEndReason(SessionEndReason reason)
+        {
+            switch (reason)
+            {
+                case SessionEndReason.ScheduledRoundsCompleted:
+                    return "scheduled_rounds_completed";
+                case SessionEndReason.ScoreDepleted:
+                    return "score_depleted";
+                case SessionEndReason.Aborted:
+                    return "aborted";
+                default:
+                    return "none";
+            }
         }
 
         public static string Serialize(TalentTelemetryRecord record)

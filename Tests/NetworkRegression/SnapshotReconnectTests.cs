@@ -21,6 +21,7 @@ internal static class SnapshotReconnectTests
         TestTalentProjectionOrderingAndSeatIsolation(runner);
         TestClientRoomServiceClearsTalentActionsAtDecisionBoundaries(runner);
         TestTerminalRoundMessagesClearCachedTalentActions(runner);
+        TestSessionEndClearsTicketAndKeepsLocalResult(runner);
         TestAlienationSnapshotPrivacy(runner);
         TestWinningHandNormalization(runner);
         TestWinningHandSnapshotCodec(runner);
@@ -48,6 +49,48 @@ internal static class SnapshotReconnectTests
         TestGatherMomentumCrossRoundAndSideboard(runner);
         TestFadingColorCrossRoundAndSideboard(runner);
         TestRedirectForceRoundScopeAndSideboard(runner);
+    }
+
+    private static void TestSessionEndClearsTicketAndKeepsLocalResult(RegressionRunner runner)
+    {
+        WebSocketClient.ResetForTests();
+        var tickets = new InMemoryClientReconnectTicketStore();
+        using var service = new ClientRoomService("ws://test", tickets);
+        service.TrySwitchServer("ws://test", "TerminalUser");
+        WebSocketClient.Instance.Receive(MessageSerializer.Serialize(
+            "HelloAccepted", 0, new HelloAcceptedMessage()));
+        WebSocketClient.Instance.Receive(MessageSerializer.Serialize("RoomJoined", 1, new RoomJoinedMessage
+        {
+            roomId = "terminal-client-room",
+            streamId = "terminal-client-stream",
+            seatIndex = 1,
+            gameMode = (int)GameMode.EastOnly,
+            roomState = (int)RoomState.InRound,
+            seats = Enumerable.Range(0, 4).Select(index => new RoomSeatMessage
+            {
+                seatIndex = index,
+                isOccupied = true,
+                displayName = $"Seat {index}"
+            }).ToArray()
+        }));
+        bool ticketWasSaved = tickets.TryLoad(out _);
+
+        WebSocketClient.Instance.Receive(MessageSerializer.Serialize("SessionEnd", 2, new SessionEndMessage
+        {
+            scores = new[] { 40, -2, 15, 0 },
+            completedRounds = 2,
+            endReason = SessionEndReason.ScoreDepleted,
+            depletedSeatIndices = new[] { 1, 3 }
+        }));
+
+        runner.Check(ticketWasSaved, "RoomJoined saves a reconnect ticket before terminal cleanup");
+        runner.Check(!tickets.TryLoad(out _), "SessionEnd clears the reconnect ticket");
+        runner.Check(!service.HasRoom && service.IsSessionCompleted && service.ResultSeatIndex == 1,
+            "SessionEnd clears the active room while retaining completed local result identity");
+        runner.Check(service.ResultSeats.Select(seat => seat.displayName)
+                .SequenceEqual(new[] { "Seat 0", "Seat 1", "Seat 2", "Seat 3" }),
+            "SessionEnd retains the final local seat directory for result presentation");
+        WebSocketClient.ResetForTests();
     }
 
     private static void TestPhysicalTileIdentityAndMeldPreservation(RegressionRunner runner)
@@ -711,6 +754,24 @@ internal static class SnapshotReconnectTests
 
         runner.Check(allCleared,
             "round and session terminal messages clear cached talent actions with the basic decision");
+
+        var terminalState = new ClientGameState();
+        terminalState.ApplySnapshot(CreateMainTurnTalentSnapshot(), 0);
+        terminalState.ApplyEnvelope(MessageSerializer.DeserializeEnvelope(MessageSerializer.Serialize(
+            "SessionEnd", 1, new SessionEndMessage
+            {
+                scores = new[] { -3, 25, 0, 18 },
+                completedRounds = 3,
+                endReason = SessionEndReason.ScoreDepleted,
+                depletedSeatIndices = new[] { 0, 2 }
+            })));
+        RoomGameSnapshot terminalSnapshot = terminalState.Snapshot;
+        runner.Check(terminalSnapshot.scores.SequenceEqual(new[] { -3, 25, 0, 18 })
+                     && terminalSnapshot.result?.isSessionOver == true
+                     && terminalSnapshot.result.completedRounds == 3
+                     && terminalSnapshot.result.sessionEndReason == SessionEndReason.ScoreDepleted
+                     && terminalSnapshot.result.depletedSeatIndices?.SequenceEqual(new[] { 0, 2 }) == true,
+            "SessionEnd atomically projects final scores, completed rounds, terminal reason, and every depleted seat");
     }
 
     private static RoomGameSnapshot CreateMainTurnTalentSnapshot() => new RoomGameSnapshot

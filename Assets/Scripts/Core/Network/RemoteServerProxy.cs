@@ -273,7 +273,9 @@ namespace MahjongGame.Core.Network
                     break;
                 case "SessionEnd":
                     var endMsg = MessageSerializer.DeserializePayload<SessionEndMessage>(envelope.data);
+                    if (endMsg == null) break;
                     ClearTalentActionsPresentation();
+                    SyncSessionEnd(endMsg);
                     _localClient.OnSessionEnd(endMsg.scores);
                     break;
                 // Room-control messages are consumed by ClientRoomService on the same WebSocket.
@@ -321,13 +323,22 @@ namespace MahjongGame.Core.Network
             session.Mode = _roomService.GameMode;
             SyncSessionScores(scores);
 
-            int targetCompletedRounds = Mathf.Clamp(completedRounds, 0, session.GetTotalRounds());
-            while (session.TotalRoundsPlayed < targetCompletedRounds)
-            {
-                session.AdvanceRound();
-            }
+            session.RestoreAuthoritativeRoundProgress(completedRounds);
 
             ResultPanelController.Instance?.SetSessionInfo(session);
+        }
+
+        private void SyncSessionEnd(SessionEndMessage message)
+        {
+            var session = GameManager.Instance?.Session;
+            if (session == null || message == null) return;
+
+            SyncSessionScores(message.scores);
+            session.RestoreAuthoritativeEndState(
+                message.completedRounds,
+                message.endReason,
+                message.depletedSeatIndices);
+            ResultPanelController.Instance?.ApplySessionEnd(session);
         }
 
         private void SyncSessionAtRoundStart(RoundStartMessage roundStart)

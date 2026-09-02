@@ -205,7 +205,7 @@ internal static class TalentFoundationTests
         TalentMatchRuntime runtime = CreateRuntimeFromConfig(valid);
         GameSession session = new GameSession(GameMode.Single);
         runtime.BeginMatch(session);
-        runner.Check(session.Scores.SequenceEqual(new[] { 7, 0, 0, 0 }),
+        runner.Check(session.Scores.SequenceEqual(new[] { 57, 50, 50, 50 }),
             "blank ids remain empty slots without suppressing known carried talents");
 
         TalentSlotConfig unknown = new TalentSlotConfig();
@@ -380,7 +380,7 @@ internal static class TalentFoundationTests
         runtime.BeginMatch(session);
 
         runner.Check(!ReserveLifecycleTestTalent.MutableSessionLeaked
-                     && session.Scores.SequenceEqual(new[] { 7, 0, 0, 0 }),
+                     && session.Scores.SequenceEqual(new[] { 57, 50, 50, 50 }),
             "inactive match initialization receives a session snapshot and cannot mutate authoritative scores");
     }
 
@@ -438,7 +438,7 @@ internal static class TalentFoundationTests
             FinalFan = 12
         }, session);
 
-        runner.Check(session.Scores.SequenceEqual(new[] { 7, 0, 0, 0 }),
+        runner.Check(session.Scores.SequenceEqual(new[] { 107, 100, 100, 100 }),
             "match-start score applies exactly once to the owning seat");
         runner.Check(duplicateBeginRejected,
             "a talent match runtime rejects a second BeginMatch call");
@@ -651,6 +651,20 @@ internal static class TalentFoundationTests
 
     private static void ExistingSixTalentsExecuteAcrossTwoRounds(RegressionRunner runner)
     {
+        foreach (GameMode mode in Enum.GetValues(typeof(GameMode)))
+        {
+            var modeSession = new GameSession(mode);
+            TalentMatchRuntime capitalRuntime = CreateRuntime(mainIds: new[]
+            {
+                null, null, null, "starting_capital", null, null
+            });
+            capitalRuntime.BeginMatch(modeSession);
+            runner.Check(modeSession.Scores[0] == SessionScoreRules.GetInitialScore(mode) + 30
+                         && modeSession.Scores.Skip(1)
+                             .All(score => score == SessionScoreRules.GetInitialScore(mode)),
+                $"starting capital adds 30 on top of the configured {mode} starting score exactly once");
+        }
+
         GameSession session = new GameSession(GameMode.EastOnly);
         TalentMatchRuntime runtime = CreateRuntime(mainIds: new[]
         {
