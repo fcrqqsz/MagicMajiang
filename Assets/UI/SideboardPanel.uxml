@@ -1,5 +1,6 @@
 <ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" editor-extension-mode="False">
-    <Style src="project://database/Assets/UI/SideboardPanelStyles.uss" />
+    <ui:Style src="project://database/Assets/UI/SideboardPanelStyles.uss" />
+    <ui:Style src="BattleMenuEntryStyles.uss" />
     <ui:VisualElement name="SideboardOverlay" class="sideboard-overlay">
         <ui:VisualElement class="sideboard-frame">
             <ui:VisualElement class="sideboard-header">
@@ -11,6 +12,7 @@
                     <ui:Label text="服务器剩余" class="sideboard-timer-caption" />
                     <ui:Label name="TimerLabel" text="45" class="sideboard-timer" />
                 </ui:VisualElement>
+                <ui:Button name="BattleMenuButton" text="菜单" class="battle-menu-entry" />
             </ui:VisualElement>
 
             <ui:VisualElement class="sideboard-content">

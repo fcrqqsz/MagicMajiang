@@ -86,6 +86,7 @@ namespace MahjongGame.UI
         // 防抖动辅助：防止极短时间内双击导致调用两次
         private void SafeInvoke(Action action)
         {
+            if (BattleMenuInputGate.Instance.IsBlocked(Time.frameCount)) return;
             if (_root.style.display == DisplayStyle.None) return;
             action?.Invoke();
         }
@@ -205,7 +206,7 @@ namespace MahjongGame.UI
                 button.SetEnabled(!isPending);
                 button.clicked += () =>
                 {
-                    if (!_talentState.IsOpen || isPending) return;
+                    if (BattleMenuInputGate.Instance.IsBlocked(Time.frameCount) || !_talentState.IsOpen || isPending) return;
                     if (selected.Choice != null
                         && string.IsNullOrWhiteSpace(selected.SelectedChoiceId))
                     {
@@ -251,6 +252,7 @@ namespace MahjongGame.UI
                 button.AddToClassList("talent-choice-btn");
                 button.clicked += () =>
                 {
+                    if (BattleMenuInputGate.Instance.IsBlocked(Time.frameCount)) return;
                     TalentActionOption selected = TalentActionPanelPolicy.SelectAuthorizedChoice(
                         _talentState,
                         presentation.TalentId,
@@ -269,6 +271,7 @@ namespace MahjongGame.UI
             cancel.AddToClassList("talent-choice-cancel-btn");
             cancel.clicked += () =>
             {
+                if (BattleMenuInputGate.Instance.IsBlocked(Time.frameCount)) return;
                 string cancelledTalentId = _talentState.ChoiceSelection;
                 _talentState = TalentActionPanelPolicy.CancelChoiceSelection(_talentState);
                 _talentChoiceCancelledCallback?.Invoke(cancelledTalentId);
@@ -351,6 +354,7 @@ namespace MahjongGame.UI
                 btn.clicked += () => 
                 {
                     // 同样做防抖保护
+                    if (BattleMenuInputGate.Instance.IsBlocked(Time.frameCount)) return;
                     if (_root.style.display == DisplayStyle.None) return;
                     
                     _currentChiCallback?.Invoke(index);
@@ -386,6 +390,7 @@ namespace MahjongGame.UI
                 btn.userData = "temp_kong";
                 btn.clicked += () =>
                 {
+                    if (BattleMenuInputGate.Instance.IsBlocked(Time.frameCount)) return;
                     if (_root.style.display == DisplayStyle.None) return;
                     var selectedCallback = _currentKongCallback;
                     RestoreMainButtons();

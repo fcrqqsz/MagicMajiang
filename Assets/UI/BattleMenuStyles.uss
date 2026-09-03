@@ -1,0 +1,91 @@
+.battle-menu-overlay {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background-color: rgba(5, 11, 13, 0.75);
+    -unity-font-definition: url('project://database/Assets/Font/MSYH_UITK.asset');
+    color: rgb(237, 232, 220);
+}
+.battle-menu-frame {
+    width: 560px;
+    max-width: 92%;
+    max-height: 92%;
+    flex-direction: column;
+    flex-shrink: 1;
+    background-color: rgb(27, 34, 41);
+    border-top-width: 1px;
+    border-right-width: 1px;
+    border-bottom-width: 1px;
+    border-left-width: 1px;
+    border-top-color: rgb(170, 141, 80);
+    border-right-color: rgb(170, 141, 80);
+    border-bottom-color: rgb(170, 141, 80);
+    border-left-color: rgb(170, 141, 80);
+    border-top-left-radius: 10px;
+    border-top-right-radius: 10px;
+    border-bottom-left-radius: 10px;
+    border-bottom-right-radius: 10px;
+    padding-top: 28px;
+    padding-right: 32px;
+    padding-bottom: 26px;
+    padding-left: 32px;
+}
+.battle-menu-page { flex-direction: column; flex-shrink: 0; }
+.battle-menu-eyebrow { color: rgb(191, 163, 108); font-size: 12px; margin-bottom: 10px; }
+.battle-menu-heading { flex-direction: row; align-items: center; justify-content: space-between; margin-bottom: 12px; flex-shrink: 0; }
+.battle-menu-title { font-size: 28px; -unity-font-style: bold; }
+.battle-menu-key { color: rgb(162, 169, 176); font-size: 12px; }
+.battle-menu-note { font-size: 14px; color: rgb(162, 173, 179); margin-top: 0; margin-bottom: 26px; white-space: normal; flex-shrink: 0; }
+.battle-menu-divider { height: 1px; min-height: 1px; background-color: rgb(53, 64, 71); margin-top: 8px; margin-bottom: 24px; }
+.battle-menu-button {
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    min-height: 48px;
+    margin-top: 0;
+    margin-right: 0;
+    margin-bottom: 0;
+    margin-left: 0;
+    padding-top: 10px;
+    padding-right: 20px;
+    padding-bottom: 10px;
+    padding-left: 20px;
+    border-top-width: 1px;
+    border-right-width: 1px;
+    border-bottom-width: 1px;
+    border-left-width: 1px;
+    border-top-color: rgb(72, 83, 93);
+    border-right-color: rgb(72, 83, 93);
+    border-bottom-color: rgb(72, 83, 93);
+    border-left-color: rgb(72, 83, 93);
+    border-top-left-radius: 5px;
+    border-top-right-radius: 5px;
+    border-bottom-left-radius: 5px;
+    border-bottom-right-radius: 5px;
+    background-color: rgb(41, 51, 61);
+    color: rgb(237, 232, 220);
+    font-size: 16px;
+    -unity-text-align: middle-center;
+}
+.battle-menu-button:hover { background-color: rgb(54, 67, 77); }
+.battle-menu-button:focus { border-top-color: rgb(216, 187, 124); border-right-color: rgb(216, 187, 124); border-bottom-color: rgb(216, 187, 124); border-left-color: rgb(216, 187, 124); }
+.battle-menu-primary { background-color: rgb(186, 160, 107); color: rgb(23, 32, 33); -unity-font-style: bold; }
+.battle-menu-primary:hover { background-color: rgb(207, 183, 130); }
+.battle-menu-danger { color: rgb(229, 165, 154); background-color: rgb(57, 45, 48); }
+.battle-menu-danger:hover { background-color: rgb(80, 52, 54); }
+.battle-menu-stack { width: 100%; margin-bottom: 12px; }
+.battle-menu-footer { flex-direction: row; justify-content: space-between; align-items: center; margin-top: 10px; }
+.battle-menu-footer-note { color: rgb(137, 151, 158); font-size: 12px; }
+.battle-menu-section-title { color: rgb(217, 198, 150); font-size: 15px; margin-bottom: 20px; }
+.battle-menu-small { min-height: 36px; font-size: 13px; padding-left: 12px; padding-right: 12px; }
+.battle-menu-warning { padding-top: 18px; padding-right: 18px; padding-bottom: 18px; padding-left: 18px; background-color: rgb(52, 41, 44); border-left-width: 3px; border-left-color: rgb(184, 124, 112); color: rgb(217, 196, 192); font-size: 15px; white-space: normal; margin-bottom: 26px; }
+.battle-menu-confirm-actions { flex-direction: row; }
+.battle-menu-confirm-button { flex-grow: 1; flex-basis: 0; }
+.battle-menu-safe { margin-right: 12px; }
+.battle-menu-overlay .audio-volume-slider { font-size: 14px; }
+.battle-menu-overlay .audio-settings-button { font-size: 13px; padding-left: 12px; padding-right: 12px; }

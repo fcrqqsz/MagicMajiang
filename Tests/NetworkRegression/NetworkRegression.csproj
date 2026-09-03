@@ -16,6 +16,12 @@
     <Compile Include="AssemblyInfo.cs" />
     <Compile Include="RegressionRunner.cs" />
     <Compile Include="ClientConnectionSettingsTests.cs" />
+    <Compile Include="BattleExitTests.cs" />
+    <Compile Include="ClientSceneNavigationTests.cs" />
+    <Compile Include="..\..\Assets\Scripts\Systems\ClientSceneNavigation.cs" Link="ClientSceneNavigation.cs" />
+    <Compile Include="BattleMenuTests.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\BattleMenuState.cs" Link="BattleMenuState.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\BattleMenuInputGate.cs" Link="BattleMenuInputGate.cs" />
     <Compile Include="IdentityConnectionTests.cs" />
     <Compile Include="RoomSessionTests.cs" />
     <Compile Include="NetworkAuthorityBoundaryTests.cs" />

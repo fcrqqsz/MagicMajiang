@@ -6,7 +6,7 @@ using UnityEngine.UIElements;
 namespace MahjongGame.UI
 {
     /// <summary>
-    /// Binds the lobby sound controls to the persistent client audio runtime.
+    /// Binds shared lobby and battle sound controls to the persistent client audio runtime.
     /// </summary>
     internal sealed class AudioSettingsView : IDisposable
     {

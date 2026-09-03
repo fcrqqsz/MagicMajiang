@@ -1,0 +1,92 @@
+.audio-settings-card {
+    flex-direction: column;
+    background-color: rgb(30, 35, 45);
+    border-top-width: 1px;
+    border-right-width: 1px;
+    border-bottom-width: 1px;
+    border-left-width: 1px;
+    border-top-color: rgb(58, 68, 84);
+    border-right-color: rgb(58, 68, 84);
+    border-bottom-color: rgb(58, 68, 84);
+    border-left-color: rgb(58, 68, 84);
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
+    border-bottom-left-radius: 8px;
+    border-bottom-right-radius: 8px;
+    padding-top: 18px;
+    padding-right: 22px;
+    padding-bottom: 18px;
+    padding-left: 22px;
+}
+
+.audio-slider-row {
+    flex-direction: row;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.audio-volume-slider {
+    flex-grow: 1;
+    flex-basis: 0;
+    flex-shrink: 1;
+    min-width: 0;
+    color: rgb(225, 232, 242);
+    font-size: 16px;
+}
+
+.audio-volume-percentage {
+    width: 56px;
+    flex-shrink: 0;
+    color: rgb(150, 205, 247);
+    font-size: 16px;
+    -unity-font-style: bold;
+    -unity-text-align: middle-right;
+    margin-left: 14px;
+}
+
+.audio-settings-actions {
+    flex-direction: row;
+    align-items: center;
+    margin-top: 6px;
+}
+
+.audio-settings-button {
+    min-height: 38px;
+    padding-top: 7px;
+    padding-right: 16px;
+    padding-bottom: 7px;
+    padding-left: 16px;
+    color: white;
+    font-size: 15px;
+    -unity-font-style: bold;
+    border-top-width: 0;
+    border-right-width: 0;
+    border-bottom-width: 0;
+    border-left-width: 0;
+    border-top-left-radius: 5px;
+    border-top-right-radius: 5px;
+    border-bottom-left-radius: 5px;
+    border-bottom-right-radius: 5px;
+}
+
+.audio-preview-button {
+    background-color: rgb(44, 94, 156);
+    margin-right: 12px;
+}
+
+.audio-preview-button:hover { background-color: rgb(58, 114, 184); }
+.audio-preview-button:active { background-color: rgb(34, 76, 128); }
+
+.audio-reset-button {
+    background-color: rgb(86, 96, 110);
+}
+
+.audio-reset-button:hover { background-color: rgb(105, 116, 132); }
+.audio-reset-button:active { background-color: rgb(67, 76, 88); }
+.audio-settings-button:disabled { opacity: 0.45; }
+
+.audio-settings-unavailable {
+    color: rgb(246, 166, 166);
+    font-size: 14px;
+    margin-top: 12px;
+}

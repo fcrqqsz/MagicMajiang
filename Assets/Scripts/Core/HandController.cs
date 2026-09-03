@@ -370,7 +370,7 @@ namespace MahjongGame.Core
 
         public override void OnTileClicked(TileVisual clickedTile)
         {
-            if (!_isInteractable) return; 
+            if (!BattleMenuInputGate.Instance.CanInteract(_isInteractable, Time.frameCount)) return;
             
             if (_selectedTile == clickedTile)
             {

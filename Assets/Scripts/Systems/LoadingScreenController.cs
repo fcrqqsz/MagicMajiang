@@ -16,6 +16,9 @@ namespace MahjongGame.Systems
         private VisualElement reconnectContainer;
         private Label reconnectStatusLabel;
         private Button reconnectLeaveButton;
+        private bool _loadingVisible;
+        private bool _reconnectVisible;
+        public bool IsVisible => _loadingVisible || _reconnectVisible;
 
         public event System.Action ReconnectLeaveRequested;
 
@@ -57,18 +60,22 @@ namespace MahjongGame.Systems
 
         public void Show()
         {
+            _loadingVisible = true;
             if (loadingContainer != null)
             {
                 loadingContainer.style.display = DisplayStyle.Flex;
             }
+            RefreshVisibility();
         }
 
         public void Hide()
         {
+            _loadingVisible = false;
             if (loadingContainer != null)
             {
                 loadingContainer.style.display = DisplayStyle.None;
             }
+            RefreshVisibility();
         }
 
         public void ShowReconnect(ClientRecoveryProgress progress)
@@ -79,18 +86,27 @@ namespace MahjongGame.Systems
                 return;
             }
 
+            _reconnectVisible = true;
             if (reconnectContainer != null)
                 reconnectContainer.style.display = DisplayStyle.Flex;
             if (reconnectStatusLabel != null)
                 reconnectStatusLabel.text = progress.Message;
             if (reconnectLeaveButton != null)
-                reconnectLeaveButton.text = progress.Stage == ClientRecoveryStage.TerminalFailure ? "Return to Lobby" : "Leave Room";
+                reconnectLeaveButton.text = progress.Stage == ClientRecoveryStage.TerminalFailure ? "返回大厅" : "退出对战";
+            RefreshVisibility();
         }
 
         public void HideReconnect()
         {
+            _reconnectVisible = false;
             if (reconnectContainer != null)
                 reconnectContainer.style.display = DisplayStyle.None;
+            RefreshVisibility();
+        }
+
+        private void RefreshVisibility()
+        {
+            if (root != null) root.style.display = IsVisible ? DisplayStyle.Flex : DisplayStyle.None;
         }
 
         private void HandleReconnectLeaveClicked()

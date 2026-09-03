@@ -25,19 +25,19 @@
    - 活动场景与任务目标一致。
 5. 修改前先读取目标场景、GameObject、组件或资源的现状。查询层级和组件时采用分页，先取摘要，确有需要才读取完整属性。
 6. 执行场景或资源修改。多个同类操作可批量执行，但应保持目标明确，并在一组修改后统一检查结果。
-7. 需要导入或编译时，根据本任务授权执行 Refresh，并等待编辑器重新进入 Ready 状态。
+7. 需要导入或编译时，按项目的 UnityMCP 持续授权直接执行 Refresh，并等待编辑器重新进入 Ready 状态，无需再次询问。
 8. 读取 Unity Console，先检查 Error，再检查 Warning；不要在记录问题前直接清空 Console。
 9. 明确保存被修改的场景或 Prefab，再用 Git 检查实际落盘文件，防止遗漏或混入编辑器副作用。
 10. 运行相关纯 C# 回归。Game 视图布局、字体、阴影、点击输入等仍需 Unity 实际画面验收。
 
 ## Refresh 与 Unity 生成资产的边界
 
-- 只有用户在当前任务明确授权时，智能体才可通过 MCP 执行 Unity Refresh；历史授权不自动延续到无关任务。
+- 用户已持续授权本项目任务范围内的 MCP 操作，无需逐项或每个任务再次确认。UnityMCP 已连接时可直接执行 Refresh、场景/资源编辑保存、编译检查与 Play Mode smoke test；目标实例和操作结果仍须核实。
 - 新增 Unity 资产后必须让 Unity/Tuanjie Refresh 权威生成 `.meta`。禁止手写、猜测、复制或修补 GUID。
 - 需要在 Scene、Prefab、UXML 或其他序列化资产中引用新资源时，应先 Refresh，确认真实 `.meta` 已生成，再建立引用。
 - Refresh 后要等待资源更新、脚本编译和 Domain Reload 全部结束。不要在编译期间连续重复 Refresh，也不要把短暂断连误认为源码失败。
 - 禁止编辑 Unity 自动生成的 `Assembly-CSharp.csproj`。未 Refresh 导致的工程缺项也不能通过手工补写工程文件解决。
-- MCP Refresh 的授权不包含 batch mode、Player Build 或 Dedicated Server Build；这些操作仍需单独授权。
+- MCP 持续授权不替代任务范围，也不授权绕开 MCP 从命令行启动 batch mode 或构建 Unity 生成的 `Assembly-CSharp.csproj`；这些非 MCP 操作仍需单独授权。
 
 ## 已遇到的问题与判断方法
 

@@ -55,6 +55,7 @@ namespace MahjongGame.UI
         private bool _missingTemplateWarningLogged;
 
         private int _activePlayerIndex = -1;
+        private Button _battleMenuButton;
         private float _timerRemaining;
         private float _timerTotal;
         private bool _isTimerRunning;
@@ -75,6 +76,8 @@ namespace MahjongGame.UI
             Instance = this;
 
             _root = _document.rootVisualElement;
+            _battleMenuButton = _root.Q<Button>("BattleMenuButton");
+            if (_battleMenuButton != null) _battleMenuButton.clicked += OpenBattleMenu;
 
             _infoLabel = _root.Q<Label>("InfoLabel");
 
@@ -106,6 +109,7 @@ namespace MahjongGame.UI
 
         void OnDestroy()
         {
+            if (_battleMenuButton != null) _battleMenuButton.clicked -= OpenBattleMenu;
             GameManager.Instance?.playerHandController?.SetTalentObservationMode(TalentObservationMode.None);
             UnbindTalentElementCallbacks();
             UnbindServerProxy(_serverProxy);
@@ -117,6 +121,8 @@ namespace MahjongGame.UI
             _talentToastTween = null;
             if (Instance == this) Instance = null;
         }
+
+        private static void OpenBattleMenu() => BattleMenuController.Instance?.OpenMenu();
 
         private void BindTalentElements()
         {

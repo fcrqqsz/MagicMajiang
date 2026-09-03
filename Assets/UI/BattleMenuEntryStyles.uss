@@ -1,0 +1,28 @@
+.battle-menu-entry {
+    flex-direction: row;
+    min-width: 90px;
+    height: 40px;
+    flex-shrink: 0;
+    margin-left: 16px;
+    padding-left: 16px;
+    padding-right: 16px;
+    background-color: rgb(27, 34, 41);
+    color: rgb(217, 198, 150);
+    font-size: 16px;
+    -unity-font-definition: url('project://database/Assets/Font/MSYH_UITK.asset');
+    -unity-text-align: middle-center;
+    border-top-width: 1px;
+    border-right-width: 1px;
+    border-bottom-width: 1px;
+    border-left-width: 1px;
+    border-top-color: rgb(170, 141, 80);
+    border-right-color: rgb(170, 141, 80);
+    border-bottom-color: rgb(170, 141, 80);
+    border-left-color: rgb(170, 141, 80);
+    border-top-left-radius: 5px;
+    border-top-right-radius: 5px;
+    border-bottom-left-radius: 5px;
+    border-bottom-right-radius: 5px;
+}
+.battle-menu-entry:hover { background-color: rgb(54, 67, 77); }
+.battle-menu-entry--corner { position: absolute; top: 22px; right: 32px; }

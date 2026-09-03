@@ -21,6 +21,13 @@
 
 ## 2. 目录结构与功能索引
 
+### 对战菜单与大厅返回
+
+- `Assets/UI/BattleMenuController.cs` 与 `BattleMenu.uxml/Styles.uss`：独立对战模态文档，排序 200，订阅有序房间消息和恢复边界；场景接线状态见 `docs/battle_menu_verification.md`。
+- `Assets/Scripts/Core/BattleMenuState.cs` / `BattleMenuInputGate.cs`：纯客户端菜单状态和额外点击限制，独立于权威决策可用性。
+- `Assets/UI/AudioSettings.uxml` / `AudioSettingsStyles.uss` / `AudioSettingsView.cs`：大厅和对战共用声音控件，不复制音频运行时或存储。
+- `NetworkManager.LeaveBattleToLobbyAsync()` 调用 `ClientRoomService.LeaveRoomForLobbyAsync()` 并统一返回大厅；`Assets/Scripts/Systems/ClientSceneNavigation.cs` 将加载/卸载串行化，通过代次撤销旧恢复导航。
+
 ### A. `Assets/Scripts/Core` (核心逻辑与表现层控制器)
 主要分为纯逻辑与 3D 控制两部分：
 *   **基础数据**:

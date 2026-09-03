@@ -1,7 +1,9 @@
 <ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" editor-extension-mode="False">
-    <Style src="project://database/Assets/UI/GameHUD/GameHUDStyles.uss" />
+    <ui:Style src="project://database/Assets/UI/GameHUD/GameHUDStyles.uss" />
+    <ui:Style src="../BattleMenuEntryStyles.uss" />
     <ui:VisualElement name="HUDRoot" class="hud-root" picking-mode="Ignore">
 
+        <ui:Button name="BattleMenuButton" text="菜单" class="battle-menu-entry battle-menu-entry--corner" />
         <!-- 左上角信息栏 -->
         <ui:VisualElement name="InfoBar" class="info-bar" picking-mode="Ignore">
             <ui:Label name="InfoLabel" text="单局-余136张" class="info-label" picking-mode="Ignore" />

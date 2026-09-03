@@ -1,5 +1,23 @@
 var runner = new RegressionRunner();
 
+if (args.Length == 1 && string.Equals(args[0], "battle-menu", StringComparison.OrdinalIgnoreCase))
+{
+    runner.RunSuite("battle-menu", BattleMenuTests.Run);
+    return runner.Complete();
+}
+
+if (args.Length == 1 && string.Equals(args[0], "scene-navigation", StringComparison.OrdinalIgnoreCase))
+{
+    runner.RunSuite("scene-navigation", ClientSceneNavigationTests.Run);
+    return runner.Complete();
+}
+
+if (args.Length == 1 && string.Equals(args[0], "battle-exit", StringComparison.OrdinalIgnoreCase))
+{
+    runner.RunSuite("battle-exit", BattleExitTests.Run);
+    return runner.Complete();
+}
+
 if (args.Length == 1 && string.Equals(args[0], "audio", StringComparison.OrdinalIgnoreCase))
 {
     runner.RunSuite("audio", AudioSettingsTests.Run);
@@ -68,6 +86,9 @@ if (args.Length == 1 && string.Equals(args[0], "private-tile-knowledge", StringC
 }
 
 runner.RunSuite("connection-settings", ClientConnectionSettingsTests.Run);
+runner.RunSuite("battle-exit", BattleExitTests.Run);
+runner.RunSuite("battle-menu", BattleMenuTests.Run);
+runner.RunSuite("scene-navigation", ClientSceneNavigationTests.Run);
 IdentityConnectionTests.Run(runner);
 RoomSessionTests.Run(runner);
 NetworkAuthorityBoundaryTests.Run(runner);

@@ -1,0 +1,22 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" editor-extension-mode="False">
+    <ui:Style src="AudioSettingsStyles.uss" />
+    <ui:VisualElement class="audio-settings-card">
+        <ui:VisualElement class="audio-slider-row">
+            <ui:SliderInt name="MasterVolumeSlider" label="总音量" low-value="0" high-value="100" value="80" class="audio-volume-slider" />
+            <ui:Label name="MasterVolumePercentageLabel" text="80%" class="audio-volume-percentage" />
+        </ui:VisualElement>
+        <ui:VisualElement class="audio-slider-row">
+            <ui:SliderInt name="MusicVolumeSlider" label="背景音乐" low-value="0" high-value="100" value="60" class="audio-volume-slider" />
+            <ui:Label name="MusicVolumePercentageLabel" text="60%" class="audio-volume-percentage" />
+        </ui:VisualElement>
+        <ui:VisualElement class="audio-slider-row">
+            <ui:SliderInt name="SfxVolumeSlider" label="音效" low-value="0" high-value="100" value="100" class="audio-volume-slider" />
+            <ui:Label name="SfxVolumePercentageLabel" text="100%" class="audio-volume-percentage" />
+        </ui:VisualElement>
+        <ui:VisualElement class="audio-settings-actions">
+            <ui:Button name="PreviewSfxButton" text="试听音效" class="audio-settings-button audio-preview-button" />
+            <ui:Button name="ResetAudioSettingsButton" text="恢复声音默认值" class="audio-settings-button audio-reset-button" />
+        </ui:VisualElement>
+        <ui:Label name="AudioSettingsUnavailableLabel" text="声音功能当前不可用。" class="audio-settings-unavailable" style="display: none;" />
+    </ui:VisualElement>
+</ui:UXML>

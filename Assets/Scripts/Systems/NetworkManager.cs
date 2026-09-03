@@ -19,8 +19,9 @@ namespace MahjongGame.Systems
         public ClientRoomService RoomService { get; private set; }
         /// <summary>Session-only UI selection; reconnect tickets never replace it.</summary>
         public ClientServerEnvironment SelectedServerEnvironment { get; private set; }
-        private bool _isRoutingRecoverySnapshot;
-        private RoomGameSnapshot _queuedRecoverySnapshot;
+        private ClientSceneNavigation _sceneNavigation;
+        private Task _lobbyNavigationTask;
+        private int _recoveryRequestVersion;
         private LoadingScreenController _loadingScreen;
 
         private void Awake()
@@ -37,6 +38,7 @@ namespace MahjongGame.Systems
                 SelectedServerEnvironment = ClientServerStartupPolicy.InitialEnvironment;
                 RoomService = new ClientRoomService(ClientServerEndpointPolicy.Resolve(SelectedServerEnvironment));
                 RoomService.RoomReady += HandleRoomReady;
+                RoomService.RoomJoined += HandleRoomJoined;
                 RoomService.RoomClosed += HandleRoomClosed;
                 RoomService.ReconnectSnapshotApplied += HandleReconnectSnapshotApplied;
                 RoomService.RecoveryProgressChanged += HandleRecoveryProgressChanged;
@@ -47,18 +49,25 @@ namespace MahjongGame.Systems
             }
         }
 
-        private async void HandleRoomReady()
+        private void HandleRoomReady()
         {
-            if (SceneManager.GetSceneByName(SceneNames.Game).isLoaded) return;
-            await LoadSceneAndUnloadCurrentAsync(SceneNames.Game, SceneNames.MainLobby);
+            if (RoomService?.HasRoom != true || IsLeavingForLobby) return;
+            _ = ObserveNavigationAsync(NavigateToSceneAsync(SceneNames.Game));
+        }
+
+        private void HandleRoomJoined(RoomJoinedMessage joined)
+        {
+            if (!IsLeavingForLobby) _lobbyNavigationTask = null;
         }
 
         private void OnDestroy()
         {
             if (Instance != this) return;
+            _sceneNavigation?.Invalidate();
             if (RoomService != null)
             {
                 RoomService.RoomReady -= HandleRoomReady;
+                RoomService.RoomJoined -= HandleRoomJoined;
                 RoomService.RoomClosed -= HandleRoomClosed;
                 RoomService.ReconnectSnapshotApplied -= HandleReconnectSnapshotApplied;
                 RoomService.RecoveryProgressChanged -= HandleRecoveryProgressChanged;
@@ -71,7 +80,7 @@ namespace MahjongGame.Systems
         {
             AttachLoadingScreen();
             // Auto load login scene additively
-            _ = LoadSceneAdditiveAsync(SceneNames.Login);
+            _ = ObserveNavigationAsync(LoadSceneAdditiveAsync(SceneNames.Login));
         }
 
         private void Update()
@@ -109,71 +118,72 @@ namespace MahjongGame.Systems
             if (progress.Stage == ClientRecoveryStage.Restored) return;
             _loadingScreen?.ShowReconnect(progress);
             if (progress.Stage == ClientRecoveryStage.TerminalFailure)
-                _ = RouteTerminalRecoveryToLobbyAsync();
+                _ = ObserveNavigationAsync(NavigateToLobbyAsync(false));
         }
 
         private async void HandleReconnectSnapshotApplied(RoomGameSnapshot snapshot)
         {
-            if (snapshot == null) return;
-            _queuedRecoverySnapshot = snapshot;
-            if (_isRoutingRecoverySnapshot) return;
-
-            _isRoutingRecoverySnapshot = true;
+            if (snapshot == null || RoomService?.HasRoom != true || IsLeavingForLobby) return;
+            int requestVersion = ++_recoveryRequestVersion;
+            int presentationVersion = RoomService.RecoveryPresentationVersion;
             try
             {
-                while (_queuedRecoverySnapshot != null)
+                var target = ClientRecoverySceneRoutingPolicy.GetTarget((RoomState)snapshot.roomState);
+                if (target == ClientRecoverySceneTarget.None)
                 {
-                    var pending = _queuedRecoverySnapshot;
-                    _queuedRecoverySnapshot = null;
-                    await RouteRecoverySnapshotAsync(pending);
-                }
-            }
-            finally
-            {
-                _isRoutingRecoverySnapshot = false;
-            }
-        }
-
-        private async Task RouteRecoverySnapshotAsync(RoomGameSnapshot snapshot)
-        {
-            var target = ClientRecoverySceneRoutingPolicy.GetTarget((RoomState)snapshot.roomState);
-            switch (target)
-            {
-                case ClientRecoverySceneTarget.Lobby:
-                    await EnsureRecoverySceneAsync(SceneNames.MainLobby);
-                    break;
-                case ClientRecoverySceneTarget.Game:
-                    await EnsureRecoverySceneAsync(SceneNames.Game);
-                    GameManager.Instance?.ApplyNetworkRecoverySnapshot(snapshot, RoomService?.RecoveryPresentationVersion ?? 0);
-                    break;
-                default:
-                    await RouteTerminalRecoveryToLobbyAsync();
+                    await NavigateToLobbyAsync(false);
                     return;
+                }
+                string targetScene = target == ClientRecoverySceneTarget.Game ? SceneNames.Game : SceneNames.MainLobby;
+                Task navigation = NavigateToSceneAsync(targetScene);
+                int generation = SceneNavigation.Generation;
+                await navigation;
+                if (generation != SceneNavigation.Generation || requestVersion != _recoveryRequestVersion
+                    || RoomService?.HasRoom != true || IsLeavingForLobby) return;
+                if (target == ClientRecoverySceneTarget.Game)
+                    GameManager.Instance?.ApplyNetworkRecoverySnapshot(snapshot, presentationVersion);
+                AttachLoadingScreen();
+                _loadingScreen?.HideReconnect();
             }
-
-            AttachLoadingScreen();
-            _loadingScreen?.HideReconnect();
-        }
-
-        private async Task RouteTerminalRecoveryToLobbyAsync()
-        {
-            var game = SceneManager.GetSceneByName(SceneNames.Game);
-            if (!game.isLoaded) return;
-            await EnsureRecoverySceneAsync(SceneNames.MainLobby);
-        }
-
-        private async Task EnsureRecoverySceneAsync(string targetScene)
-        {
-            if (!SceneManager.GetSceneByName(targetScene).isLoaded)
-                await LoadSceneAdditiveAsync(targetScene);
-
-            SetActiveSceneIfLoaded(targetScene);
-            foreach (var sceneName in new[] { SceneNames.Login, SceneNames.MainLobby, SceneNames.Game })
+            catch (Exception error)
             {
-                if (sceneName == targetScene) continue;
-                if (SceneManager.GetSceneByName(sceneName).isLoaded)
-                    await UnloadSceneAsync(sceneName);
+                Debug.LogError($"Failed to route room recovery: {error.Message}");
             }
+        }
+
+        private bool IsLeavingForLobby => _lobbyNavigationTask != null && !_lobbyNavigationTask.IsCompleted;
+
+        private ClientSceneNavigation SceneNavigation => _sceneNavigation ?? (_sceneNavigation = new ClientSceneNavigation(
+            new[] { SceneNames.Login, SceneNames.MainLobby, SceneNames.Game },
+            scene => SceneManager.GetSceneByName(scene).isLoaded,
+            LoadSceneCoreAsync, SetActiveSceneIfLoaded, UnloadSceneAsync));
+
+        /// <summary>One completion boundary for battle-menu, result, and reconnect exits.</summary>
+        public Task LeaveBattleToLobbyAsync() => NavigateToLobbyAsync(true);
+
+        private Task NavigateToLobbyAsync(bool leaveRoom)
+        {
+            if (_lobbyNavigationTask != null && !_lobbyNavigationTask.IsFaulted
+                && (!_lobbyNavigationTask.IsCompleted || RoomService?.HasRoom != true)) return _lobbyNavigationTask;
+            SceneNavigation.Invalidate();
+            _recoveryRequestVersion++;
+            var completion = new TaskCompletionSource<bool>();
+            _lobbyNavigationTask = completion.Task;
+            _ = CompleteLobbyNavigationAsync(leaveRoom, completion);
+            return completion.Task;
+        }
+
+        private async Task CompleteLobbyNavigationAsync(bool leaveRoom, TaskCompletionSource<bool> completion)
+        {
+            try
+            {
+                if (leaveRoom && RoomService != null) await RoomService.LeaveRoomForLobbyAsync();
+                await NavigateToSceneAsync(SceneNames.MainLobby);
+                AttachLoadingScreen();
+                _loadingScreen?.HideReconnect();
+                completion.TrySetResult(true);
+            }
+            catch (Exception error) { completion.TrySetException(error); }
         }
 
         private void AttachLoadingScreen()
@@ -192,117 +202,74 @@ namespace MahjongGame.Systems
             _loadingScreen = null;
         }
 
-        private async void HandleReconnectLeaveRequested()
+        private void HandleReconnectLeaveRequested()
         {
-            RoomService?.LeaveRoomOrAbandonRecovery();
-            AttachLoadingScreen();
-            _loadingScreen?.HideReconnect();
-            await EnsureRecoverySceneAsync(SceneNames.MainLobby);
+            _ = ObserveNavigationAsync(LeaveBattleToLobbyAsync());
         }
 
-        private async void HandleRoomClosed(string reason)
+        private void HandleRoomClosed(string reason)
         {
             Debug.LogWarning($"[NetworkManager] Room closed: {reason}");
-            var gameScene = SceneManager.GetSceneByName(SceneNames.Game);
-            if (!SceneTransitionPolicy.ShouldUnloadGameScene(gameScene.isLoaded)) return;
-
-            var lobbyScene = SceneManager.GetSceneByName(SceneNames.MainLobby);
-            if (lobbyScene.isLoaded)
-                await UnloadSceneAsync(SceneNames.Game);
-            else
-                await LoadSceneAndUnloadCurrentAsync(SceneNames.MainLobby, SceneNames.Game);
+            _ = ObserveNavigationAsync(NavigateToLobbyAsync(false));
         }
 
         public async Task ReturnToPersistentFlowAsync()
         {
+            // A Game scene already importing when exit started may run its Awake guard.
+            // Its fallback must join the authoritative lobby route instead of replacing it.
+            if (IsLeavingForLobby)
+            {
+                await _lobbyNavigationTask;
+                return;
+            }
             if (!SceneManager.GetSceneByName(SceneNames.Persistent).isLoaded)
             {
                 SceneManager.LoadScene(SceneNames.Persistent, LoadSceneMode.Single);
                 return;
             }
 
-            await EnsureRecoverySceneAsync(SceneNames.Login);
+            await NavigateToSceneAsync(SceneNames.Login);
         }
 
-        public async Task LoadSceneAdditiveAsync(string sceneName)
+        public Task LoadSceneAdditiveAsync(string sceneName) => NavigateToSceneAsync(sceneName);
+
+        private async Task NavigateToSceneAsync(string sceneName)
         {
+            LoadingScreenController.Instance?.Show();
+            Task navigation = SceneNavigation.NavigateAsync(sceneName);
+            int generation = SceneNavigation.Generation;
             try
             {
-                if (LoadingScreenController.Instance != null)
-                    LoadingScreenController.Instance.Show();
-
-                AsyncOperation asyncLoad = SceneManager.LoadSceneAsync(sceneName, LoadSceneMode.Additive);
-
-                while (!asyncLoad.isDone)
-                {
-                    await Task.Yield();
-                }
-
-                SetActiveSceneIfLoaded(sceneName);
-
-                if (LoadingScreenController.Instance != null)
-                    LoadingScreenController.Instance.Hide();
+                await navigation;
             }
-            catch (Exception e)
+            finally
             {
-                Debug.LogError($"Failed to load scene '{sceneName}': {e.Message}");
-                if (LoadingScreenController.Instance != null)
-                    LoadingScreenController.Instance.Hide();
+                if (generation == SceneNavigation.Generation) LoadingScreenController.Instance?.Hide();
             }
+        }
+
+        private static async Task LoadSceneCoreAsync(string sceneName)
+        {
+            AsyncOperation operation = SceneManager.LoadSceneAsync(sceneName, LoadSceneMode.Additive);
+            if (operation == null) throw new InvalidOperationException($"Could not load scene '{sceneName}'.");
+            while (!operation.isDone) await Task.Yield();
         }
 
         public async Task UnloadSceneAsync(string sceneName)
         {
-            try
-            {
-                AsyncOperation asyncUnload = SceneManager.UnloadSceneAsync(sceneName);
-                if (asyncUnload != null)
-                {
-                    while (!asyncUnload.isDone)
-                    {
-                        await Task.Yield();
-                    }
-                }
-            }
-            catch (Exception e)
-            {
-                Debug.LogError($"Failed to unload scene '{sceneName}': {e.Message}");
-            }
+            AsyncOperation operation = SceneManager.UnloadSceneAsync(sceneName);
+            if (operation == null && SceneManager.GetSceneByName(sceneName).isLoaded)
+                throw new InvalidOperationException($"Could not unload scene '{sceneName}'.");
+            if (operation != null)
+                while (!operation.isDone) await Task.Yield();
         }
 
-        public async Task LoadSceneAndUnloadCurrentAsync(string sceneToLoad, string sceneToUnload)
+        public Task LoadSceneAndUnloadCurrentAsync(string sceneToLoad, string sceneToUnload) => NavigateToSceneAsync(sceneToLoad);
+
+        private static async Task ObserveNavigationAsync(Task navigation)
         {
-            try
-            {
-                if (LoadingScreenController.Instance != null)
-                    LoadingScreenController.Instance.Show();
-
-                AsyncOperation asyncLoad = SceneManager.LoadSceneAsync(sceneToLoad, LoadSceneMode.Additive);
-                while (!asyncLoad.isDone)
-                {
-                    await Task.Yield();
-                }
-
-                SetActiveSceneIfLoaded(sceneToLoad);
-
-                AsyncOperation asyncUnload = SceneManager.UnloadSceneAsync(sceneToUnload);
-                if (asyncUnload != null)
-                {
-                    while (!asyncUnload.isDone)
-                    {
-                        await Task.Yield();
-                    }
-                }
-
-                if (LoadingScreenController.Instance != null)
-                    LoadingScreenController.Instance.Hide();
-            }
-            catch (Exception e)
-            {
-                Debug.LogError($"Failed scene transition '{sceneToLoad}' <- '{sceneToUnload}': {e.Message}");
-                if (LoadingScreenController.Instance != null)
-                    LoadingScreenController.Instance.Hide();
-            }
+            try { await navigation; }
+            catch (Exception error) { Debug.LogError($"Failed scene navigation: {error.Message}"); }
         }
 
         private static void SetActiveSceneIfLoaded(string sceneName)

@@ -15,6 +15,7 @@ namespace MahjongGame.UI
         public static ResultPanelController Instance;
 
         [SerializeField] private UIDocument _document;
+        private VisualElement _documentRoot;
         private VisualElement _overlay;
         private Label _titleLabel;
         private Label _finalFanHero;
@@ -23,6 +24,7 @@ namespace MahjongGame.UI
         private VisualElement _talentContributionList;
         private ScrollView _listContainer;
         private Button _btnRestart;
+        private Button _battleMenuButton;
         private WinningHandStripView _winningHandView;
         private readonly TalentFanPresentationState _talentFanPresentation =
             new TalentFanPresentationState();
@@ -31,11 +33,13 @@ namespace MahjongGame.UI
         // 多局对战状态
         private GameSession _session;
         private bool _isShowingFinalResult = false;
+        private bool _returnToLobbyInFlight;
 
         void Awake()
         {
             Instance = this;
             var root = _document.rootVisualElement;
+            _documentRoot = root;
 
             _overlay = root.Q<VisualElement>("Overlay");
             _titleLabel = root.Q<Label>("TitleLabel");
@@ -45,6 +49,8 @@ namespace MahjongGame.UI
             _talentContributionList = root.Q<VisualElement>("TalentContributionList");
             _listContainer = root.Q<ScrollView>("FanListContainer");
             _btnRestart = root.Q<Button>("BtnRestart");
+            _battleMenuButton = root.Q<Button>("BattleMenuButton");
+            if (_battleMenuButton != null) _battleMenuButton.clicked += OpenBattleMenu;
             _winningHandView = new WinningHandStripView(
                 root.Q<VisualElement>("WinningHandSection"),
                 root.Q<VisualElement>("WinningHandRow"));
@@ -52,17 +58,20 @@ namespace MahjongGame.UI
             _btnRestart.clicked += OnRestartClicked;
 
             // 初始隐藏
-            _overlay.style.display = DisplayStyle.None;
+            SetDocumentVisibility(false);
         }
 
         private void OnDestroy()
         {
+            if (_battleMenuButton != null) _battleMenuButton.clicked -= OpenBattleMenu;
             StopAllCoroutines();
             CancelInvoke();
             if (_btnRestart != null) _btnRestart.clicked -= OnRestartClicked;
             _winningHandView?.Dispose();
             if (Instance == this) Instance = null;
         }
+
+        private static void OpenBattleMenu() => BattleMenuController.Instance?.OpenMenu();
 
         /// <summary>
         /// 由 GameManager 在局结束时调用，传入当前对战状态
@@ -94,7 +103,7 @@ namespace MahjongGame.UI
             HideTalentResult();
             if (_overlay == null) return;
             _overlay.RemoveFromClassList("overlay--visible");
-            _overlay.style.display = DisplayStyle.None;
+            SetDocumentVisibility(false);
         }
 
         public void ApplyRecoveryResult(RoomGameSnapshot snapshot, GameSession session)
@@ -521,7 +530,7 @@ namespace MahjongGame.UI
             ResultOverlayPresentation presentation =
                 ResultOverlayPresentationPolicy.Build(isRecovery);
             _overlay.RemoveFromClassList("overlay--visible");
-            _overlay.style.display = DisplayStyle.Flex;
+            SetDocumentVisibility(true);
             if (presentation.ShowImmediately)
             {
                 _overlay.style.opacity = 1f;
@@ -538,11 +547,19 @@ namespace MahjongGame.UI
             _overlay.AddToClassList("overlay--visible");
         }
 
+        private void SetDocumentVisibility(bool visible)
+        {
+            DisplayStyle display = visible ? DisplayStyle.Flex : DisplayStyle.None;
+            if (_overlay != null) _overlay.style.display = display;
+            if (_documentRoot != null) _documentRoot.style.display = display;
+        }
+
         private void OnRestartClicked()
         {
+            if (_returnToLobbyInFlight || BattleMenuInputGate.Instance.IsBlocked(Time.frameCount)) return;
             // 关键：先隐藏面板，避免在可见状态下修改内容触发字体图集异常
             _overlay.RemoveFromClassList("overlay--visible");
-            _overlay.style.display = DisplayStyle.None;
+            SetDocumentVisibility(false);
             _winningHandView?.Hide();
             StopAllCoroutines();
             CancelInvoke();
@@ -566,15 +583,32 @@ namespace MahjongGame.UI
 
         private async void ReturnToLobby()
         {
-            NetworkManager networkManager = NetworkManager.Instance;
-            if (networkManager == null)
+            if (_returnToLobbyInFlight) return;
+            _returnToLobbyInFlight = true;
+            try
             {
-                SceneManager.LoadScene(SceneNames.Persistent, LoadSceneMode.Single);
-                return;
-            }
+                NetworkManager networkManager = NetworkManager.Instance;
+                if (networkManager == null)
+                {
+                    SceneManager.LoadScene(SceneNames.Persistent, LoadSceneMode.Single);
+                    return;
+                }
 
-            networkManager.RoomService?.LeaveRoom();
-            await networkManager.LoadSceneAndUnloadCurrentAsync(SceneNames.MainLobby, SceneNames.Game);
+                await networkManager.LeaveBattleToLobbyAsync();
+            }
+            catch (System.Exception exception)
+            {
+                Debug.LogError("[ResultPanel] Return to lobby failed: " + exception.Message);
+                if (this == null) return;
+                // Room authority has already been cleared. Keep a retry entry without
+                // depending on the menu's active-room admission check.
+                _isShowingFinalResult = true;
+                if (_btnRestart != null) _btnRestart.text = "重试返回大厅";
+                SetDocumentVisibility(true);
+                _overlay.style.opacity = 1f;
+                _overlay.AddToClassList("overlay--visible");
+            }
+            finally { _returnToLobbyInFlight = false; }
         }
     }
 }

@@ -5,6 +5,7 @@
     xmlns:editor="UnityEditor.UIElements"
     xsi:noNamespaceSchemaLocation="../../UIElementsSchema/UIElements.xsd"
 >
+    <ui:Template name="SharedAudioSettings" src="AudioSettings.uxml" />
     <ui:Style src="MainLobbyStyles.uss" />
     <ui:VisualElement name="LobbyRoot" class="lobby-root">
         <!-- Sidebar Navigation -->
@@ -227,25 +228,7 @@
 
                     <ui:VisualElement class="settings-section">
                         <ui:Label text="声音设置" class="settings-section-title" />
-                        <ui:VisualElement class="audio-settings-card">
-                            <ui:VisualElement class="audio-slider-row">
-                                <ui:SliderInt name="MasterVolumeSlider" label="主音量" low-value="0" high-value="100" value="80" class="audio-volume-slider" />
-                                <ui:Label name="MasterVolumePercentageLabel" text="80%" class="audio-volume-percentage" />
-                            </ui:VisualElement>
-                            <ui:VisualElement class="audio-slider-row">
-                                <ui:SliderInt name="MusicVolumeSlider" label="背景音量" low-value="0" high-value="100" value="60" class="audio-volume-slider" />
-                                <ui:Label name="MusicVolumePercentageLabel" text="60%" class="audio-volume-percentage" />
-                            </ui:VisualElement>
-                            <ui:VisualElement class="audio-slider-row">
-                                <ui:SliderInt name="SfxVolumeSlider" label="特效音量" low-value="0" high-value="100" value="100" class="audio-volume-slider" />
-                                <ui:Label name="SfxVolumePercentageLabel" text="100%" class="audio-volume-percentage" />
-                            </ui:VisualElement>
-                            <ui:VisualElement class="audio-settings-actions">
-                                <ui:Button name="PreviewSfxButton" text="试听音效" class="audio-settings-button audio-preview-button" />
-                                <ui:Button name="ResetAudioSettingsButton" text="恢复声音默认值" class="audio-settings-button audio-reset-button" />
-                            </ui:VisualElement>
-                            <ui:Label name="AudioSettingsUnavailableLabel" text="声音功能当前不可用。" class="audio-settings-unavailable" style="display: none;" />
-                        </ui:VisualElement>
+                        <ui:Instance template="SharedAudioSettings" />
                     </ui:VisualElement>
 
                     <ui:VisualElement class="settings-section connection-settings-section">

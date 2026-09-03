@@ -122,6 +122,7 @@ namespace MahjongGame.UI
                 item.AddToClassList("selectable");
                 item.clicked += () =>
                 {
+                    if (BattleMenuInputGate.Instance.IsBlocked(Time.frameCount)) return;
                     onSelected?.Invoke(TalentActionPanelPolicy.CloneOption(selected));
                     Hide();
                 };
@@ -227,6 +228,7 @@ namespace MahjongGame.UI
                 {
                     item.RegisterCallback<ClickEvent>(evt =>
                     {
+                        if (BattleMenuInputGate.Instance.IsBlocked(Time.frameCount)) return;
                         onSelected?.Invoke(index);
                         Hide();
                     });

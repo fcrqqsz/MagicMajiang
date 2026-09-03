@@ -1,0 +1,43 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" editor-extension-mode="False">
+    <ui:Template name="SharedAudioSettings" src="AudioSettings.uxml" />
+    <ui:Style src="BattleMenuStyles.uss" />
+    <ui:VisualElement name="BattleMenuOverlay" class="battle-menu-overlay">
+        <ui:ScrollView name="BattleMenuScroll" horizontal-scroller-visibility="Hidden" class="battle-menu-frame">
+            <ui:Label text="SUPER MAJIANG" class="battle-menu-eyebrow" />
+            <ui:VisualElement class="battle-menu-heading">
+                <ui:Label name="MenuTitle" text="对战菜单" class="battle-menu-title" />
+                <ui:Label name="KeyHint" text="Esc 关闭" class="battle-menu-key" />
+            </ui:VisualElement>
+            <ui:Label name="MenuNotice" text="菜单打开期间，对局仍在继续。" class="battle-menu-note" />
+            <ui:VisualElement name="HomePage" class="battle-menu-page">
+                <ui:Button name="ContinueButton" text="继续对战" class="battle-menu-button battle-menu-primary battle-menu-stack" />
+                <ui:Button name="SettingsButton" text="设置" class="battle-menu-button battle-menu-stack" />
+                <ui:VisualElement class="battle-menu-divider" />
+                <ui:Button name="ExitButton" text="退出对战" class="battle-menu-button battle-menu-danger battle-menu-stack" />
+                <ui:VisualElement class="battle-menu-footer">
+                    <ui:Label name="ExitHint" text="退出前将再次确认" class="battle-menu-footer-note" />
+                    <ui:Label text="在线对战" class="battle-menu-footer-note" />
+                </ui:VisualElement>
+            </ui:VisualElement>
+            <ui:VisualElement name="SettingsPage" class="battle-menu-page" style="display: none;">
+                <ui:Label text="声音设置" class="battle-menu-section-title" />
+                <ui:Instance template="SharedAudioSettings" />
+                <ui:VisualElement class="battle-menu-footer">
+                    <ui:Label text="即时生效，自动保存" class="battle-menu-footer-note" />
+                    <ui:Button name="SettingsBackButton" text="返回" class="battle-menu-button battle-menu-small" />
+                </ui:VisualElement>
+            </ui:VisualElement>
+            <ui:VisualElement name="ConfirmPage" class="battle-menu-page" style="display: none;">
+                <ui:Label text="退出后无法返回本场；其他玩家将继续对战，无在线真人时房间关闭。" class="battle-menu-warning" />
+                <ui:VisualElement class="battle-menu-confirm-actions">
+                    <ui:Button name="CancelExitButton" text="继续对战" class="battle-menu-button battle-menu-primary battle-menu-confirm-button battle-menu-safe" />
+                    <ui:Button name="ConfirmExitButton" text="确认退出" class="battle-menu-button battle-menu-danger battle-menu-confirm-button" />
+                </ui:VisualElement>
+            </ui:VisualElement>
+            <ui:VisualElement name="LeavingPage" class="battle-menu-page" style="display: none;">
+                <ui:Label name="LeavingStatus" text="正在返回大厅..." class="battle-menu-note" />
+                <ui:Button name="RetryExitButton" text="重试返回大厅" class="battle-menu-button" style="display: none;" />
+            </ui:VisualElement>
+        </ui:ScrollView>
+    </ui:VisualElement>
+</ui:UXML>

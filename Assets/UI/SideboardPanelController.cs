@@ -32,6 +32,7 @@ namespace MahjongGame.UI
         private VisualElement _seatLockStatus;
         private Label _errorLabel;
         private Button _lockButton;
+        private Button _battleMenuButton;
         private readonly Dictionary<Button, Action> _cardCallbacks = new Dictionary<Button, Action>();
         private Action _lockClicked;
 
@@ -72,6 +73,8 @@ namespace MahjongGame.UI
             _seatLockStatus = root.Q<VisualElement>("SeatLockStatus");
             _errorLabel = root.Q<Label>("ErrorLabel");
             _lockButton = root.Q<Button>("LockButton");
+            _battleMenuButton = root.Q<Button>("BattleMenuButton");
+            if (_battleMenuButton != null) _battleMenuButton.clicked += OpenBattleMenu;
 
             _lockClicked = HandleLockClicked;
             if (_lockButton != null) _lockButton.clicked += _lockClicked;
@@ -80,9 +83,12 @@ namespace MahjongGame.UI
 
         private void OnDestroy()
         {
+            if (_battleMenuButton != null) _battleMenuButton.clicked -= OpenBattleMenu;
             DisposePresentation();
             if (Instance == this) Instance = null;
         }
+
+        private static void OpenBattleMenu() => BattleMenuController.Instance?.OpenMenu();
 
         public void BindServerProxy(RemoteServerProxy proxy) =>
             Bind(proxy, NetworkManager.Instance?.RoomService);
@@ -152,6 +158,7 @@ namespace MahjongGame.UI
 
         private void HandleCardClicked(string talentId)
         {
+            if (BattleMenuInputGate.Instance.IsBlocked(Time.frameCount)) return;
             if (!_state.IsEditable || _state.PrivateDraft == null) return;
             bool isActive = _state.PrivateDraft.ActiveTalentIds.Contains(talentId, StringComparer.Ordinal);
             SideboardDraft changed = SideboardDraftPolicy.SetActive(
@@ -165,6 +172,7 @@ namespace MahjongGame.UI
 
         private void HandleLockClicked()
         {
+            if (BattleMenuInputGate.Instance.IsBlocked(Time.frameCount)) return;
             if (!SideboardPanelStatePolicy.TryBeginSubmit(
                     _state, out SideboardPanelViewState pending, out string[] activeTalentIds)) return;
 

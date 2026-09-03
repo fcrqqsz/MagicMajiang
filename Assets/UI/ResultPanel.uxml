@@ -1,6 +1,8 @@
 <ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" editor-extension-mode="False">
     <ui:Style src="ResultPanelStyles.uss" />
+    <ui:Style src="BattleMenuEntryStyles.uss" />
     <ui:VisualElement name="Overlay" class="overlay">
+        <ui:Button name="BattleMenuButton" text="菜单" class="battle-menu-entry battle-menu-entry--corner" />
         <ui:VisualElement name="Panel" class="result-panel">
             <ui:Label name="TitleLabel" text="荣  胡" class="title-text" />
             <ui:Label name="FinalFanHero" text="最终番 0" class="final-fan-hero" picking-mode="Ignore" />
