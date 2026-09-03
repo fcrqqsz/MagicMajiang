@@ -94,6 +94,7 @@ WebSocketClient
 *   `NetworkManager.cs`: 服务接口与 Additive 多场景加载的枢纽。
 *   `LoadingScreenController.cs`: UI Toolkit 加载遮罩控制。
 *   `CameraManager.cs`: 多场景动态相机切换控制。
+*   `Audio/`: 客户端常驻 `AudioManager` 管理两路 BGM 交叉淡变与统一 SFX；`ClientAudioSettings`、`AudioPreferences`、`MusicScenePolicy` 为纯 C# 音量、保存及场景路由策略，`PlayerPrefsAudioSettingsStore` 独立保存本机偏好。声音不进入网络协议或服务端状态，验证步骤见 `docs/audio_verification.md`。
 *   `GameManager.cs`: 客户端网络投影和场景协调器；不组装 Server/Clients，不拥有会话或 `TalentMatchRuntime`，也不驱动多局循环。
 *   `DeckManager.cs`: 牌山构建、洗牌、发牌管理。`GetWallTiles()` 暴露牌山引用供天赋修改，`ShuffleWall()` 公开由 GameServer 在天赋处理后显式调用。
 

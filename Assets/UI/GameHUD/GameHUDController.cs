@@ -18,7 +18,6 @@ namespace MahjongGame.UI
         [SerializeField] private UIDocument _document;
         [SerializeField] private VisualTreeAsset _talentChipTemplate;
         [SerializeField] private AudioClip _genericActiveTalentClip;
-        [SerializeField] private AudioSource _talentAudioSource;
 
         private Label _infoLabel;
         private Label[] _windLabels = new Label[4];   // 0=底部(本地), 1=右, 2=上, 3=左
@@ -509,16 +508,17 @@ namespace MahjongGame.UI
 
         private void PlayTalentAudio()
         {
-            if (_talentAudioSource == null || _genericActiveTalentClip == null)
+            var audio = MahjongGame.Systems.Audio.AudioManager.Instance;
+            if (audio == null || _genericActiveTalentClip == null)
             {
                 if (!_missingAudioWarningLogged)
                 {
-                    Debug.LogWarning("[GameHUD] Missing generic active-talent AudioSource or AudioClip.");
+                    Debug.LogWarning("[GameHUD] Missing client AudioManager or generic active-talent AudioClip.");
                     _missingAudioWarningLogged = true;
                 }
                 return;
             }
-            _talentAudioSource.PlayOneShot(_genericActiveTalentClip);
+            audio.PlaySfx(_genericActiveTalentClip);
         }
 
         private static bool IsNegativeEvent(string eventType) =>

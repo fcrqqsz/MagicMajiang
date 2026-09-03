@@ -6,6 +6,7 @@ using MahjongGame.Core;
 using MahjongGame.Core.Fan;
 using MahjongGame.Core.Network.Data;
 using MahjongGame.Systems;
+using MahjongGame.Systems.Audio;
 using MahjongGame.Talents;
 using MahjongGame.Core.Network;
 using MahjongGame.Core.Network.Messages;
@@ -91,6 +92,7 @@ namespace MahjongGame.UI
         private Label connectionLastCheckedLabel;
         private Label connectionErrorLabel;
         private Label connectionReadinessLabel;
+        private AudioSettingsView audioSettingsView;
 
         // Compendium Elements
         private Button subtabBtnMcr;
@@ -230,6 +232,7 @@ namespace MahjongGame.UI
             }
 
             RegisterConnectionSettingsCallbacks();
+            audioSettingsView = new AudioSettingsView(root, AudioManager.Instance);
 
             InitializeCompendiumElements(root);
 
@@ -280,6 +283,8 @@ namespace MahjongGame.UI
 
             UnregisterConnectionSettingsCallbacks();
             UnregisterCompendiumCallbacks();
+            audioSettingsView?.Dispose();
+            audioSettingsView = null;
         }
 
         private void InitializeCompendiumElements(VisualElement root)
@@ -913,6 +918,7 @@ namespace MahjongGame.UI
             if (viewCompendium != null) viewCompendium.style.display = tabName == "Compendium" ? DisplayStyle.Flex : DisplayStyle.None;
             if (viewCollection != null) viewCollection.style.display = tabName == "Collection" ? DisplayStyle.Flex : DisplayStyle.None;
             if (viewSettings != null) viewSettings.style.display = tabName == "Settings" ? DisplayStyle.Flex : DisplayStyle.None;
+            audioSettingsView?.SetVisible(tabName == "Settings");
 
             if (tabHome != null) UpdateTabStyle(tabHome, tabName == "Home");
             if (tabWorkshop != null) UpdateTabStyle(tabWorkshop, tabName == "Workshop");
@@ -954,6 +960,7 @@ namespace MahjongGame.UI
 
         private void ShowRoom()
         {
+            audioSettingsView?.SetVisible(false);
             if (sidebar != null) sidebar.style.display = DisplayStyle.None;
             if (viewHome != null) viewHome.style.display = DisplayStyle.None;
             if (viewWorkshop != null) viewWorkshop.style.display = DisplayStyle.None;

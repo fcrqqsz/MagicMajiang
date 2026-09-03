@@ -8,6 +8,11 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="Program.cs" />
+    <Compile Include="AudioSettingsTests.cs" />
+    <Compile Include="..\..\Assets\Scripts\Systems\Audio\ClientAudioSettings.cs" Link="ClientAudioSettings.cs" />
+    <Compile Include="..\..\Assets\Scripts\Systems\Audio\AudioPreferences.cs" Link="AudioPreferences.cs" />
+    <Compile Include="..\..\Assets\Scripts\Systems\Audio\MusicScenePolicy.cs" Link="MusicScenePolicy.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\SceneNames.cs" Link="SceneNames.cs" />
     <Compile Include="AssemblyInfo.cs" />
     <Compile Include="RegressionRunner.cs" />
     <Compile Include="ClientConnectionSettingsTests.cs" />

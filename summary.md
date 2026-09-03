@@ -1,5 +1,5 @@
 麻将 Roguelike 项目进度快照 (Project Snapshot)
-日期: 2026-09-02 版本: Alpha - Session Score Depletion 引擎: Unity (2022.3.61t9 / Tuanjie 1.6.8)
+日期: 2026-09-03 版本: Alpha - Client Audio 引擎: Unity (2022.3.61t9 / Tuanjie 1.6.8)
 
 > **文档约定**: 已完成的任务统一记录在 `milestone.md`，`plan.md` 仅保留待办与未来规划。
 
@@ -8,7 +8,12 @@
 *   **核心规则**: 以国标麻将 (MCR) 为基础，支持81番种计算。
 *   **特色玩法**: Roguelike 天赋系统、自定义 34 张牌库及异化值机制。
 
-2. 最近进展 (Recent Progress, snapshot 2026-09-02)
+2. 最近进展 (Recent Progress, snapshot 2026-09-03)
+*   **客户端 BGM 与声音设置接入 (2026-09-03)**:
+    *   常驻音频管理器使用 Master/Music/SFX 分组；登录及大厅共用大厅曲，对战使用对战曲，跨场景 1 秒交叉淡变，同曲和同场景恢复不重播。
+    *   大厅声音设置提供三路百分比滑条、试听与恢复默认，本机 PlayerPrefs 独立保存；既有天赋音效纳入 SFX，不修改服务器或协议。
+    *   Unity 已生成 Mixer、音源和 meta，BGM 改为 Streaming，统一常驻监听器；修正编辑器处于 Server 构建目标时客户端音频被禁用的问题。
+    *   纯 C# 回归、Unity 编译及音频运行检查通过；用户已确认人工验收无问题，验证与维护说明见 `docs/audio_verification.md`。
 *   **模式起始分与击飞终局完成 (2026-09-02)**:
     *   `SessionScoreRules` 统一提供 Single 50 / EastOnly 100 / HalfGame 150 / FullGame 200 起始分；初始资金仍在比赛开始阶段额外叠加 30 分。
     *   完整小局严格在基础计分、全部局末天赋和事件投递后判定 `Scores <= 0`；负分不截断、多人可同时击飞，预定局数与击飞同局时以正常打满为主原因。

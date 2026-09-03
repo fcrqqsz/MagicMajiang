@@ -1,5 +1,11 @@
 var runner = new RegressionRunner();
 
+if (args.Length == 1 && string.Equals(args[0], "audio", StringComparison.OrdinalIgnoreCase))
+{
+    runner.RunSuite("audio", AudioSettingsTests.Run);
+    return runner.Complete();
+}
+
 if (args.Length == 1 && string.Equals(args[0], "connection-settings", StringComparison.OrdinalIgnoreCase))
 {
     runner.RunSuite("connection-settings", ClientConnectionSettingsTests.Run);
@@ -82,5 +88,7 @@ GameTableLayoutPolicyTests.Run(runner);
 PrivateTileKnowledgeTrackerTests.Run(runner);
 OpponentKnownTileDisplayPolicyTests.Run(runner);
 
+runner.RunSuite("audio", AudioSettingsTests.Run);
 runner.RequireSuite("connection-settings");
+runner.RequireSuite("audio");
 return runner.Complete();
