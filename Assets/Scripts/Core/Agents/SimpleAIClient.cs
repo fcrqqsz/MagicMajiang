@@ -29,11 +29,22 @@ namespace MahjongGame.Core.Agents
         private WindDirection _roundWind = WindDirection.East;
         private WindDirection _seatWind = WindDirection.East;
         private ScoringOptions _scoringOptions = new ScoringOptions();
+        private readonly IAiDecisionStrategy _decisionStrategy;
+        private readonly IAiDecisionStrategy _fallbackStrategy;
+        private readonly int _strategySeed;
+        private int _remainingWallCount;
+        private int _roundNumber;
 
-        public SimpleAIClient(int playerId, IServer server)
+        public SimpleAIClient(int playerId, IServer server,
+            IAiDecisionStrategy decisionStrategy = null, int strategySeed = 0)
         {
             PlayerId = playerId;
             _server = server;
+            _decisionStrategy = decisionStrategy ?? new BeginnerAiDecisionStrategy();
+            _fallbackStrategy = _decisionStrategy is BeginnerAiDecisionStrategy
+                ? _decisionStrategy
+                : new BeginnerAiDecisionStrategy();
+            _strategySeed = strategySeed;
         }
 
         public void SetServer(IServer server)
@@ -70,7 +81,7 @@ namespace MahjongGame.Core.Agents
 
         public void OnWallCountChanged(int remainingCount)
         {
-            // AI does not render wall state.
+            _remainingWallCount = Math.Max(0, remainingCount);
         }
 
         public async void OnTileDrawn(TileData drawnTile, bool isKongReplacementDraw)
@@ -92,35 +103,39 @@ namespace MahjongGame.Core.Agents
                     _roundWind,
                     _seatWind,
                     isKongWin: isKongReplacementDraw);
-                if (actions.HasAction)
+                SelfTurnKongOptions kongOptions = SelfTurnKongResolver.Resolve(_hand, _melds);
+                AiDecisionResult decision = Decide(AiDecisionContext.ForSelfTurn(
+                    GetDecisionId(), PlayerId, _hand, _melds, actions, drawnTile,
+                    _scoringOptions, _remainingWallCount, GetDecisionSeed(), _roundWind, _seatWind,
+                    kongOptions), ct);
+                if (decision.ActionType == ClientActionType.Hu && actions.CanHu)
                 {
-                    if (actions.CanHu)
+                    bool canWin = MahjongLogic.CheckWinWithFan(
+                        _hand, _melds, drawnTile, true, out int totalFan, out List<string> fanDetails,
+                        _roundWind, _seatWind, _scoringOptions, isKongWin: isKongReplacementDraw);
+                    if (canWin)
                     {
-                        int totalFan;
-                        List<string> fanDetails;
-                        bool canWin = MahjongLogic.CheckWinWithFan(
-                            _hand,
-                            _melds,
-                            drawnTile,
-                            true,
-                            out totalFan,
-                            out fanDetails,
-                            _roundWind,
-                            _seatWind,
-                            _scoringOptions,
-                            isKongWin: isKongReplacementDraw);
-
-                        if (canWin)
-                        {
-                            var action = new ClientAction(PlayerId, ClientActionType.Hu, drawnTile);
-                            action.SetHuDetails(totalFan, fanDetails);
-                            _server.SubmitAction(action);
-                            return;
-                        }
+                        var action = new ClientAction(PlayerId, ClientActionType.Hu, drawnTile);
+                        action.SetHuDetails(totalFan, fanDetails);
+                        _server.SubmitAction(action);
+                        return;
                     }
                 }
-
-                TileData tileToDiscard = ChooseTileToDiscard();
+                if (decision.ActionType == ClientActionType.AnGan
+                    && actions.CanAnGan
+                    && kongOptions.AnGangTargets.Any(tile => SameTileKind(tile, decision.TargetTile)))
+                {
+                    _server.SubmitAction(new ClientAction(PlayerId, ClientActionType.AnGan, decision.TargetTile));
+                    return;
+                }
+                if (decision.ActionType == ClientActionType.JiaGang
+                    && actions.CanJiaGang
+                    && kongOptions.JiaGangTargets.Any(tile => SameTileKind(tile, decision.TargetTile)))
+                {
+                    _server.SubmitAction(new ClientAction(PlayerId, ClientActionType.JiaGang, decision.TargetTile));
+                    return;
+                }
+                TileData tileToDiscard = ResolveDiscard(decision);
                 _hand.Remove(tileToDiscard);
 
                 Debug.Log($"[AI {PlayerId}] 决定打出: {tileToDiscard}");
@@ -139,7 +154,7 @@ namespace MahjongGame.Core.Agents
             var ct = TurnCancellationToken;
             try
             {
-                await Task.Delay(UnityEngine.Random.Range(200, 600), ct);
+                await Task.Delay(GetResponseDelayMilliseconds(), ct);
 
                 bool isNextPlayer = (discarderId + 1) % 4 == PlayerId;
 
@@ -161,19 +176,29 @@ namespace MahjongGame.Core.Agents
                         }
                     }
 
-                    if (actions.CanPon && UnityEngine.Random.value > 0.5f)
+                    var chiOptions = isNextPlayer
+                        ? ActionValidator.GetChiCombinations(_hand, discardedTile)
+                        : new List<int[]>();
+                    AiDecisionResult decision = Decide(AiDecisionContext.ForDiscardResponse(
+                        GetDecisionId(), PlayerId, _hand, _melds, actions, discardedTile,
+                        chiOptions, _scoringOptions, _remainingWallCount, GetDecisionSeed(),
+                        _roundWind, _seatWind), ct);
+                    if (decision.ActionType == ClientActionType.Pon && actions.CanPon)
                     {
                         _server.SubmitAction(new ClientAction(PlayerId, ClientActionType.Pon, discardedTile));
                         return;
                     }
-                    else if (isNextPlayer && (actions.CanChiLeft || actions.CanChiMiddle || actions.CanChiRight) && UnityEngine.Random.value > 0.5f)
+                    if (decision.ActionType == ClientActionType.MingGan && actions.CanMingGan)
                     {
-                        var chiOptions = ActionValidator.GetChiCombinations(_hand, discardedTile);
-                        if (chiOptions.Count > 0)
-                        {
-                            _server.SubmitAction(new ClientAction(PlayerId, ClientActionType.Chi, discardedTile, chiOptions[0]));
-                            return;
-                        }
+                        _server.SubmitAction(new ClientAction(PlayerId, ClientActionType.MingGan, discardedTile));
+                        return;
+                    }
+                    if (decision.ActionType == ClientActionType.Chi
+                        && chiOptions.Any(option => SameCombination(option, decision.ChiCombination)))
+                    {
+                        _server.SubmitAction(new ClientAction(PlayerId, ClientActionType.Chi,
+                            discardedTile, decision.ChiCombination));
+                        return;
                     }
                 }
 
@@ -192,10 +217,13 @@ namespace MahjongGame.Core.Agents
             var ct = TurnCancellationToken;
             try
             {
-                await Task.Delay(UnityEngine.Random.Range(200, 600), ct);
+                await Task.Delay(GetResponseDelayMilliseconds(), ct);
                 bool canWin = MahjongLogic.CheckWinWithFan(_hand, _melds, targetTile, false,
                     out int totalFan, out List<string> fanDetails, _roundWind, _seatWind, _scoringOptions, true);
-                if (canWin)
+                AiDecisionResult decision = Decide(AiDecisionContext.ForRobKong(
+                    GetDecisionId(), PlayerId, _hand, _melds, canWin, targetTile,
+                    _scoringOptions, _remainingWallCount, GetDecisionSeed(), _roundWind, _seatWind), ct);
+                if (canWin && decision.ActionType == ClientActionType.Hu)
                 {
                     var action = new ClientAction(PlayerId, ClientActionType.Hu, targetTile);
                     action.SetHuDetails(totalFan, fanDetails);
@@ -235,7 +263,7 @@ namespace MahjongGame.Core.Agents
                         await Task.Delay(500, ct);
                         SortHand();
                         TryUseActiveTalent();
-                        TileData tileToDiscard = ChooseTileToDiscard();
+                        TileData tileToDiscard = ChooseTileToDiscard(ct);
                         _hand.Remove(tileToDiscard);
                         _server.SubmitAction(ClientAction.Discard(PlayerId, tileToDiscard));
                     }
@@ -246,7 +274,7 @@ namespace MahjongGame.Core.Agents
                         await Task.Delay(500, ct);
                         SortHand();
                         TryUseActiveTalent();
-                        TileData tileToDiscard = ChooseTileToDiscard();
+                        TileData tileToDiscard = ChooseTileToDiscard(ct);
                         _hand.Remove(tileToDiscard);
                         _server.SubmitAction(ClientAction.Discard(PlayerId, tileToDiscard));
                     }
@@ -283,6 +311,7 @@ namespace MahjongGame.Core.Agents
 
         public void OnRoundStart(int roundNumber, WindDirection prevalentWind, WindDirection seatWind, int dealerIndex)
         {
+            _roundNumber = roundNumber;
             _roundWind = prevalentWind;
             _seatWind = seatWind;
             Debug.Log($"[AI {PlayerId}] 第{roundNumber}局开始 - 圈风:{prevalentWind} 门风:{seatWind}");
@@ -365,16 +394,125 @@ namespace MahjongGame.Core.Agents
                 meld.SourcePlayerID, meld.IsConcealed);
         }
 
-        private TileData ChooseTileToDiscard()
+        private TileData ChooseTileToDiscard(CancellationToken cancellationToken)
         {
-            // 基础策略：优先打出单张的字牌(风/箭)，然后打出单张的老头牌(1,9)
-            // 简单实现：随机找一个字牌打，如果没有，随机打
-            var winds = _hand.Where(t => t.TileSuit == Suit.Wind || t.TileSuit == Suit.Dragon).ToList();
-            if (winds.Count > 0)
+            AiDecisionResult decision = Decide(AiDecisionContext.ForSelfTurn(
+                GetDecisionId(), PlayerId, _hand, _melds, new AllowedActions(), null,
+                _scoringOptions, _remainingWallCount, GetDecisionSeed(), _roundWind, _seatWind), cancellationToken);
+            return ResolveDiscard(decision);
+        }
+
+        private AiDecisionResult Decide(AiDecisionContext context, CancellationToken cancellationToken)
+        {
+            try
             {
-                return winds[UnityEngine.Random.Range(0, winds.Count)];
+                AiDecisionResult result = _decisionStrategy.Decide(context, cancellationToken);
+                if (IsUsableDecision(context, result)) return result;
             }
-            return _hand[UnityEngine.Random.Range(0, _hand.Count)];
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"[AI {PlayerId}] 策略异常，回退新手策略: {ex.Message}");
+            }
+
+            try
+            {
+                AiDecisionResult fallback = _fallbackStrategy.Decide(context, cancellationToken);
+                if (IsUsableDecision(context, fallback)) return fallback;
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"[AI {PlayerId}] 新手策略回退失败: {ex.Message}");
+            }
+
+            return context.Phase == AiDecisionPhase.SelfTurn
+                ? AiDecisionResult.Discard(_hand.FirstOrDefault())
+                : AiDecisionResult.Skip();
+        }
+
+        private TileData ResolveDiscard(AiDecisionResult decision)
+        {
+            TileData selected = decision?.ActionType == ClientActionType.Discard
+                ? _hand.FirstOrDefault(tile => SamePhysicalTile(tile, decision.TargetTile))
+                : null;
+            return selected ?? _hand.First();
+        }
+
+        private static bool IsUsableDecision(AiDecisionContext context, AiDecisionResult result)
+        {
+            if (result == null) return false;
+            if (context.Phase == AiDecisionPhase.SelfTurn)
+            {
+                if (result.ActionType == ClientActionType.Hu) return context.AllowedActions.CanHu;
+                if (result.ActionType == ClientActionType.AnGan)
+                    return context.AllowedActions.CanAnGan
+                           && context.SelfTurnKongOptions.AnGangTargets.Any(tile => SameTileKind(tile, result.TargetTile));
+                if (result.ActionType == ClientActionType.JiaGang)
+                    return context.AllowedActions.CanJiaGang
+                           && context.SelfTurnKongOptions.JiaGangTargets.Any(tile => SameTileKind(tile, result.TargetTile));
+                return result.ActionType == ClientActionType.Discard
+                       && result.TargetTile != null
+                       && context.Hand.Any(tile => SamePhysicalTile(tile, result.TargetTile));
+            }
+
+            if (result.ActionType == ClientActionType.Skip) return true;
+            if (result.ActionType == ClientActionType.Hu) return context.AllowedActions.CanHu;
+            if (context.Phase == AiDecisionPhase.RobKongResponse) return false;
+            if (result.ActionType == ClientActionType.Pon) return context.AllowedActions.CanPon;
+            if (result.ActionType == ClientActionType.MingGan) return context.AllowedActions.CanMingGan;
+            return result.ActionType == ClientActionType.Chi
+                   && context.ChiCombinations.Any(option => SameCombination(option, result.ChiCombination));
+        }
+
+        private long GetDecisionId()
+        {
+            return (_server as GameServer)?.ActiveDecision?.DecisionId ?? 0;
+        }
+
+        private int GetDecisionSeed()
+        {
+            unchecked
+            {
+                return (_strategySeed * 397) ^ (_roundNumber * 7919);
+            }
+        }
+
+        private int GetResponseDelayMilliseconds()
+        {
+            unchecked
+            {
+                long decisionId = GetDecisionId();
+                int value = (int)((uint)(GetDecisionSeed() ^ (int)decisionId ^ (int)(decisionId >> 32)) % 400u);
+                return 200 + value;
+            }
+        }
+
+        private static bool SameCombination(IReadOnlyList<int> left, IReadOnlyList<int> right)
+        {
+            return left != null && right != null && left.SequenceEqual(right);
+        }
+
+        private static bool SamePhysicalTile(TileData left, TileData right)
+        {
+            if (left == null || right == null) return false;
+            if (!string.IsNullOrWhiteSpace(left.ID) && !string.IsNullOrWhiteSpace(right.ID))
+                return string.Equals(left.ID, right.ID, StringComparison.Ordinal);
+            return ReferenceEquals(left, right)
+                   || left.TileSuit == right.TileSuit && left.Value == right.Value;
+        }
+
+        private static bool SameTileKind(TileData left, TileData right)
+        {
+            return left != null && right != null
+                   && left.TileSuit == right.TileSuit
+                   && left.Value == right.Value;
         }
 
         private void ExecutePonLocally(TileData target)

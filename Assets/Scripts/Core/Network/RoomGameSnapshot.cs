@@ -47,8 +47,11 @@ namespace MahjongGame.Core.Network
         public bool IsOccupied;
         public bool IsAi;
         public bool IsOnline;
+        public bool IsReady;
+        public bool IsHost;
         public string DisplayName;
         public string Controller;
+        public AiSeatConfigMessage AiConfig;
     }
 
     public sealed class RoomSnapshotTalentSource
@@ -72,7 +75,7 @@ namespace MahjongGame.Core.Network
         public bool[] SeatLocked;
     }
 
-    /// <summary>Builds a per-seat snapshot and deliberately contains no deck or talent configuration fields.</summary>
+    /// <summary>Builds a per-seat snapshot. Only permanent AI loadouts may enter the public seat projection.</summary>
     public static class RoomGameSnapshotBuilder
     {
         public static RoomGameSnapshot Build(RoomGameSnapshotSource source, int requestingSeatIndex)
@@ -196,12 +199,40 @@ namespace MahjongGame.Core.Network
                     isOccupied = sourceSeat?.IsOccupied ?? false,
                     isAi = sourceSeat?.IsAi ?? false,
                     isOnline = sourceSeat?.IsOnline ?? false,
+                    isReady = sourceSeat?.IsReady ?? false,
+                    isHost = sourceSeat?.IsHost ?? false,
                     displayName = sourceSeat?.DisplayName,
                     controller = sourceSeat == null || !sourceSeat.IsOccupied ? "None" : sourceSeat.Controller ?? (sourceSeat.IsAi ? "PermanentAi" : "OnlineHuman"),
+                    aiConfig = sourceSeat?.IsAi == true ? CloneAiConfig(sourceSeat.AiConfig) : null,
                     concealedTileCount = GetAt(source.Hands, seatIndex)?.Count ?? 0,
                     publicMelds = ToMeldSnapshots(GetAt(source.Melds, seatIndex))
                 };
             }).ToArray();
+        }
+
+        private static AiSeatConfigMessage CloneAiConfig(AiSeatConfigMessage source)
+        {
+            if (source?.loadout == null) return null;
+            PlayerLoadoutMessage loadout = source.loadout;
+            return new AiSeatConfigMessage
+            {
+                difficulty = source.difficulty,
+                template = source.template,
+                loadout = new PlayerLoadoutMessage
+                {
+                    schemaVersion = loadout.schemaVersion,
+                    alienationPreset = loadout.alienationPreset,
+                    deckEntries = (loadout.deckEntries ?? Array.Empty<DeckTileCountMessage>())
+                        .Select(entry => entry == null ? null : new DeckTileCountMessage
+                        {
+                            suit = entry.suit,
+                            value = entry.value,
+                            count = entry.count
+                        }).ToArray(),
+                    mainTalentSlotIds = loadout.mainTalentSlotIds?.ToArray() ?? Array.Empty<string>(),
+                    reserveTalentSlotIds = loadout.reserveTalentSlotIds?.ToArray() ?? Array.Empty<string>()
+                }
+            };
         }
 
         private static SnapshotScoringOptions ToScoringOptions(ScoringOptions options)
@@ -438,8 +469,11 @@ namespace MahjongGame.Core.Network.Messages
         public bool isOccupied;
         public bool isAi;
         public bool isOnline;
+        public bool isReady;
+        public bool isHost;
         public string controller;
         public string displayName;
+        public AiSeatConfigMessage aiConfig;
         public int concealedTileCount;
         public SnapshotMeld[] publicMelds;
     }

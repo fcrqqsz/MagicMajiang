@@ -12,7 +12,6 @@ namespace MahjongGame.Core.Network
     public sealed class RoomManager : IDisposable
     {
         private readonly int _maxRooms;
-        private readonly bool _aiFill;
         private readonly int _messageCacheSize;
         private readonly TimeSpan _reconnectWindow;
         private readonly ConnectionRegistry _connections;
@@ -24,7 +23,6 @@ namespace MahjongGame.Core.Network
 
         public RoomManager(
             int maxRooms,
-            bool aiFill,
             ConnectionRegistry connections,
             IAccountAuthenticator accountAuthenticator = null,
             int messageCacheSize = SeatMessageStream.DefaultCacheCapacity,
@@ -32,7 +30,6 @@ namespace MahjongGame.Core.Network
             ITalentTelemetrySink telemetrySink = null)
         {
             _maxRooms = Math.Max(1, maxRooms);
-            _aiFill = aiFill;
             _messageCacheSize = Math.Max(1, messageCacheSize);
             _reconnectWindow = TimeSpan.FromSeconds(Math.Max(1, reconnectWindowSeconds));
             _connections = connections ?? throw new ArgumentNullException(nameof(connections));
@@ -87,6 +84,10 @@ namespace MahjongGame.Core.Network
                     case "CreateRoom": HandleCreateRoom(connectionId, endpoint, MessageSerializer.DeserializePayload<CreateRoomMessage>(envelope.data)); break;
                     case "JoinRoom": HandleJoinRoom(connectionId, endpoint, MessageSerializer.DeserializePayload<JoinRoomMessage>(envelope.data)); break;
                     case "Ready": HandleReady(connectionId, endpoint, MessageSerializer.DeserializePayload<ReadyMessage>(envelope.data)); break;
+                    case "SetMatchReady": HandleSetMatchReady(connectionId, endpoint, MessageSerializer.DeserializePayload<SetMatchReadyMessage>(envelope.data)); break;
+                    case "AddAiSeat": HandleAddAiSeat(connectionId, endpoint, MessageSerializer.DeserializePayload<AddAiSeatMessage>(envelope.data)); break;
+                    case "UpdateAiSeat": HandleUpdateAiSeat(connectionId, endpoint, MessageSerializer.DeserializePayload<UpdateAiSeatMessage>(envelope.data)); break;
+                    case "RemoveAiSeat": HandleRemoveAiSeat(connectionId, endpoint, MessageSerializer.DeserializePayload<RemoveAiSeatMessage>(envelope.data)); break;
                     case "SideboardSubmit": HandleSideboardSubmit(connectionId, endpoint, MessageSerializer.DeserializePayload<SideboardSubmitMessage>(envelope.data)); break;
                     case "TalentAction": HandleTalentAction(connectionId, endpoint, MessageSerializer.DeserializePayload<TalentActionMessage>(envelope.data)); break;
                     case "Action": HandleAction(connectionId, endpoint, MessageSerializer.DeserializePayload<ClientActionMessage>(envelope.data)); break;
@@ -179,8 +180,7 @@ namespace MahjongGame.Core.Network
                 roomId,
                 (GameMode)request.gameMode,
                 alienationPreset,
-                connectionId,
-                _aiFill,
+                record.PlayerId,
                 _messageCacheSize,
                 _telemetrySink);
             room.OnClosed += HandleRoomClosed;
@@ -239,6 +239,93 @@ namespace MahjongGame.Core.Network
             });
         }
 
+        private void HandleSetMatchReady(string connectionId, GameEndpoint endpoint, SetMatchReadyMessage request)
+        {
+            if (!TryGetRoomMember(connectionId, endpoint, out Room room, out int seatIndex)) return;
+            string error = null;
+            if (request == null || !room.SetMatchReady(connectionId, request.isReady, out error))
+            {
+                SendError(connectionId, endpoint, "InvalidReady", error ?? "Match ready request is invalid.");
+                return;
+            }
+            BroadcastSeat(room, seatIndex);
+        }
+
+        private void HandleAddAiSeat(string connectionId, GameEndpoint endpoint, AddAiSeatMessage request)
+        {
+            if (!TryGetRoomMemberIdentity(connectionId, endpoint, out Room room, out ConnectionRegistry.ConnectionRecord record)) return;
+            if (!TryDecodeAiRequest(room, request?.difficulty ?? -1, request?.template ?? -1, request?.loadout,
+                    out AiDifficulty difficulty, out AiLoadoutTemplate template, out TrustedPlayerLoadout loadout, out string errorCode)
+                || !room.TryAddAi(record.PlayerId, request.seatIndex, difficulty, template, loadout, out errorCode))
+            {
+                SendError(connectionId, endpoint, errorCode ?? NetworkErrorCodes.InvalidAiSeat, "AI seat configuration is invalid.");
+                return;
+            }
+            BroadcastAiMutation(room, request.seatIndex);
+        }
+
+        private void HandleUpdateAiSeat(string connectionId, GameEndpoint endpoint, UpdateAiSeatMessage request)
+        {
+            if (!TryGetRoomMemberIdentity(connectionId, endpoint, out Room room, out ConnectionRegistry.ConnectionRecord record)) return;
+            if (!TryDecodeAiRequest(room, request?.difficulty ?? -1, request?.template ?? -1, request?.loadout,
+                    out AiDifficulty difficulty, out AiLoadoutTemplate template, out TrustedPlayerLoadout loadout, out string errorCode)
+                || !room.TryUpdateAi(record.PlayerId, request.seatIndex, difficulty, template, loadout, out errorCode))
+            {
+                SendError(connectionId, endpoint, errorCode ?? NetworkErrorCodes.InvalidAiSeat, "AI seat configuration is invalid.");
+                return;
+            }
+            BroadcastAiMutation(room, request.seatIndex);
+        }
+
+        private void HandleRemoveAiSeat(string connectionId, GameEndpoint endpoint, RemoveAiSeatMessage request)
+        {
+            if (!TryGetRoomMemberIdentity(connectionId, endpoint, out Room room, out ConnectionRegistry.ConnectionRecord record)) return;
+            string errorCode = null;
+            if (request == null || !room.TryRemoveAi(record.PlayerId, request.seatIndex, out errorCode))
+            {
+                SendError(connectionId, endpoint, errorCode ?? NetworkErrorCodes.InvalidAiSeat, "AI seat removal is invalid.");
+                return;
+            }
+            BroadcastAiMutation(room, request.seatIndex);
+        }
+
+        private static bool TryDecodeAiRequest(Room room, int difficultyValue, int templateValue,
+            PlayerLoadoutMessage message, out AiDifficulty difficulty, out AiLoadoutTemplate template,
+            out TrustedPlayerLoadout loadout, out string errorCode)
+        {
+            difficulty = (AiDifficulty)difficultyValue;
+            template = (AiLoadoutTemplate)templateValue;
+            loadout = null;
+            if (!Enum.IsDefined(typeof(AiDifficulty), difficulty)
+                || !Enum.IsDefined(typeof(AiLoadoutTemplate), template))
+            {
+                errorCode = NetworkErrorCodes.InvalidAiSeat;
+                return false;
+            }
+            return PlayerLoadoutCodec.TryDecode(message, room.AlienationPreset, out loadout, out errorCode);
+        }
+
+        private static void BroadcastSeat(Room room, int seatIndex)
+        {
+            room.Broadcast("RoomSeatUpdated", new RoomSeatUpdatedMessage
+            {
+                roomId = room.RoomId,
+                seat = room.GetSeatMessage(seatIndex)
+            });
+        }
+
+        private static void BroadcastAiMutation(Room room, int aiSeatIndex)
+        {
+            BroadcastSeat(room, aiSeatIndex);
+            RoomSeat host = room.Seats.FirstOrDefault(seat => seat != null && seat.PlayerId == room.HostPlayerId);
+            if (host != null) BroadcastSeat(room, host.SeatIndex);
+            room.Broadcast("RoomNotice", new RoomNoticeMessage
+            {
+                code = "AiConfigurationChanged",
+                message = "房主调整了 AI，等待房主重新准备。"
+            });
+        }
+
         private void HandleAction(string connectionId, GameEndpoint endpoint, ClientActionMessage message)
         {
             if (!TryGetRoomMember(connectionId, endpoint, out var room, out int seatIndex)) return;
@@ -289,6 +376,7 @@ namespace MahjongGame.Core.Network
                 reason = "Player left the room.",
                 seat = room.GetSeatMessage(seatIndex)
             });
+            BroadcastCurrentHost(room);
             _connections.UnbindRoomSeat(connectionId);
             if (shouldClose)
             {
@@ -308,6 +396,15 @@ namespace MahjongGame.Core.Network
                 || room.State == RoomState.Closed) { SendError(connectionId, endpoint, "NotInRoom", "Join a room first."); return false; }
             seatIndex = record.SeatIndex;
             return true;
+        }
+
+        private bool TryGetRoomMemberIdentity(string connectionId, GameEndpoint endpoint, out Room room, out ConnectionRegistry.ConnectionRecord record)
+        {
+            record = null;
+            if (!TryGetRoomMember(connectionId, endpoint, out room, out _)) return false;
+            if (_connections.TryGet(connectionId, out record) && record.IsAuthenticated) return true;
+            SendError(connectionId, endpoint, NetworkErrorCodes.AuthenticationRequired, "Authenticate before changing an AI seat.");
+            return false;
         }
 
         private void HandleDisconnected(string connectionId, GameEndpoint endpoint, long generation)
@@ -398,7 +495,6 @@ namespace MahjongGame.Core.Network
                 alienationPreset = (int)room.AlienationPreset,
                 roomState = (int)room.State,
                 isHost = isHost,
-                aiFillEnabled = room.AiFillEnabled,
                 acceptedSchemaVersion = loadout.SchemaVersion,
                 ownTotalAlienation = loadout.TotalAlienation,
                 streamId = room.Seats[seatIndex]?.MessageStream?.StreamId,
@@ -502,6 +598,7 @@ namespace MahjongGame.Core.Network
                         reason = "Reconnect window expired.",
                         seat = room.GetSeatMessage(seatIndex)
                     });
+                BroadcastCurrentHost(room);
                 if (shouldClose)
                 {
                     room.Broadcast("RoomClosed", new RoomClosedMessage { roomId = room.RoomId, reason = "No human player remains online." });
@@ -524,6 +621,15 @@ namespace MahjongGame.Core.Network
             }
             room.OnClosed -= HandleRoomClosed;
             _rooms.Remove(room.RoomId);
+        }
+
+        private static void BroadcastCurrentHost(Room room)
+        {
+            if (room == null || string.IsNullOrWhiteSpace(room.HostPlayerId)) return;
+            RoomSeat host = room.Seats.FirstOrDefault(seat => seat != null
+                && !seat.IsAi
+                && string.Equals(seat.PlayerId, room.HostPlayerId, StringComparison.OrdinalIgnoreCase));
+            if (host != null) BroadcastSeat(room, host.SeatIndex);
         }
 
         public void Dispose()

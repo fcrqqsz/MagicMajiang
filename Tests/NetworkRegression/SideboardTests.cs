@@ -903,7 +903,7 @@ internal static class SideboardTests
             new[] { null, "peek", null });
 
         using (var manager = new RoomManager(
-                   1, true, new ConnectionRegistry(int.MaxValue), messageCacheSize: 64))
+                   1, new ConnectionRegistry(int.MaxValue), messageCacheSize: 64))
         {
             Room room = CreateManagedSideboardRoom(manager, loadout, "manager-submit", out GameEndpoint endpoint);
             SideboardStartedMessage started = GetLastMessage<SideboardStartedMessage>(endpoint, "SideboardStarted");
@@ -923,7 +923,7 @@ internal static class SideboardTests
         }
 
         using (var manager = new RoomManager(
-                   1, true, new ConnectionRegistry(int.MaxValue), messageCacheSize: 64))
+                   1, new ConnectionRegistry(int.MaxValue), messageCacheSize: 64))
         {
             Room room = CreateManagedSideboardRoom(manager, loadout, "manager-timeout", out GameEndpoint endpoint);
             long deadline = GetLastMessage<SideboardStartedMessage>(
@@ -962,9 +962,11 @@ internal static class SideboardTests
         out GameEndpoint endpoint)
     {
         endpoint = new GameEndpoint();
-        var room = new Room(roomId, gameMode, AlienationPreset.Low, "host", true, 64);
-        if (!room.TryAddHuman("host", endpoint, "dev:host", "Host", loadout, out _)
-            || !room.SetReady("host", ReadyPhase.MatchStart, out _)
+        var room = new Room(roomId, gameMode, AlienationPreset.Low, "dev:host", 64);
+        bool hostAdded = room.TryAddHuman("host", endpoint, "dev:host", "Host", loadout, out _);
+        RoomTestFixtures.FillEmptySeatsWithAi(room, "dev:host", loadout);
+        if (!hostAdded
+            || !room.SetMatchReady("host", true, out _)
             || !room.SetReady("host", ReadyPhase.GameSceneLoaded, out _))
         {
             room.Dispose();
@@ -982,11 +984,14 @@ internal static class SideboardTests
     {
         host = new GameEndpoint();
         guest = new GameEndpoint();
-        var room = new Room(roomId, GameMode.HalfGame, AlienationPreset.Low, "host", true, 64);
-        if (!room.TryAddHuman("host", host, "dev:host", "Host", hostLoadout, out _)
-            || !room.TryAddHuman("guest", guest, "dev:guest", "Guest", guestLoadout, out _)
-            || !room.SetReady("host", ReadyPhase.MatchStart, out _)
-            || !room.SetReady("guest", ReadyPhase.MatchStart, out _)
+        var room = new Room(roomId, GameMode.HalfGame, AlienationPreset.Low, "dev:host", 64);
+        bool hostAdded = room.TryAddHuman("host", host, "dev:host", "Host", hostLoadout, out _);
+        bool guestAdded = room.TryAddHuman("guest", guest, "dev:guest", "Guest", guestLoadout, out _);
+        RoomTestFixtures.FillEmptySeatsWithAi(room, "dev:host", guestLoadout);
+        if (!hostAdded
+            || !guestAdded
+            || !room.SetMatchReady("host", true, out _)
+            || !room.SetMatchReady("guest", true, out _)
             || !room.SetReady("host", ReadyPhase.GameSceneLoaded, out _)
             || !room.SetReady("guest", ReadyPhase.GameSceneLoaded, out _))
         {
@@ -1023,8 +1028,19 @@ internal static class SideboardTests
         Room room = rooms?.Values.SingleOrDefault();
         if (room == null) throw new InvalidOperationException("RoomManager did not create the sideboard test room.");
 
-        endpoint.Receive(connectionId, 1, MessageSerializer.Serialize("Ready", 0,
-            new ReadyMessage { phase = (int)ReadyPhase.MatchStart }));
+        PlayerLoadoutMessage aiLoadout = PlayerLoadoutCodec.CreateMessage(
+            loadout.DeckConfig, loadout.TalentConfig, AlienationPreset.Low);
+        for (int seatIndex = 1; seatIndex < 4; seatIndex++)
+            endpoint.Receive(connectionId, 1, MessageSerializer.Serialize("AddAiSeat", 0,
+                new AddAiSeatMessage
+                {
+                    seatIndex = seatIndex,
+                    difficulty = (int)AiDifficulty.Beginner,
+                    template = (int)AiLoadoutTemplate.Stable,
+                    loadout = aiLoadout
+                }));
+        endpoint.Receive(connectionId, 1, MessageSerializer.Serialize("SetMatchReady", 0,
+            new SetMatchReadyMessage { isReady = true }));
         endpoint.Receive(connectionId, 1, MessageSerializer.Serialize("Ready", 0,
             new ReadyMessage { phase = (int)ReadyPhase.GameSceneLoaded }));
         CompleteRounds(room, 4, connectionId);

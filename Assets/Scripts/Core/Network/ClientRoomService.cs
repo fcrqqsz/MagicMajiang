@@ -60,7 +60,7 @@ namespace MahjongGame.Core.Network
         public int SeatIndex => _roomState.SeatIndex;
         public GameMode GameMode => _roomState.GameMode;
         public RoomState RoomState => (RoomState)_roomState.RoomStateValue;
-        public bool AiFillEnabled => _roomState.AiFillEnabled;
+        public string AuthenticatedPlayerId { get; private set; }
         public AlienationPreset AlienationPreset => _roomState.AlienationPreset;
         public RoomSeatMessage[] Seats => _roomState.Seats;
         public bool HasRoom => _roomState.HasRoom;
@@ -92,6 +92,7 @@ namespace MahjongGame.Core.Network
         public event Action<RoomSeatMessage[]> SeatSnapshotChanged;
         public event Action<string> RoomError;
         public event Action<string> RoomClosed;
+        public event Action<RoomNoticeMessage> RoomNotice;
         public event Action ResyncRequired;
         public event Action<string> ConnectionRecoveryRequired;
         public event Action<ClientRecoveryProgress> RecoveryProgressChanged;
@@ -179,6 +180,46 @@ namespace MahjongGame.Core.Network
             if (!CanSubmitRoomCommand()) return;
             if (!HasRoom) { RoomError?.Invoke("No active room."); return; }
             Send("Ready", new ReadyMessage { phase = (int)phase });
+        }
+
+        public bool SetMatchReady(bool isReady)
+        {
+            if (!CanSubmitRoomCommand() || !HasRoom) return false;
+            Send("SetMatchReady", new SetMatchReadyMessage { isReady = isReady });
+            return true;
+        }
+
+        public bool AddAiSeat(int seatIndex, AiDifficulty difficulty, AiLoadoutTemplate template, PlayerLoadoutMessage loadout)
+        {
+            if (!CanSubmitRoomCommand() || !HasRoom || loadout == null) return false;
+            Send("AddAiSeat", new AddAiSeatMessage
+            {
+                seatIndex = seatIndex,
+                difficulty = (int)difficulty,
+                template = (int)template,
+                loadout = loadout
+            });
+            return true;
+        }
+
+        public bool UpdateAiSeat(int seatIndex, AiDifficulty difficulty, AiLoadoutTemplate template, PlayerLoadoutMessage loadout)
+        {
+            if (!CanSubmitRoomCommand() || !HasRoom || loadout == null) return false;
+            Send("UpdateAiSeat", new UpdateAiSeatMessage
+            {
+                seatIndex = seatIndex,
+                difficulty = (int)difficulty,
+                template = (int)template,
+                loadout = loadout
+            });
+            return true;
+        }
+
+        public bool RemoveAiSeat(int seatIndex)
+        {
+            if (!CanSubmitRoomCommand() || !HasRoom) return false;
+            Send("RemoveAiSeat", new RemoveAiSeatMessage { seatIndex = seatIndex });
+            return true;
         }
 
         public bool SubmitTalentAction(TalentActionOption option)
@@ -444,7 +485,7 @@ namespace MahjongGame.Core.Network
             switch (envelope.type)
             {
                 case "HelloAccepted":
-                    HandleHelloAccepted();
+                    HandleHelloAccepted(MessageSerializer.DeserializePayload<HelloAcceptedMessage>(envelope.data));
                     break;
                 case "HeartbeatAck":
                     HandleHeartbeatAcknowledgement();
@@ -475,6 +516,9 @@ namespace MahjongGame.Core.Network
                     }
                     break;
                 case "RoomReady": _roomState.SetRoomState((int)RoomState.LoadingGameScene); RoomReady?.Invoke(); break;
+                case "RoomNotice":
+                    RoomNotice?.Invoke(MessageSerializer.DeserializePayload<RoomNoticeMessage>(envelope.data));
+                    break;
                 case "SideboardStarted":
                     _roomState.ApplySideboardStarted(
                         MessageSerializer.DeserializePayload<SideboardStartedMessage>(envelope.data));
@@ -711,8 +755,9 @@ namespace MahjongGame.Core.Network
             return false;
         }
 
-        private void HandleHelloAccepted()
+        private void HandleHelloAccepted(HelloAcceptedMessage accepted)
         {
+            AuthenticatedPlayerId = accepted?.playerId;
             bool shouldSendPendingRoomCommand = _helloHandshake.AcceptHello();
             _hasHelloAccepted = true;
             _lastHeartbeatAcknowledgementAt = Time.unscaledTime;

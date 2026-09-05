@@ -15,11 +15,12 @@ internal static class AiTalentPolicyTests
         MatchRoundSideboardAndWinTelemetryUsesAuthoritativeAggregates(runner);
         ThrowingTelemetrySinkCannotInterruptRoomCompletion(runner);
         DeterministicLoadoutsPassTheAuthoritativeCodec(runner);
+        NamedRoomTemplatesAreDistinctAndLegal(runner);
         ArchetypePrioritiesOccupyLegalActiveSlots(runner);
         ActivePolicyUsesOnlyAuthoritativeOptions(runner);
         PublicChargeOptionRemainsPrivateAndDeepCopied(runner);
         ActiveSubmissionUsesCurrentLongDecisionAndDoesNotLoop(runner);
-        RoomFillsAiSeatsWithPresetLegalArchetypes(runner);
+        RoomAcceptsExplicitPresetLegalAiSeats(runner);
         SideboardRetainsLockedAndCountersPublicThreats(runner);
         SideboardDiscoversCountersThroughCapabilities(runner);
         RoomAiThreatInputExcludesInactiveAndNonpublicOpponents(runner);
@@ -229,14 +230,15 @@ internal static class AiTalentPolicyTests
             "throwing-telemetry-room",
             GameMode.Single,
             AlienationPreset.Low,
-            "host",
-            true,
+            "dev:telemetry-host",
             64,
             new ThrowingTalentTelemetrySink());
         var endpoint = new GameEndpoint();
-        bool started = room.TryAddHuman(
-                           "host", endpoint, "dev:telemetry-host", "Host", loadout, out _)
-                       && room.SetReady("host", ReadyPhase.MatchStart, out _)
+        bool hostAdded = room.TryAddHuman(
+            "host", endpoint, "dev:telemetry-host", "Host", loadout, out _);
+        RoomTestFixtures.FillEmptySeatsWithAi(room, "dev:telemetry-host", loadout);
+        bool started = hostAdded
+                       && room.SetMatchReady("host", true, out _)
                        && room.SetReady("host", ReadyPhase.GameSceneLoaded, out _);
         GameServer server = room.GameServer;
         server?.CompleteDrawRound();
@@ -298,6 +300,32 @@ internal static class AiTalentPolicyTests
                 }
             }
         }
+    }
+
+    private static void NamedRoomTemplatesAreDistinctAndLegal(RegressionRunner runner)
+    {
+        PlayerLoadoutMessage aggressive = AiTalentLoadoutFactory.Create(
+            AlienationPreset.Standard, AiLoadoutTemplate.Aggressive, 0, 55);
+        PlayerLoadoutMessage stable = AiTalentLoadoutFactory.Create(
+            AlienationPreset.Standard, AiLoadoutTemplate.Stable, 0, 55);
+        PlayerLoadoutMessage synergy = AiTalentLoadoutFactory.Create(
+            AlienationPreset.Standard, AiLoadoutTemplate.TalentSynergy, 0, 55);
+
+        bool aggressiveAccepted = PlayerLoadoutCodec.TryDecode(
+            aggressive, AlienationPreset.Standard, out _, out _);
+        bool stableAccepted = PlayerLoadoutCodec.TryDecode(
+            stable, AlienationPreset.Standard, out _, out _);
+        bool synergyAccepted = PlayerLoadoutCodec.TryDecode(
+            synergy, AlienationPreset.Standard, out _, out _);
+        string aggressiveDeck = string.Join("|", aggressive.deckEntries.Select(entry => $"{entry.suit}:{entry.value}:{entry.count}"));
+        string stableDeck = string.Join("|", stable.deckEntries.Select(entry => $"{entry.suit}:{entry.value}:{entry.count}"));
+        string synergyDeck = string.Join("|", synergy.deckEntries.Select(entry => $"{entry.suit}:{entry.value}:{entry.count}"));
+
+        runner.Check(aggressiveAccepted && stableAccepted && synergyAccepted
+                     && aggressiveDeck != stableDeck
+                     && synergyDeck != stableDeck
+                     && !aggressive.mainTalentSlotIds.SequenceEqual(synergy.mainTalentSlotIds),
+            "Named AI room templates produce distinct legal deck and talent loadouts.");
     }
 
     private static void ArchetypePrioritiesOccupyLegalActiveSlots(RegressionRunner runner)
@@ -518,17 +546,31 @@ internal static class AiTalentPolicyTests
             "AI stops when an accepted action is advertised again with the same authoritative fingerprint");
     }
 
-    private static void RoomFillsAiSeatsWithPresetLegalArchetypes(RegressionRunner runner)
+    private static void RoomAcceptsExplicitPresetLegalAiSeats(RegressionRunner runner)
     {
         TrustedPlayerLoadout hostLoadout = DecodeEmptyLoadout(AlienationPreset.Low);
         using var room = new Room(
-            "ai-loadout-room", GameMode.Single, AlienationPreset.Low, "host", true, 64);
+            "ai-loadout-room", GameMode.Single, AlienationPreset.Low, "dev:host", 64);
         var endpoint = new GameEndpoint();
-        bool started = room.TryAddHuman(
-                           "host", endpoint, "dev:host", "Host", hostLoadout, out _)
-                       && room.SetReady("host", ReadyPhase.MatchStart, out _);
+        bool allLegal = room.TryAddHuman(
+            "host", endpoint, "dev:host", "Host", hostLoadout, out _);
+        for (int seatIndex = 1; seatIndex < 4; seatIndex++)
+        {
+            PlayerLoadoutMessage generated = AiTalentLoadoutFactory.Create(
+                AlienationPreset.Low, seatIndex, 100 + seatIndex);
+            allLegal &= PlayerLoadoutCodec.TryDecode(
+                generated, AlienationPreset.Low, out TrustedPlayerLoadout aiLoadout, out _)
+                && room.TryAddAi(
+                    "dev:host",
+                    seatIndex,
+                    AiDifficulty.Standard,
+                    (AiLoadoutTemplate)((seatIndex - 1) % 3),
+                    aiLoadout,
+                    out _);
+        }
+        bool started = allLegal && room.SetMatchReady("host", true, out _);
 
-        bool allLegal = started;
+        allLegal = started;
         for (int seatIndex = 1; seatIndex < 4; seatIndex++)
         {
             RoomSeat seat = room.Seats[seatIndex];
@@ -545,26 +587,7 @@ internal static class AiTalentPolicyTests
         }
 
         runner.Check(allLegal,
-            "Room AI fill locks preset-legal archetype loadouts instead of empty standard placeholders");
-
-        NetworkMessageEnvelope[] messages = endpoint.SentMessages
-            .Select(MessageSerializer.DeserializeEnvelope)
-            .Where(envelope => envelope != null)
-            .ToArray();
-        RoomSeatMessage[] aiSeatUpdates = messages
-            .Where(envelope => envelope.type == "RoomSeatUpdated")
-            .Select(envelope => MessageSerializer.DeserializePayload<RoomSeatUpdatedMessage>(envelope.data)?.seat)
-            .Where(seat => seat?.isAi == true)
-            .ToArray();
-        int lastAiUpdateIndex = Array.FindLastIndex(messages, envelope =>
-            envelope.type == "RoomSeatUpdated"
-            && MessageSerializer.DeserializePayload<RoomSeatUpdatedMessage>(envelope.data)?.seat?.isAi == true);
-        int roomReadyIndex = Array.FindIndex(messages, envelope => envelope.type == "RoomReady");
-        runner.Check(aiSeatUpdates.Select(seat => seat.displayName).SequenceEqual(
-                         new[] { "AI 2", "AI 3", "AI 4" })
-                     && lastAiUpdateIndex >= 0
-                     && roomReadyIndex > lastAiUpdateIndex,
-            "AI fill broadcasts every generated AI identity before clients enter the game scene");
+            "Explicit AI seats lock preset-legal archetype loadouts instead of implicit placeholders");
     }
 
     private static void SideboardRetainsLockedAndCountersPublicThreats(RegressionRunner runner)
@@ -730,7 +753,7 @@ internal static class AiTalentPolicyTests
             new[] { null, "interception", "composure" },
             CreateTwentyAlienationDeck());
         using var room = new Room(
-            "ai-active-threat-filter", GameMode.Single, AlienationPreset.Standard, "host", true, 64);
+            "ai-active-threat-filter", GameMode.Single, AlienationPreset.Standard, "dev:host", 64);
         typeof(Room).GetField("_talentRuntime", BindingFlags.Instance | BindingFlags.NonPublic)
             .SetValue(room, runtime);
         runtime.ReplaceActiveSet(1, Array.Empty<string>());

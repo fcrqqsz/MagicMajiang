@@ -154,9 +154,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 3f7a4987e66a4d34bc1cd054296f9a6e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  defaultPort: 9876
-  defaultMaxRooms: 1
-  defaultAiFill: 1
 --- !u!4 &291332440
 Transform:
   m_ObjectHideFlags: 0

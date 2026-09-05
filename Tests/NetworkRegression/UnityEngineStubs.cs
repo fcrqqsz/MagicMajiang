@@ -250,6 +250,8 @@ namespace MahjongGame.Core.Agents
     public sealed class SimpleAIClient : StubPlayerClient
     {
         public SimpleAIClient(int playerId, object server) => PlayerId = playerId;
+        public SimpleAIClient(int playerId, object server, IAiDecisionStrategy strategy, int strategySeed)
+            => PlayerId = playerId;
         public void SetServer(MahjongGame.Core.Network.GameServer server) { }
     }
 }

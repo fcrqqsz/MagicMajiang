@@ -54,23 +54,6 @@ namespace MahjongGame.UI
         private VisualElement roomAdmissionBlocker;
         private Label roomAdmissionBlockerLabel;
 
-        // Dedicated room view
-        private VisualElement roomSeatRows;
-        private Label roomIdLabel;
-        private Label roomStateLabel;
-        private Label roomModeLabel;
-        private Label roomScoreRuleLabel;
-        private Label roomPresetPublicLabel;
-        private Label roomAiFillLabel;
-        private Label roomHumanCountLabel;
-        private Label roomLocalDeckLabel;
-        private Label roomLocalAlienationLabel;
-        private Label roomLoadoutLockLabel;
-        private Label roomWaitingLabel;
-        private Button leaveRoomButton;
-        private Button roomReadyButton;
-        private readonly List<RoomSeatRowView> roomSeatRowViews = new List<RoomSeatRowView>();
-
         // GameMode Selector
         private Label modeNameLabel;
         private Button btnModePrev;
@@ -174,21 +157,6 @@ namespace MahjongGame.UI
             roomAdmissionBlocker = root.Q<VisualElement>("RoomAdmissionBlocker");
             roomAdmissionBlockerLabel = root.Q<Label>("RoomAdmissionBlockerLabel");
 
-            roomSeatRows = root.Q<VisualElement>("RoomSeatRows");
-            roomIdLabel = root.Q<Label>("RoomIdLabel");
-            roomStateLabel = root.Q<Label>("RoomStateLabel");
-            roomModeLabel = root.Q<Label>("RoomModeLabel");
-            roomScoreRuleLabel = root.Q<Label>("RoomScoreRuleLabel");
-            roomPresetPublicLabel = root.Q<Label>("RoomPresetPublicLabel");
-            roomAiFillLabel = root.Q<Label>("RoomAiFillLabel");
-            roomHumanCountLabel = root.Q<Label>("RoomHumanCountLabel");
-            roomLocalDeckLabel = root.Q<Label>("RoomLocalDeckLabel");
-            roomLocalAlienationLabel = root.Q<Label>("RoomLocalAlienationLabel");
-            roomLoadoutLockLabel = root.Q<Label>("RoomLoadoutLockLabel");
-            roomWaitingLabel = root.Q<Label>("RoomWaitingLabel");
-            leaveRoomButton = root.Q<Button>("LeaveRoomButton");
-            roomReadyButton = root.Q<Button>("RoomReadyButton");
-
             modeNameLabel = root.Q<Label>("ModeNameLabel");
             btnModePrev = root.Q<Button>("BtnModePrev");
             btnModeNext = root.Q<Button>("BtnModeNext");
@@ -215,8 +183,6 @@ namespace MahjongGame.UI
             if (matchmakingButton != null) matchmakingButton.clicked += OnMatchmakingClicked;
             if (btnViewRoomList != null) btnViewRoomList.clicked += OnViewRoomListClicked;
             if (joinRoomButton != null) joinRoomButton.clicked += OnJoinRoomClicked;
-            if (leaveRoomButton != null) leaveRoomButton.clicked += OnLeaveRoomClicked;
-            if (roomReadyButton != null) roomReadyButton.clicked += OnReadyRoomClicked;
             if (btnDeckPrev != null) btnDeckPrev.clicked += OnDeckPrevClicked;
             if (btnDeckNext != null) btnDeckNext.clicked += OnDeckNextClicked;
             if (btnModePrev != null) btnModePrev.clicked += OnModePrevClicked;
@@ -265,8 +231,6 @@ namespace MahjongGame.UI
             if (matchmakingButton != null) matchmakingButton.clicked -= OnMatchmakingClicked;
             if (btnViewRoomList != null) btnViewRoomList.clicked -= OnViewRoomListClicked;
             if (joinRoomButton != null) joinRoomButton.clicked -= OnJoinRoomClicked;
-            if (leaveRoomButton != null) leaveRoomButton.clicked -= OnLeaveRoomClicked;
-            if (roomReadyButton != null) roomReadyButton.clicked -= OnReadyRoomClicked;
             UnsubscribeRoomService();
             if (btnDeckPrev != null) btnDeckPrev.clicked -= OnDeckPrevClicked;
             if (btnDeckNext != null) btnDeckNext.clicked -= OnDeckNextClicked;
@@ -929,12 +893,8 @@ namespace MahjongGame.UI
             // Handle independent DeckEditor UI — 用 display 切换避免 UIDocument 重建
             if (deckEditorToolkit != null)
             {
-                var deckRoot = deckEditorToolkit.GetComponent<UIDocument>()?.rootVisualElement;
-                if (deckRoot != null)
-                    deckRoot.style.display = tabName == "Workshop" ? DisplayStyle.Flex : DisplayStyle.None;
-
-                if (tabName == "Workshop")
-                    deckEditorToolkit.RefreshDeckList();
+                if (tabName == "Workshop") deckEditorToolkit.ShowProfileEditor();
+                else deckEditorToolkit.HideEditor();
             }
 
             if (tabName == "Home")
@@ -948,7 +908,7 @@ namespace MahjongGame.UI
             }
         }
 
-        private void ShowHome(string statusMessage = null)
+        public void ShowHome(string statusMessage = null)
         {
             if (sidebar != null) sidebar.style.display = DisplayStyle.Flex;
             if (viewRoom != null) viewRoom.style.display = DisplayStyle.None;
@@ -958,7 +918,7 @@ namespace MahjongGame.UI
             if (!string.IsNullOrWhiteSpace(statusMessage)) SetRoomStatus(statusMessage);
         }
 
-        private void ShowRoom()
+        public void ShowRoom()
         {
             audioSettingsView?.SetVisible(false);
             if (sidebar != null) sidebar.style.display = DisplayStyle.None;
@@ -969,115 +929,8 @@ namespace MahjongGame.UI
             if (viewSettings != null) viewSettings.style.display = DisplayStyle.None;
             if (viewRoom != null) viewRoom.style.display = DisplayStyle.Flex;
 
-            if (deckEditorToolkit != null)
-            {
-                var deckRoot = deckEditorToolkit.GetComponent<UIDocument>()?.rootVisualElement;
-                if (deckRoot != null) deckRoot.style.display = DisplayStyle.None;
-            }
-
-            RefreshRoomView();
-        }
-
-        private void RefreshRoomView()
-        {
-            var room = NetworkManager.Instance?.RoomService;
-            if (room?.HasRoom != true) return;
-
-            if (roomIdLabel != null) roomIdLabel.text = $"房间 {room.RoomId}";
-            if (roomStateLabel != null) roomStateLabel.text = GetRoomStateText(room.RoomState);
-            if (roomModeLabel != null) roomModeLabel.text = $"对局模式：{GetGameModeText(room.GameMode)}";
-            if (roomScoreRuleLabel != null)
-                roomScoreRuleLabel.text = $"起始分：{SessionScoreRules.GetInitialScore(room.GameMode)} ｜ 0 分及以下击飞";
-            RoomAlienationVisibilityView roomAlienation = RoomAlienationPresentationPolicy.Build(
-                room.AlienationPreset, room.OwnTotalAlienation);
-            if (roomPresetPublicLabel != null) roomPresetPublicLabel.text = roomAlienation.PublicSummary;
-            if (roomAiFillLabel != null) roomAiFillLabel.text = $"AI 补位：{(room.AiFillEnabled ? "已开启" : "已关闭")}";
-
-            int humanCount = 0;
-            foreach (var seat in room.Seats)
-            {
-                if (seat != null && seat.isOccupied && !seat.isAi) humanCount++;
-            }
-            if (roomHumanCountLabel != null) roomHumanCountLabel.text = $"真人玩家：{humanCount}/4";
-
-            if (roomLocalDeckLabel != null) roomLocalDeckLabel.text = $"牌库：{GetSelectedDeckName()}";
-            if (roomLocalAlienationLabel != null) roomLocalAlienationLabel.text = roomAlienation.OwnSummary;
-            if (roomLoadoutLockLabel != null) roomLoadoutLockLabel.text = "构筑已锁定（服务器已确认）";
-
-            bool localReady = room.SeatIndex >= 0 && room.SeatIndex < room.Seats.Length && room.Seats[room.SeatIndex] != null && room.Seats[room.SeatIndex].isReady;
-            bool canReady = room.RoomState == RoomState.WaitingForPlayers || room.RoomState == RoomState.WaitingForMatchReady;
-            if (roomReadyButton != null) roomReadyButton.SetEnabled(canReady && !localReady);
-            if (roomWaitingLabel != null)
-                roomWaitingLabel.text = localReady ? "已确认准备，等待其他真人玩家。" : "等待所有真人玩家确认准备。";
-
-            EnsureRoomSeatRows();
-            for (int index = 0; index < roomSeatRowViews.Count; index++)
-            {
-                RoomSeatMessage seat = index < room.Seats.Length ? room.Seats[index] : null;
-                UpdateRoomSeatRow(roomSeatRowViews[index], index, seat, index == room.SeatIndex);
-            }
-        }
-
-        private void EnsureRoomSeatRows()
-        {
-            if (roomSeatRows == null) return;
-            while (roomSeatRowViews.Count < 4)
-            {
-                var root = new VisualElement();
-                root.AddToClassList("room-seat-row");
-                var number = new Label(); number.AddToClassList("room-seat-number"); root.Add(number);
-                var name = new Label(); name.AddToClassList("room-seat-name"); root.Add(name);
-                var kind = new Label(); kind.AddToClassList("room-seat-kind"); root.Add(kind);
-                var ready = new Label(); ready.AddToClassList("room-seat-ready"); root.Add(ready);
-                roomSeatRows.Add(root);
-                roomSeatRowViews.Add(new RoomSeatRowView(root, number, name, kind, ready));
-            }
-        }
-
-        private static void UpdateRoomSeatRow(RoomSeatRowView row, int seatIndex, RoomSeatMessage seat, bool isLocal)
-        {
-            if (isLocal) row.Root.AddToClassList("room-seat-row-local");
-            else row.Root.RemoveFromClassList("room-seat-row-local");
-
-            row.Number.text = $"席位 {seatIndex + 1}";
-            if (seat == null || !seat.isOccupied)
-            {
-                row.Name.text = "空席";
-                row.Kind.text = "--";
-                row.Ready.text = "等待";
-                return;
-            }
-
-            row.Name.text = string.IsNullOrWhiteSpace(seat.displayName) ? $"玩家 {seatIndex + 1}" : seat.displayName;
-            row.Kind.text = seat.isAi ? "AI" : "真人";
-            row.Ready.text = seat.isReady ? "已准备" : "未准备";
-        }
-
-        private static string GetRoomStateText(RoomState state) => state switch
-        {
-            RoomState.WaitingForPlayers => "等待玩家加入",
-            RoomState.WaitingForMatchReady => "等待准备",
-            RoomState.LoadingGameScene => "正在进入对局",
-            RoomState.WaitingForNextRound => "等待下一局",
-            RoomState.InRound => "对局进行中",
-            _ => "房间已关闭"
-        };
-
-        private static string GetGameModeText(GameMode mode) => mode switch
-        {
-            GameMode.EastOnly => "东风局",
-            GameMode.HalfGame => "半庄",
-            GameMode.FullGame => "全庄",
-            _ => "单局"
-        };
-
-        private static string GetSelectedDeckName()
-        {
-            var profile = ProfileManager.Instance?.CurrentProfile;
-            if (profile?.SavedDecks == null || profile.SavedDecks.Count == 0) return "标准牌库";
-            int index = profile.SelectedDeckIndex;
-            if (index < 0 || index >= profile.SavedDecks.Count) return "本地构筑";
-            return string.IsNullOrWhiteSpace(profile.SavedDecks[index]?.DeckName) ? "未命名构筑" : profile.SavedDecks[index].DeckName;
+            if (deckEditorToolkit?.IsRoomAiEditorOpen != true)
+                deckEditorToolkit?.HideEditor();
         }
 
         private void UpdateTabStyle(Button btn, bool isActive)
@@ -1147,23 +1000,6 @@ namespace MahjongGame.UI
             SetRoomStatus("正在加入房间...");
         }
 
-        private void OnReadyRoomClicked()
-        {
-            if (NetworkManager.Instance?.RoomService?.HasRoom != true) { SetRoomStatus("请先创建或加入房间。"); return; }
-            NetworkManager.Instance.RoomService.SendReady(ReadyPhase.MatchStart);
-            if (roomReadyButton != null) roomReadyButton.SetEnabled(false);
-            if (roomWaitingLabel != null) roomWaitingLabel.text = "已确认准备，等待当前房间内所有真人玩家。";
-            SetRoomStatus("已准备，等待当前房间内所有真人玩家准备。");
-        }
-
-        private void OnLeaveRoomClicked()
-        {
-            var room = NetworkManager.Instance?.RoomService;
-            if (room == null) return;
-            room.LeaveRoom();
-            ShowHome("已离开房间。");
-        }
-
         private GameMode GetSelectedGameMode()
         {
             int mode = ProfileManager.Instance?.CurrentProfile?.Settings.SelectedGameMode ?? 0;
@@ -1196,11 +1032,7 @@ namespace MahjongGame.UI
         {
             var service = NetworkManager.Instance?.RoomService;
             if (service == null) return;
-            service.RoomJoined += HandleRoomJoined;
-            service.SeatSnapshotChanged += HandleSeatSnapshotChanged;
             service.RoomError += HandleRoomError;
-            service.RoomClosed += HandleRoomClosed;
-            service.ReconnectSnapshotApplied += HandleReconnectSnapshotApplied;
             service.ConnectionDiagnosticsChanged += HandleConnectionDiagnosticsChanged;
             RefreshConnectionSettings(service.ConnectionDiagnostics);
         }
@@ -1209,65 +1041,16 @@ namespace MahjongGame.UI
         {
             var service = NetworkManager.Instance?.RoomService;
             if (service == null) return;
-            service.RoomJoined -= HandleRoomJoined;
-            service.SeatSnapshotChanged -= HandleSeatSnapshotChanged;
             service.RoomError -= HandleRoomError;
-            service.RoomClosed -= HandleRoomClosed;
-            service.ReconnectSnapshotApplied -= HandleReconnectSnapshotApplied;
             service.ConnectionDiagnosticsChanged -= HandleConnectionDiagnosticsChanged;
         }
 
-        private void HandleRoomJoined(RoomJoinedMessage message)
-        {
-            ShowRoom();
-            SetRoomStatus($"当前房间：{message.roomId} ｜ 我的席位：{message.seatIndex + 1} ｜ 请点击“确认准备”。");
-        }
-        private void HandleSeatSnapshotChanged(RoomSeatMessage[] seats)
-        {
-            var room = NetworkManager.Instance?.RoomService;
-            if (room?.HasRoom == true)
-            {
-                ShowRoom();
-                RefreshRoomView();
-                return;
-            }
-            if (room == null) return;
-            int humanCount = System.Array.FindAll(seats, seat => seat != null && seat.isOccupied && !seat.isAi).Length;
-            SetRoomStatus($"当前房间：{room.RoomId} ｜ 我的席位：{room.SeatIndex + 1} ｜ 真人玩家：{humanCount}/4");
-        }
-        private void HandleReconnectSnapshotApplied(RoomGameSnapshot snapshot)
-        {
-            if (snapshot == null || ClientRecoverySceneRoutingPolicy.GetTarget((RoomState)snapshot.roomState) != ClientRecoverySceneTarget.Lobby) return;
-            ShowRoom();
-            SetRoomStatus($"已恢复房间 {snapshot.roomId}，我的席位：{snapshot.requestingSeatIndex + 1}。");
-        }
-        private void HandleRoomClosed(string reason) => ShowHome(reason);
-
         private void HandleRoomError(string message)
         {
-            ShowRoomAdmissionBlocker(message);
+            if (NetworkManager.Instance?.RoomService?.HasRoom != true)
+                ShowRoomAdmissionBlocker(message);
             SetRoomStatus(message);
-            if (NetworkManager.Instance?.RoomService?.HasRoom == true && roomWaitingLabel != null)
-                roomWaitingLabel.text = message;
         }
-        private void SetRoomStatus(string message) { if (roomStatusLabel != null) roomStatusLabel.text = message; }
-
-        private sealed class RoomSeatRowView
-        {
-            public VisualElement Root { get; }
-            public Label Number { get; }
-            public Label Name { get; }
-            public Label Kind { get; }
-            public Label Ready { get; }
-
-            public RoomSeatRowView(VisualElement root, Label number, Label name, Label kind, Label ready)
-            {
-                Root = root;
-                Number = number;
-                Name = name;
-                Kind = kind;
-                Ready = ready;
-            }
-        }
+        public void SetRoomStatus(string message) { if (roomStatusLabel != null) roomStatusLabel.text = message; }
     }
 }

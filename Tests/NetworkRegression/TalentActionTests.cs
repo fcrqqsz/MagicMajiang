@@ -233,7 +233,7 @@ internal static class TalentActionTests
             expectedServerSubmissions: 0,
             "an empty bound-seat TalentAction emits one ordered InvalidAction resolution");
 
-        using (var manager = new RoomManager(1, true, new ConnectionRegistry(int.MaxValue), messageCacheSize: 64))
+        using (var manager = new RoomManager(1, new ConnectionRegistry(int.MaxValue), messageCacheSize: 64))
         {
             Room room = CreateManagedTalentRoom(manager, "talent-route-wrong-phase", out GameEndpoint endpoint);
             room.GameServer.CompleteDrawRound();
@@ -280,7 +280,7 @@ internal static class TalentActionTests
                 "the same authenticated WebSocket can create a new room after terminal unbinding");
         }
 
-        using (var manager = new RoomManager(1, true, new ConnectionRegistry(int.MaxValue), messageCacheSize: 64))
+        using (var manager = new RoomManager(1, new ConnectionRegistry(int.MaxValue), messageCacheSize: 64))
         {
             var endpoint = new GameEndpoint();
             endpoint.Connect("talent-route-unbound", 1);
@@ -323,7 +323,7 @@ internal static class TalentActionTests
         int expectedServerSubmissions,
         string description)
     {
-        using var manager = new RoomManager(1, true, new ConnectionRegistry(int.MaxValue), messageCacheSize: 64);
+        using var manager = new RoomManager(1, new ConnectionRegistry(int.MaxValue), messageCacheSize: 64);
         Room room = CreateManagedTalentRoom(manager, connectionId, out GameEndpoint endpoint);
         configure(room);
         int beforeCount = endpoint.SentMessages.Count;
@@ -393,8 +393,19 @@ internal static class TalentActionTests
         Room room = rooms?.Values.SingleOrDefault();
         if (room == null) throw new InvalidOperationException("RoomManager did not create the talent route test room.");
 
-        endpoint.Receive(connectionId, 1, MessageSerializer.Serialize("Ready", 0,
-            new ReadyMessage { phase = (int)ReadyPhase.MatchStart }));
+        PlayerLoadoutMessage aiLoadout = PlayerLoadoutCodec.CreateMessage(
+            loadout.DeckConfig, loadout.TalentConfig, AlienationPreset.Standard);
+        for (int seatIndex = 1; seatIndex < 4; seatIndex++)
+            endpoint.Receive(connectionId, 1, MessageSerializer.Serialize("AddAiSeat", 0,
+                new AddAiSeatMessage
+                {
+                    seatIndex = seatIndex,
+                    difficulty = (int)AiDifficulty.Beginner,
+                    template = (int)AiLoadoutTemplate.Stable,
+                    loadout = aiLoadout
+                }));
+        endpoint.Receive(connectionId, 1, MessageSerializer.Serialize("SetMatchReady", 0,
+            new SetMatchReadyMessage { isReady = true }));
         endpoint.Receive(connectionId, 1, MessageSerializer.Serialize("Ready", 0,
             new ReadyMessage { phase = (int)ReadyPhase.GameSceneLoaded }));
         if (room.State != RoomState.InRound || room.GameServer == null)
@@ -2924,7 +2935,7 @@ internal static class TalentActionTests
             "piercing_insight on player without number tiles yields empty tile list");
 
         // 4. Network and Snapshot integration
-        using (var manager = new RoomManager(1, true, new ConnectionRegistry(int.MaxValue), messageCacheSize: 64))
+        using (var manager = new RoomManager(1, new ConnectionRegistry(int.MaxValue), messageCacheSize: 64))
         {
             var endpoint = new GameEndpoint();
             endpoint.Connect("insight-test-user", 1);
@@ -2950,8 +2961,18 @@ internal static class TalentActionTests
                 System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
             var rooms = roomsField?.GetValue(manager) as Dictionary<string, Room>;
             Room room = rooms?.Values.SingleOrDefault();
-            endpoint.Receive("insight-test-user", 1, MessageSerializer.Serialize("Ready", 0,
-                new ReadyMessage { phase = (int)ReadyPhase.MatchStart }));
+            for (int seatIndex = 1; seatIndex < 4; seatIndex++)
+                endpoint.Receive("insight-test-user", 1, MessageSerializer.Serialize("AddAiSeat", 0,
+                    new AddAiSeatMessage
+                    {
+                        seatIndex = seatIndex,
+                        difficulty = (int)AiDifficulty.Beginner,
+                        template = (int)AiLoadoutTemplate.Stable,
+                        loadout = PlayerLoadoutCodec.CreateMessage(
+                            standard.DeckConfig, standard.TalentConfig, AlienationPreset.Standard)
+                    }));
+            endpoint.Receive("insight-test-user", 1, MessageSerializer.Serialize("SetMatchReady", 0,
+                new SetMatchReadyMessage { isReady = true }));
             endpoint.Receive("insight-test-user", 1, MessageSerializer.Serialize("Ready", 0,
                 new ReadyMessage { phase = (int)ReadyPhase.GameSceneLoaded }));
 

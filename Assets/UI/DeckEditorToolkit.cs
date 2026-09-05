@@ -5,6 +5,8 @@ using UnityEngine;
 using UnityEngine.UIElements;
 using MahjongGame.Core;
 using MahjongGame.Core.Network.Data;
+using MahjongGame.Core.Network;
+using MahjongGame.Core.Network.Messages;
 using MahjongGame.Systems;
 using MahjongGame.Talents;
 
@@ -56,6 +58,9 @@ namespace MahjongGame.UI
         // Sidebar 引用
         private VisualElement _deckListContainer;
         private Button _btnNewDeck;
+        private VisualElement _deckSidebar;
+        private VisualElement _deckListScroll;
+        private Label _deckListTitle;
 
         // Talent section
         private VisualElement _talentSlotsContainer;
@@ -69,6 +74,10 @@ namespace MahjongGame.UI
         private int _selectedDeckIndex;
         private AlienationPreset _currentAlienationPreset = AlienationPreset.Standard;
         private bool _isDraftDirty;
+        private bool _isRoomAiMode;
+        private AiLoadoutDraft _roomAiWorkingDraft;
+        private Action<AiLoadoutDraft> _roomAiApply;
+        public bool IsRoomAiEditorOpen => _isRoomAiMode && _root?.style.display.value == DisplayStyle.Flex;
 
         private Action _selectLowPreset;
         private Action _selectStandardPreset;
@@ -115,6 +124,9 @@ namespace MahjongGame.UI
             // Sidebar
             _deckListContainer = _root.Q<VisualElement>("DeckListContainer");
             _btnNewDeck = _root.Q<Button>("BtnNewDeck");
+            _deckSidebar = _root.Q<VisualElement>("DeckSidebar");
+            _deckListScroll = _root.Q<VisualElement>("DeckListScroll");
+            _deckListTitle = _root.Q<Label>("DeckListTitle");
             _talentSlotsContainer = _root.Q<VisualElement>("TalentSlotsSection");
             _mainTalentSlots = _root.Q<VisualElement>("MainTalentSlots");
             _reserveTalentSlots = _root.Q<VisualElement>("ReserveTalentSlots");
@@ -166,6 +178,7 @@ namespace MahjongGame.UI
             CloseUnsavedPrompt();
             _alienationDial?.RemoveFromHierarchy();
             _alienationDial = null;
+            CleanupRoomAiEditor(false);
         }
 
         private void OnClearAllClicked() => BatchUpdateDeck(0);
@@ -176,6 +189,7 @@ namespace MahjongGame.UI
         /// </summary>
         public void RefreshDeckList()
         {
+            if (_isRoomAiMode) return;
             _savedDecks = ProfileManager.Instance?.CurrentProfile?.SavedDecks;
             if (_savedDecks == null || _savedDecks.Count == 0)
             {
@@ -444,10 +458,15 @@ namespace MahjongGame.UI
             });
         }
 
-        private void OnSaveClicked() => TrySaveCurrentDeck();
+        private void OnSaveClicked()
+        {
+            if (!TrySaveCurrentDeck()) return;
+            if (_isRoomAiMode) CleanupRoomAiEditor(true);
+        }
 
         private bool TrySaveCurrentDeck()
         {
+            if (_isRoomAiMode) return TryApplyRoomAiDraft();
             if (_selectedDeckIndex < 0 || _selectedDeckIndex >= _savedDecks.Count) return false;
             if (_currentConfig.GenerateTiles(0).Count != 34) return false;
 
@@ -476,7 +495,11 @@ namespace MahjongGame.UI
 
         private void OnExitClicked()
         {
-            RequestDraftNavigation(() => OnExitRequested?.Invoke());
+            RequestDraftNavigation(() =>
+            {
+                if (_isRoomAiMode) CleanupRoomAiEditor(false);
+                else OnExitRequested?.Invoke();
+            });
         }
 
         private void RequestDraftNavigation(Action continuation)
@@ -501,7 +524,8 @@ namespace MahjongGame.UI
             Action continuation = _pendingDraftNavigation;
             if (!TrySaveCurrentDeck()) return;
             CloseUnsavedPrompt();
-            continuation?.Invoke();
+            if (_isRoomAiMode) CleanupRoomAiEditor(true);
+            else continuation?.Invoke();
         }
 
         private void OnUnsavedDiscardClicked()
@@ -534,6 +558,122 @@ namespace MahjongGame.UI
                 _currentConfig = DeckConfig.CreateStandard();
             _isDraftDirty = false;
             RefreshUI();
+        }
+
+        /// <summary>
+        /// Reuses the player deck editor as a room-scoped AI draft editor. Profile persistence remains disabled.
+        /// </summary>
+        public void OpenRoomAiDraft(AiLoadoutDraft draft, string displayName, Action<AiLoadoutDraft> onApply)
+        {
+            if (draft == null || _root == null) return;
+            PlayerLoadoutMessage message = draft.ToMessage();
+            if (!PlayerLoadoutCodec.TryDecode(message, out TrustedPlayerLoadout trusted, out string error))
+            {
+                Debug.LogWarning($"[DeckEditor] Unable to open AI draft: {error}");
+                return;
+            }
+
+            _isRoomAiMode = true;
+            _roomAiWorkingDraft = draft.Clone();
+            _roomAiApply = onApply;
+            _currentConfig = trusted.DeckConfig;
+            _currentTalents = trusted.TalentConfig;
+            _currentTalents.Normalize();
+            _currentAlienationPreset = draft.RoomPreset;
+            _isDraftDirty = false;
+            CloseUnsavedPrompt();
+            _root.Q<VisualElement>("TalentPickerOverlay")?.RemoveFromHierarchy();
+            if (_document != null) _document.sortingOrder = 60;
+            if (_deckListScroll != null) _deckListScroll.style.display = DisplayStyle.None;
+            if (_btnNewDeck != null) _btnNewDeck.style.display = DisplayStyle.None;
+            if (_deckListTitle != null)
+            {
+                _deckListTitle.style.display = DisplayStyle.Flex;
+                _deckListTitle.text = "房间 AI 草稿";
+            }
+            _btnPresetLow.SetEnabled(false);
+            _btnPresetStandard.SetEnabled(false);
+            _btnPresetHigh.SetEnabled(false);
+            _btnSave.text = "应用到房间草稿";
+            _btnExit.text = "返回房间";
+            _budgetTitle.text = "AI 高级构筑";
+            _budgetDeckName.text = string.IsNullOrWhiteSpace(displayName) ? "永久 AI" : displayName;
+            _root.style.display = DisplayStyle.Flex;
+            RefreshUI();
+        }
+
+        public void ShowProfileEditor()
+        {
+            if (_root == null) return;
+            if (_isRoomAiMode) CleanupRoomAiEditor(false);
+            if (_document != null) _document.sortingOrder = 0;
+            RestoreProfileEditorChrome();
+            _root.style.display = DisplayStyle.Flex;
+            RefreshDeckList();
+        }
+
+        public void HideEditor()
+        {
+            if (_isRoomAiMode) CleanupRoomAiEditor(false);
+            else if (_root != null) _root.style.display = DisplayStyle.None;
+        }
+
+        public void CloseRoomAiEditorForAuthorityChange()
+        {
+            if (_isRoomAiMode) CleanupRoomAiEditor(false);
+        }
+
+        private bool TryApplyRoomAiDraft()
+        {
+            if (_roomAiWorkingDraft == null || _currentConfig.GenerateTiles(0).Count != 34) return false;
+            PlayerLoadoutMessage message = PlayerLoadoutCodec.CreateMessage(
+                _currentConfig, _currentTalents, _currentAlienationPreset);
+            if (!PlayerLoadoutCodec.TryDecode(
+                    message, _roomAiWorkingDraft.RoomPreset, out _, out string error))
+            {
+                Debug.LogWarning($"[DeckEditor] AI draft rejected locally: {error}");
+                return false;
+            }
+
+            if (_isDraftDirty)
+                _roomAiWorkingDraft.ReplaceLoadout(AiLoadoutTemplate.Custom, message);
+            _isDraftDirty = false;
+            RefreshStats();
+            return true;
+        }
+
+        private void CleanupRoomAiEditor(bool apply)
+        {
+            if (!_isRoomAiMode) return;
+            Action<AiLoadoutDraft> callback = _roomAiApply;
+            AiLoadoutDraft result = apply ? _roomAiWorkingDraft?.Clone() : null;
+            _pendingDraftNavigation = null;
+            CloseUnsavedPrompt();
+            _root?.Q<VisualElement>("TalentPickerOverlay")?.RemoveFromHierarchy();
+            if (_root != null) _root.style.display = DisplayStyle.None;
+            if (_document != null) _document.sortingOrder = 0;
+            _roomAiApply = null;
+            _roomAiWorkingDraft = null;
+            _isRoomAiMode = false;
+            _isDraftDirty = false;
+            RestoreProfileEditorChrome();
+            if (apply && result != null) callback?.Invoke(result);
+        }
+
+        private void RestoreProfileEditorChrome()
+        {
+            if (_deckListScroll != null) _deckListScroll.style.display = DisplayStyle.Flex;
+            if (_btnNewDeck != null) _btnNewDeck.style.display = DisplayStyle.Flex;
+            if (_deckListTitle != null)
+            {
+                _deckListTitle.style.display = DisplayStyle.Flex;
+                _deckListTitle.text = "牌库列表";
+            }
+            _btnPresetLow?.SetEnabled(true);
+            _btnPresetStandard?.SetEnabled(true);
+            _btnPresetHigh?.SetEnabled(true);
+            if (_btnSave != null) _btnSave.text = "保存";
+            if (_btnExit != null) _btnExit.text = "退出";
         }
 
         private void GenerateRows()
@@ -722,10 +862,12 @@ namespace MahjongGame.UI
             DeckEditorDraftView draftView = DeckEditorDraftPresentationPolicy.Build(
                 gauge, total, _isDraftDirty);
             _totalText.text = $"Total: {total} / 34";
-            _budgetTitle.text = draftView.Title;
-            _budgetDeckName.text = _selectedDeckIndex >= 0 && _selectedDeckIndex < _savedDecks.Count
-                ? _savedDecks[_selectedDeckIndex].DeckName
-                : string.Empty;
+            _budgetTitle.text = _isRoomAiMode ? "AI 高级构筑" : draftView.Title;
+            _budgetDeckName.text = _savedDecks != null
+                && _selectedDeckIndex >= 0
+                && _selectedDeckIndex < _savedDecks.Count
+                ? (_isRoomAiMode ? _budgetDeckName.text : _savedDecks[_selectedDeckIndex].DeckName)
+                : (_isRoomAiMode ? _budgetDeckName.text : string.Empty);
             _alienationDialValue.text = $"{gauge.Total} / {gauge.Limit}";
             _alienationDial.SetValue(gauge.Fill01, draftView.Tone);
             _budgetDeckCost.text = $"牌山成本    {gauge.DeckCost}";
@@ -745,6 +887,7 @@ namespace MahjongGame.UI
 
         private void SelectAlienationPreset(AlienationPreset preset)
         {
+            if (_isRoomAiMode) return;
             if (_currentAlienationPreset == preset) return;
             _currentAlienationPreset = preset;
             MarkDraftDirty();

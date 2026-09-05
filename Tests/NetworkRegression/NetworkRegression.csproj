@@ -24,6 +24,7 @@
     <Compile Include="..\..\Assets\Scripts\Core\BattleMenuInputGate.cs" Link="BattleMenuInputGate.cs" />
     <Compile Include="IdentityConnectionTests.cs" />
     <Compile Include="RoomSessionTests.cs" />
+    <Compile Include="RoomTestFixtures.cs" />
     <Compile Include="NetworkAuthorityBoundaryTests.cs" />
     <Compile Include="SnapshotReconnectTests.cs" />
     <Compile Include="ActionValidationTests.cs" />
@@ -36,6 +37,9 @@
     <Compile Include="TalentPresentationTests.cs" />
     <Compile Include="SideboardTests.cs" />
     <Compile Include="AiTalentPolicyTests.cs" />
+    <Compile Include="AiDecisionStrategyTests.cs" />
+    <Compile Include="RoomPanelViewModelTests.cs" />
+    <Compile Include="AiLoadoutDraftTests.cs" />
     <Compile Include="AuthoritativePublicTileTransitionTests.cs" />
     <Compile Include="CompendiumPresentationTests.cs" />
     <Compile Include="GameTableLayoutPolicyTests.cs" />
@@ -57,6 +61,10 @@
     <Compile Include="..\..\Assets\Scripts\Core\Network\ServerBootstrapOptions.cs" Link="ServerBootstrapOptions.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\SeatMessageStream.cs" Link="SeatMessageStream.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\RoomLifecyclePolicy.cs" Link="RoomLifecyclePolicy.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\Network\AiSeatModels.cs" Link="AiSeatModels.cs" />
+    <Compile Include="..\..\Assets\Scripts\UI\RoomPanelViewModel.cs" Link="RoomPanelViewModel.cs" />
+    <Compile Include="..\..\Assets\Scripts\UI\AiLoadoutDraft.cs" Link="AiLoadoutDraft.cs" />
+    <Compile Include="..\..\Assets\Scripts\UI\AiQuickConfigController.cs" Link="AiQuickConfigController.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\GameRoundCompletion.cs" Link="GameRoundCompletion.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\GameRoundSetupSequence.cs" Link="GameRoundSetupSequence.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Network\PrivateTileKnowledgeTracker.cs" Link="PrivateTileKnowledgeTracker.cs" />
@@ -120,6 +128,10 @@
     <Compile Include="..\..\Assets\Scripts\Core\Agents\IPlayerClient.cs" Link="IPlayerClient.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Agents\AiTalentLoadoutFactory.cs" Link="AiTalentLoadoutFactory.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Agents\AiTalentDecisionPolicy.cs" Link="AiTalentDecisionPolicy.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\Agents\AiDecisionModels.cs" Link="AiDecisionModels.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\Agents\BeginnerAiDecisionStrategy.cs" Link="BeginnerAiDecisionStrategy.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\Agents\AiHandShapeEvaluator.cs" Link="AiHandShapeEvaluator.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\Agents\StandardAiDecisionStrategy.cs" Link="StandardAiDecisionStrategy.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Services\WallService.cs" Link="WallService.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\TileData.cs" Link="TileData.cs" />
     <Compile Include="..\..\Assets\Scripts\Core\Meld.cs" Link="Meld.cs" />

@@ -54,12 +54,24 @@ namespace MahjongGame.Core.Network
         public int SeatIndex { get; private set; } = -1;
         public GameMode GameMode { get; private set; } = GameMode.Single;
         public int RoomStateValue { get; private set; }
-        public bool AiFillEnabled { get; private set; }
         public AlienationPreset AlienationPreset { get; private set; } = MahjongGame.Core.AlienationPreset.Standard;
         public int AcceptedSchemaVersion { get; private set; }
         public int OwnTotalAlienation { get; private set; }
         public RoomSeatMessage[] Seats { get; private set; } = Array.Empty<RoomSeatMessage>();
         public bool HasRoom => !string.IsNullOrEmpty(RoomId) && SeatIndex >= 0;
+        public bool IsHost => SeatIndex >= 0 && SeatIndex < Seats.Length && Seats[SeatIndex]?.isHost == true;
+        public int HumanPlayerCount => Seats.Count(seat => seat?.isOccupied == true && !seat.isAi);
+        public int AiPlayerCount => Seats.Count(seat => seat?.isOccupied == true && seat.isAi);
+        public int EmptySeatCount => Math.Max(0, 4 - Seats.Count(seat => seat?.isOccupied == true));
+        public bool OwnMatchReady => SeatIndex >= 0 && SeatIndex < Seats.Length && Seats[SeatIndex]?.isReady == true;
+        public bool CanSetMatchReady => HasRoom
+                                        && RoomStateValue == (int)RoomState.WaitingForMatchReady
+                                        && (OwnMatchReady || EmptySeatCount == 0);
+        public string MatchReadyBlockedReason => CanSetMatchReady
+            ? null
+            : EmptySeatCount > 0
+                ? "四个席位全部占用后才能准备。"
+                : "当前房间阶段不能修改准备状态。";
 
         public bool IsSessionCompleted { get; private set; }
         public string ResultRoomId { get; private set; }
@@ -77,7 +89,6 @@ namespace MahjongGame.Core.Network
             SeatIndex = joined.seatIndex;
             GameMode = (GameMode)joined.gameMode;
             RoomStateValue = joined.roomState;
-            AiFillEnabled = joined.aiFillEnabled;
             AlienationPreset = (AlienationPreset)joined.alienationPreset;
             AcceptedSchemaVersion = joined.acceptedSchemaVersion;
             OwnTotalAlienation = joined.ownTotalAlienation;
@@ -105,7 +116,11 @@ namespace MahjongGame.Core.Network
                 isOnline = seat.isOnline,
                 isTemporarilyAiControlled = seat.controller == "AiControlled",
                 controlState = seat.controller,
-                displayName = seat.displayName
+                displayName = seat.displayName,
+                isReady = seat.isReady,
+                isHost = seat.isHost,
+                seatKind = seat.isAi ? (int)RoomSeatKind.PermanentAi : (int)RoomSeatKind.Human,
+                aiConfig = CloneAiConfig(seat.aiConfig)
             }).ToArray();
         }
 
@@ -176,7 +191,6 @@ namespace MahjongGame.Core.Network
             SeatIndex = -1;
             GameMode = GameMode.Single;
             RoomStateValue = 0;
-            AiFillEnabled = false;
             AlienationPreset = MahjongGame.Core.AlienationPreset.Standard;
             AcceptedSchemaVersion = 0;
             OwnTotalAlienation = 0;
@@ -210,10 +224,38 @@ namespace MahjongGame.Core.Network
                     isTemporarilyAiControlled = seat.isTemporarilyAiControlled,
                     controlState = seat.controlState,
                     isReady = seat.isReady,
-                    displayName = seat.displayName
+                    displayName = seat.displayName,
+                    seatKind = seat.seatKind,
+                    isHost = seat.isHost,
+                    aiConfig = CloneAiConfig(seat.aiConfig)
                 };
             }
             return clone;
+        }
+
+        private static AiSeatConfigMessage CloneAiConfig(AiSeatConfigMessage source)
+        {
+            if (source == null) return null;
+            PlayerLoadoutMessage loadout = source.loadout;
+            return new AiSeatConfigMessage
+            {
+                difficulty = source.difficulty,
+                template = source.template,
+                loadout = loadout == null ? null : new PlayerLoadoutMessage
+                {
+                    schemaVersion = loadout.schemaVersion,
+                    alienationPreset = loadout.alienationPreset,
+                    deckEntries = (loadout.deckEntries ?? Array.Empty<DeckTileCountMessage>())
+                        .Select(entry => entry == null ? null : new DeckTileCountMessage
+                        {
+                            suit = entry.suit,
+                            value = entry.value,
+                            count = entry.count
+                        }).ToArray(),
+                    mainTalentSlotIds = loadout.mainTalentSlotIds?.ToArray() ?? Array.Empty<string>(),
+                    reserveTalentSlotIds = loadout.reserveTalentSlotIds?.ToArray() ?? Array.Empty<string>()
+                }
+            };
         }
 
         private static SnapshotSideboardState CreateEmptySideboard() =>

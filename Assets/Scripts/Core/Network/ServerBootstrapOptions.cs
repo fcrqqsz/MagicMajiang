@@ -7,13 +7,11 @@ namespace MahjongGame.Core.Network
     {
         public const int DefaultPort = 9876;
         public const int DefaultMaxRooms = 1;
-        public const bool DefaultAiFill = true;
         public const int DefaultReconnectWindowSeconds = 120;
         public const int DefaultMessageCacheSize = 256;
 
         public int Port { get; private set; } = DefaultPort;
         public int MaxRooms { get; private set; } = DefaultMaxRooms;
-        public bool AiFill { get; private set; } = DefaultAiFill;
         public int ReconnectWindowSeconds { get; private set; } = DefaultReconnectWindowSeconds;
         public int MessageCacheSize { get; private set; } = DefaultMessageCacheSize;
         public int HeartbeatTimeoutSeconds { get; private set; } = ConnectionLivenessPolicy.DefaultHeartbeatTimeoutSeconds;
@@ -33,10 +31,6 @@ namespace MahjongGame.Core.Network
                 else if (TryReadValue(argument, "--maxRooms", args, ref i, out string maxRoomsValue))
                 {
                     if (int.TryParse(maxRoomsValue, out int maxRooms) && maxRooms > 0) options.MaxRooms = maxRooms;
-                }
-                else if (TryReadValue(argument, "--aiFill", args, ref i, out string aiFillValue))
-                {
-                    if (bool.TryParse(aiFillValue, out bool aiFill)) options.AiFill = aiFill;
                 }
                 else if (TryReadValue(argument, "--reconnectWindowSeconds", args, ref i, out string reconnectWindowValue))
                 {

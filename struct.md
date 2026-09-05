@@ -41,23 +41,25 @@
 *   **网络与代理 (`Core/Network/` & `Core/Agents/`)**:
     *   `Data/`: 玩家本地存档数据模型 (`PlayerProfile`, `SavedDeck`)。
     *   `Interfaces/ & Mock/`: 抽象网络接口层 (`IAuthService`, `IMatchmakingService`) 与对应 Mock 实现。
-    *   `ServerBootstrap.cs` / `ServerBootstrapOptions.cs`: Headless 服务入口，解析端口、房间数、AI 补位、心跳、缓存和恢复窗口参数。
+    *   `ServerBootstrap.cs` / `ServerBootstrapOptions.cs`: Headless 服务入口，解析端口、房间数、心跳、缓存和恢复窗口参数；服务端不再提供自动 AI 补位开关。
     *   `WebSocketService.cs`: `ws://0.0.0.0:{port}/game` 长连接传输层，限制单条客户端消息为 64 KiB。
     *   `ConnectionRegistry.cs`: 管理 connection ID、连接代次、endpoint、playerId、roomId 和 seatIndex；旧连接代次不得操作新绑定。
-    *   `RoomManager.cs`: 处理 Hello 后的创建、加入、Ready、离开、断线、重连和过期房间清理。
-    *   `Room.cs`: 单房间聚合根，持有席位、锁定构筑、`GameSession`、跨小局 `TalentMatchRuntime`、中场备牌 tracker、`GameServer`、`StableSeatController` 和每席消息流。
+    *   `RoomManager.cs`: 处理 Hello 后的创建、加入、可逆房间准备、永久 AI 增删改、离开、断线、重连和过期房间清理。
+    *   `Room.cs`: 单房间聚合根，持有稳定 `HostPlayerId`、四个逻辑席位、永久 AI 公共构筑、锁定构筑、`GameSession`、跨小局 `TalentMatchRuntime`、中场备牌 tracker、`GameServer`、`StableSeatController` 和每席消息流。
     *   `SeatMessageStream.cs`: 为每个逻辑真人席位提供连续 `seq`、最近 256 条序列化消息缓存及 endpoint 重绑。
     *   `GameServer.cs`: 权威异步对局循环，管理决策截止时间、`decisionId` 和并发仲裁。
     *   `ServerGameState.cs`: 权威记录四席手牌、副露和牌河；超时兜底与恢复快照均从该状态读取。
     *   `RoomGameSnapshot.cs`: 构建按席隐私快照；本家可见完整手牌，他家只包含暗牌数量和公开牌面。
     *   `TalentActionSnapshotCodec.cs`: 通用主动天赋目标与类型化选择集合的私有快照、深拷贝及恢复编解码。
-    *   `ClientRoomService.cs`: 客户端协议入口，负责 Hello、房间命令、序号门、心跳、票据、自动重试和 Reconnect/Resync。
+    *   `ClientRoomService.cs`: 客户端 v12 协议入口，负责稳定本家身份、房间与 AI 命令、序号门、心跳、票据、自动重试和 Reconnect/Resync。
     *   `ClientGameState.cs`: 纯 C# 客户端投影，幂等应用有序消息并以完整快照原子替换旧状态。
     *   `RemoteServerProxy.cs`: 将 `ClientRoomService` 的有序游戏状态桥接到 Unity 对局表现，不直接订阅 WebSocket。
     *   `GameSession.cs`: 多局对战状态管理（圈风轮转、门风分配、国标计分、局数追踪、权威终局原因与耗尽席位）。
     *   `SessionScoreRules.cs`: 四种模式起始分与终局原因的唯一规则来源。
     *   `IPlayerClient.cs`: 客户端代理通用接口。含 `CancellationToken TurnCancellationToken` 属性供服务端设置取消令牌。
-    *   `SimpleAIClient.cs`: 规则化 AI 客户端。async 方法支持 CancellationToken 取消。
+    *   `SimpleAIClient.cs`: AI 客户端适配层，通过 `IAiDecisionStrategyFactory` 选择新手或标准策略；async 方法支持 CancellationToken 取消。
+    *   `BeginnerAiDecisionStrategy.cs` / `StandardAiDecisionStrategy.cs`: 可复现的新手概率策略与带 20ms 软截止的标准牌效策略。
+    *   `AiHandShapeEvaluator.cs`: 普通牌型、七对和十三幺向听及改良牌种的纯 C# 评估器。
     *   `LocalPlayerClient.cs`: 本地真实玩家客户端，负责桥接 UI 与输入。async 方法支持 CancellationToken 取消。
 
 #### 联机数据流
@@ -80,7 +82,7 @@ WebSocketClient
   -> Hand / River / HUD / Result presentation
 ```
 
-协议版本为 v11，携带构筑 schema 为 v3。`SessionEnd` 携带最终分数、完成局数、`SessionEndReason` 与全部耗尽席位；客户端不从暂态分数推导终局。完整小局按“基础计分 -> 全部局末天赋 -> 天赋事件 -> 推进局数 -> 终局判定”收束，击飞优先阻止第 4 局后的备牌。终局消息发送后房间立即解绑移除但 WebSocket 保持连接，终局房间不支持重连或结果补领。本家私有牌投影携带不透明实体 ID 与异化标记；`GameServer` 持有的 `PrivateTileKnowledgeTracker` 按观察者隔离保存窥探/洞若观火知识，已知对手暗手投影仅携带牌面与观察时可见的异化标记，公共牌河和副露会清洗私有字段。username 目前仅作为开发期身份桥接，经 `IAccountAuthenticator` 规范化为稳定 `playerId`；它不是正式鉴权。`Room` 锁定四席构筑后重建并验证 Low 40 / Standard 80 / High 120 异化值预算，公开消息只携带档位而非其他玩家精确总值。主动天赋、基础动作和备牌提交都使用权威 `decisionId`；类型化天赋选择集合仅进入本家私有快照，客户端只回传所选 `choiceId`，runtime 在执行前重新生成授权集合。半庄/全庄第 4 小局后恰好开放一次备牌阶段。断线时物理 endpoint 与逻辑席位分离，席位可进入 `OfflineReserved` / `AiControlled`，并只在安全决策边界切换控制者。重连使用 `{roomId, streamId}` 和已认证身份定位席位，当前始终请求完整权威快照；Dedicated Server 重启不恢复房间。
+协议版本为 v12，携带构筑 schema 为 v3。v12 使用稳定 `HostPlayerId`、永久 AI 席位、可逆房间准备和 AI 公共构筑投影，完全删除自动补位；真人完整构筑仍只向本人发送。`SessionEnd` 携带最终分数、完成局数、`SessionEndReason` 与全部耗尽席位；客户端不从暂态分数推导终局。完整小局按“基础计分 -> 全部局末天赋 -> 天赋事件 -> 推进局数 -> 终局判定”收束，击飞优先阻止第 4 局后的备牌。终局消息发送后房间立即解绑移除但 WebSocket 保持连接，终局房间不支持重连或结果补领。本家私有牌投影携带不透明实体 ID 与异化标记；`GameServer` 持有的 `PrivateTileKnowledgeTracker` 按观察者隔离保存窥探/洞若观火知识，已知对手暗手投影仅携带牌面与观察时可见的异化标记，公共牌河和副露会清洗私有字段。username 目前仅作为开发期身份桥接，经 `IAccountAuthenticator` 规范化为稳定 `playerId`；它不是正式鉴权。`Room` 锁定四席构筑后重建并验证 Low 40 / Standard 80 / High 120 异化值预算。主动天赋、基础动作和备牌提交都使用权威 `decisionId`；类型化天赋选择集合仅进入本家私有快照，客户端只回传所选 `choiceId`，runtime 在执行前重新生成授权集合。半庄/全庄第 4 小局后恰好开放一次备牌阶段。断线时物理 endpoint 与逻辑席位分离，席位可进入 `OfflineReserved` / `AiControlled`，并只在安全决策边界切换控制者；主动退出或 120 秒超时会在已锁定阶段转为沿用原构筑的新手永久 AI。重连使用 `{roomId, streamId}` 和已认证身份定位席位，当前始终请求完整权威快照；Dedicated Server 重启不恢复房间。
 *   **表现层控制器 (MonoBehaviour)**:
     *   `HandController.cs`: 管理 3D 手牌生成、布局、DoTween 动画及交互。含 `ForceRemoveTile()` 超时出牌专用方法。
     *   `RiverController.cs`: 管理牌河的 3D 排布。
@@ -224,6 +226,7 @@ WebSocketClient
 #### 核心面板与组件：
 *   **LoginPanel & MainLobby**: `01_Login` 和 `02_MainLobby` 场景中的 UI 主体面板。Home 页包含 `DeckSelector`（左右箭头循环切换卡组）、异化值显示及匹配入口。
 *   **房间大厅面板 (`RoomListPanel`)**: `RoomListPanel.uxml/uss` + `RoomListController.cs` + `RoomCardTemplate.uxml`，独立弹窗浏览当前在线房间。支持多局模式与可用性筛选、出战构筑异化值与房间上限实时预检、房号直连加入与一键快速创建。生命周期集成 `sortingOrder: 50` 自动提升、初始化幂等保护与点击防抖锁定。对应纯 HTML 原型为 `RoomListPreview.html`。
+*   **房间编队面板 (`RoomPanel`)**: `MainLobby.uxml` 中的房间页配合 `RoomPanel.uss`、`RoomPanelController.cs` 和纯 C# `RoomPanelViewModel`，展示四席、房主、准备、断线托管与永久 AI；房主可逐席快速配置。高级 AI 构筑与玩家构筑共用 `DeckEditorToolkit` 和 `DeckEditorView.uxml`，仅切换房间草稿上下文、输入层级和持久化边界。
 *   **操作面板 (`ActionPanel`)**: 基础吃碰杠胡与主动天赋按钮共存；只消费服务器下发的合法选项，pending/reject/过期/恢复均按 `decisionId` 隔离。
 *   **常驻天赋 HUD (`GameHUD`)**: 展示本家生效天赋、已公开对手天赋、最近事件流及三级反馈；恢复快照只重建状态，不重播 toast/音效。
 *   **独立备牌面板 (`SideboardPanel`)**: 独立 Scene Object / `UIDocument`，权威阶段到来时全屏显示，隐藏时整个文档 `display:none`，不拦截 ActionPanel 或 3D 手牌输入。

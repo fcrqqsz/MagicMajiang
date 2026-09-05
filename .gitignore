@@ -113,6 +113,9 @@ tmp/
 # Codex isolated feature worktrees
 /.worktrees/
 
+# Superpowers brainstorming scratch state
+/.superpowers/
+
 # codely
 .codely*
 .com-unity-codely.json

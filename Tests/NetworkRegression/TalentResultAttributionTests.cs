@@ -498,14 +498,15 @@ internal static class TalentResultAttributionTests
         TalentFanBreakdownMessage stored = TalentFanBreakdownMessage.FromResolution(resolution);
         var hostEndpoint = new GameEndpoint();
         using var room = new Room(
-            "recover", GameMode.EastOnly, AlienationPreset.Standard, "host", true, 16);
+            "recover", GameMode.EastOnly, AlienationPreset.Standard, "dev:recover", 16);
         PlayerLoadoutCodec.TryDecode(
             PlayerLoadoutCodec.CreateMessage(DeckConfig.CreateStandard(), new TalentSlotConfig()),
             AlienationPreset.Standard,
             out TrustedPlayerLoadout loadout,
             out _);
         room.TryAddHuman("host", hostEndpoint, "dev:recover", "Host", loadout, out int hostSeat);
-        room.SetReady("host", ReadyPhase.MatchStart, out _);
+        RoomTestFixtures.FillEmptySeatsWithAi(room, "dev:recover", loadout);
+        room.SetMatchReady("host", true, out _);
         room.SetReady("host", ReadyPhase.GameSceneLoaded, out _);
         room.GameServer.SetWinResult(0, 8, stored);
         RoomGameSnapshot reconnect = room.BuildSnapshot(hostSeat);

@@ -1226,12 +1226,12 @@ internal static class SnapshotReconnectTests
         runner.Check(RoomLifecyclePolicy.GetDisconnectDisposition(RoomState.InRound, true)
                 == RoomSeatDepartureDisposition.OfflineReserved
             && RoomLifecyclePolicy.GetDisconnectDisposition(RoomState.InRound, false)
-                == RoomSeatDepartureDisposition.CloseRoom
+                == RoomSeatDepartureDisposition.OfflineReserved
             && RoomLifecyclePolicy.GetExpiryDisposition(RoomState.WaitingForMatchReady)
                 == RoomSeatExpiryDisposition.Vacant
             && RoomLifecyclePolicy.GetExpiryDisposition(RoomState.InRound)
                 == RoomSeatExpiryDisposition.PermanentAi,
-            "Disconnect and expiry policies must preserve or release seats by room phase.");
+            "Disconnect always preserves the reconnect window; expiry releases or converts the seat by room phase.");
 
         var latch = new SeatDecisionControlLatch();
         runner.Check(latch.OpenDecision(11, true) == DecisionControllerKind.Human,

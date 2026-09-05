@@ -29,7 +29,7 @@ namespace MahjongGame.Core.Network
         AI
     }
 
-    /// <summary>Pure E3 policy for offline human seats. It deliberately does not depend on aiFill.</summary>
+    /// <summary>Pure policy for offline human seats and permanent AI continuity.</summary>
     public static class RoomLifecyclePolicy
     {
         public static DecisionControllerKind SelectDecisionController(bool isOnline, bool humanDecisionAlreadyOpen)
@@ -39,9 +39,7 @@ namespace MahjongGame.Core.Network
 
         public static RoomSeatDepartureDisposition GetDisconnectDisposition(RoomState roomState, bool hasOtherOnlineHuman)
         {
-            return hasOtherOnlineHuman
-                ? RoomSeatDepartureDisposition.OfflineReserved
-                : RoomSeatDepartureDisposition.CloseRoom;
+            return RoomSeatDepartureDisposition.OfflineReserved;
         }
 
         public static RoomSeatExpiryDisposition GetExpiryDisposition(RoomState roomState)
@@ -53,8 +51,8 @@ namespace MahjongGame.Core.Network
 
         public static bool ShouldAutoReadyOfflineSeat(RoomState roomState) => roomState == RoomState.WaitingForNextRound;
 
-        /// <summary>Once seats are locked, temporary continuity is independent from pre-match AI-fill policy.</summary>
-        public static bool ShouldAdvanceAfterWaitingMemberChange(bool aiFillEnabled, bool hasHumanPlayers) => hasHumanPlayers;
+        /// <summary>Once seats are locked, a disconnected human can be temporarily controlled at safe decision boundaries.</summary>
+        public static bool ShouldAdvanceAfterWaitingMemberChange(bool hasHumanPlayers) => hasHumanPlayers;
 
         /// <summary>Between rounds an offline reserved human is ready for the temporary controller; online humans still choose Ready.</summary>
         public static bool ShouldAutoReadyNextRoundSeat(bool isOnline) => !isOnline;

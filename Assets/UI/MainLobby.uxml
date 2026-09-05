@@ -7,6 +7,7 @@
 >
     <ui:Template name="SharedAudioSettings" src="AudioSettings.uxml" />
     <ui:Style src="MainLobbyStyles.uss" />
+    <ui:Style src="RoomPanel.uss" />
     <ui:VisualElement name="LobbyRoot" class="lobby-root">
         <!-- Sidebar Navigation -->
         <ui:VisualElement name="Sidebar" class="sidebar">
@@ -54,37 +55,147 @@
                 <ui:Label name="RoomStatusLabel" text="当前未加入房间" class="view-subtitle" />
             </ui:VisualElement>
 
-            <!-- Dedicated room view. It stays inside MainLobby so no scene or extra UIDocument is required. -->
-            <ui:VisualElement name="ViewRoom" class="room-view" style="display: none;">
-                <ui:VisualElement class="room-header">
-                    <ui:Label name="RoomIdLabel" text="房间" class="room-title" />
-                    <ui:Label name="RoomStateLabel" text="等待准备" class="room-state-label" />
+            <!-- 房间主界面保留在大厅 UIDocument；高级编辑器使用独立 UIDocument。 -->
+            <ui:VisualElement name="ViewRoom" class="room-page" style="display: none;">
+                <ui:VisualElement class="room-top-bar">
+                    <ui:VisualElement class="room-brand-block">
+                        <ui:Label text="四方牌局" class="room-eyebrow" />
+                        <ui:VisualElement class="room-title-row">
+                            <ui:Label name="RoomIdLabel" text="房间 ----" class="room-page-title" />
+                            <ui:Button name="RoomCopyButton" text="复制" class="room-copy-button" />
+                        </ui:VisualElement>
+                    </ui:VisualElement>
+                    <ui:VisualElement class="room-meta-strip">
+                        <ui:VisualElement class="room-meta-cell">
+                            <ui:Label text="对局模式" class="room-meta-label" />
+                            <ui:Label name="RoomModeLabel" text="单局" class="room-meta-value" />
+                        </ui:VisualElement>
+                        <ui:VisualElement class="room-meta-cell">
+                            <ui:Label text="异化档位" class="room-meta-label" />
+                            <ui:Label name="RoomPresetPublicLabel" text="标准 80" class="room-meta-value" />
+                        </ui:VisualElement>
+                        <ui:VisualElement class="room-meta-cell">
+                            <ui:Label text="当前房主" class="room-meta-label" />
+                            <ui:Label name="RoomHostLabel" text="--" class="room-meta-value" />
+                        </ui:VisualElement>
+                    </ui:VisualElement>
+                    <ui:VisualElement class="room-connection-block">
+                        <ui:Label name="RoomStateLabel" text="等待补齐席位" class="room-connection-good" />
+                        <ui:Label name="RoomConnectionLabel" text="权威状态已同步" class="room-connection-sub" />
+                    </ui:VisualElement>
                 </ui:VisualElement>
-                <ui:VisualElement class="room-main-content">
-                    <ui:VisualElement class="room-seat-section">
-                        <ui:Label text="席位" class="room-section-title" />
-                        <ui:VisualElement name="RoomSeatRows" class="room-seat-list" />
+
+                <ui:VisualElement class="room-body-layout">
+                    <ui:VisualElement class="room-formation-panel">
+                        <ui:VisualElement class="room-section-heading">
+                            <ui:Label text="四席编队" class="room-section-heading-title" />
+                            <ui:Label text="房主手动配置 AI，四席占满后才能准备" class="room-section-caption" />
+                        </ui:VisualElement>
+                        <ui:VisualElement class="room-seat-grid">
+                            <ui:VisualElement class="room-seat-grid-row">
+                                <ui:VisualElement name="SeatCard0" class="room-seat-card">
+                                    <ui:VisualElement class="room-seat-head">
+                                        <ui:Label name="Seat0Number" text="席位 1" class="room-seat-number-new" />
+                                        <ui:Label name="Seat0Name" text="空席" class="room-seat-name-new" />
+                                        <ui:Label name="Seat0Badges" text="等待" class="room-seat-badges" />
+                                    </ui:VisualElement>
+                                    <ui:Label name="Seat0Status" text="等待真人加入或由房主添加 AI" class="room-seat-status-new" />
+                                    <ui:Label name="Seat0Summary" text="不创建虚假玩家" class="room-seat-summary-new" />
+                                    <ui:Button name="Seat0Action" text="添加 AI" class="room-add-ai-button" />
+                                </ui:VisualElement>
+                                <ui:VisualElement name="SeatCard1" class="room-seat-card room-seat-card-right">
+                                    <ui:VisualElement class="room-seat-head">
+                                        <ui:Label name="Seat1Number" text="席位 2" class="room-seat-number-new" />
+                                        <ui:Label name="Seat1Name" text="空席" class="room-seat-name-new" />
+                                        <ui:Label name="Seat1Badges" text="等待" class="room-seat-badges" />
+                                    </ui:VisualElement>
+                                    <ui:Label name="Seat1Status" text="等待真人加入或由房主添加 AI" class="room-seat-status-new" />
+                                    <ui:Label name="Seat1Summary" text="不创建虚假玩家" class="room-seat-summary-new" />
+                                    <ui:Button name="Seat1Action" text="添加 AI" class="room-add-ai-button" />
+                                </ui:VisualElement>
+                            </ui:VisualElement>
+                            <ui:VisualElement class="room-seat-grid-row room-seat-grid-row-bottom">
+                                <ui:VisualElement name="SeatCard2" class="room-seat-card">
+                                    <ui:VisualElement class="room-seat-head">
+                                        <ui:Label name="Seat2Number" text="席位 3" class="room-seat-number-new" />
+                                        <ui:Label name="Seat2Name" text="空席" class="room-seat-name-new" />
+                                        <ui:Label name="Seat2Badges" text="等待" class="room-seat-badges" />
+                                    </ui:VisualElement>
+                                    <ui:Label name="Seat2Status" text="等待真人加入或由房主添加 AI" class="room-seat-status-new" />
+                                    <ui:Label name="Seat2Summary" text="不创建虚假玩家" class="room-seat-summary-new" />
+                                    <ui:Button name="Seat2Action" text="添加 AI" class="room-add-ai-button" />
+                                </ui:VisualElement>
+                                <ui:VisualElement name="SeatCard3" class="room-seat-card room-seat-card-right">
+                                    <ui:VisualElement class="room-seat-head">
+                                        <ui:Label name="Seat3Number" text="席位 4" class="room-seat-number-new" />
+                                        <ui:Label name="Seat3Name" text="空席" class="room-seat-name-new" />
+                                        <ui:Label name="Seat3Badges" text="等待" class="room-seat-badges" />
+                                    </ui:VisualElement>
+                                    <ui:Label name="Seat3Status" text="等待真人加入或由房主添加 AI" class="room-seat-status-new" />
+                                    <ui:Label name="Seat3Summary" text="不创建虚假玩家" class="room-seat-summary-new" />
+                                    <ui:Button name="Seat3Action" text="添加 AI" class="room-add-ai-button" />
+                                </ui:VisualElement>
+                            </ui:VisualElement>
+                        </ui:VisualElement>
+                        <ui:VisualElement class="room-privacy-note">
+                            <ui:Label text="真人构筑保持私有；永久 AI 的 34 张牌库与 6+3 天赋向房内所有真人公开。" class="room-privacy-note-text" />
+                        </ui:VisualElement>
                     </ui:VisualElement>
-                    <ui:VisualElement class="room-summary-section">
-                        <ui:Label text="房间信息" class="room-section-title" />
-                        <ui:Label name="RoomModeLabel" class="room-detail-label" />
-                        <ui:Label name="RoomScoreRuleLabel" class="room-detail-label" />
-                        <ui:Label name="RoomPresetPublicLabel" class="room-detail-label room-alienation-label" />
-                        <ui:Label name="RoomAiFillLabel" class="room-detail-label" />
-                        <ui:Label name="RoomHumanCountLabel" class="room-detail-label" />
-                        <ui:VisualElement class="room-summary-divider" />
-                        <ui:Label text="我的构筑" class="room-section-title room-local-build-title" />
-                        <ui:Label name="RoomLocalDeckLabel" class="room-detail-label" />
-                        <ui:Label name="RoomLocalAlienationLabel" class="room-detail-label room-alienation-label" />
-                        <ui:Label name="RoomLoadoutLockLabel" text="构筑已锁定" class="room-lock-label" />
+
+                    <ui:VisualElement class="room-side-panel">
+                        <ui:VisualElement class="room-detail-head">
+                            <ui:VisualElement class="room-detail-title-block">
+                                <ui:Label name="RoomDetailName" text="选择一个席位" class="room-detail-title" />
+                                <ui:Label name="RoomDetailMeta" text="查看状态或配置永久 AI" class="room-detail-subtitle" />
+                            </ui:VisualElement>
+                            <ui:Label name="RoomDetailAccess" text="查看" class="room-detail-access" />
+                        </ui:VisualElement>
+                        <ui:VisualElement name="AiQuickConfig" class="room-quick-config" style="display: none;">
+                            <ui:Label text="AI 难度" class="room-field-label" />
+                            <ui:VisualElement class="room-segmented-row">
+                                <ui:Button name="AiDifficultyBeginner" text="新手" class="room-segment" />
+                                <ui:Button name="AiDifficultyStandard" text="标准" class="room-segment room-segment-right" />
+                            </ui:VisualElement>
+                            <ui:Label text="构筑来源" class="room-field-label room-field-label-spaced" />
+                            <ui:VisualElement class="room-template-list">
+                                <ui:Button name="AiTemplateAggressive" text="进攻构筑 | 高价值组合与主动压制" class="room-template-button" />
+                                <ui:Button name="AiTemplateStable" text="稳健构筑 | 均衡牌库与容错天赋" class="room-template-button" />
+                                <ui:Button name="AiTemplateSynergy" text="天赋联动 | 围绕事件和充能组织" class="room-template-button" />
+                                <ui:Button name="AiTemplateCopySelf" text="复制本家 | 复制当前已保存卡组" class="room-template-button" />
+                            </ui:VisualElement>
+                            <ui:Label text="公开构筑摘要" class="room-field-label room-field-label-spaced" />
+                            <ui:VisualElement class="room-loadout-summary">
+                                <ui:Label name="AiDeckSummary" text="牌库：--" class="room-budget-line" />
+                                <ui:Label name="AiTalentSummary" text="天赋：--" class="room-budget-line" />
+                                <ui:Label name="AiBudgetSummary" text="总预算：--" class="room-budget-total" />
+                            </ui:VisualElement>
+                            <ui:Label text="构筑模板只改变牌库和天赋，不改变 AI 的难度策略。" class="room-info-note" />
+                            <ui:VisualElement name="AiOverwriteConfirm" class="room-inline-confirm" style="display: none;">
+                                <ui:Label text="当前草稿有未保存修改，切换来源会覆盖它。" class="room-inline-confirm-text" />
+                                <ui:VisualElement class="room-inline-confirm-actions">
+                                    <ui:Button name="AiOverwriteAccept" text="确认覆盖" class="room-small-button" />
+                                    <ui:Button name="AiOverwriteCancel" text="保留草稿" class="room-small-button room-small-button-secondary" />
+                                </ui:VisualElement>
+                            </ui:VisualElement>
+                            <ui:VisualElement class="room-config-actions">
+                                <ui:Button name="AiApplyButton" text="应用配置" class="room-config-button" />
+                                <ui:Button name="AiAdvancedButton" text="高级编辑" class="room-config-button room-config-button-secondary" />
+                                <ui:Button name="AiRemoveButton" text="移除 AI" class="room-config-button room-config-button-danger" />
+                            </ui:VisualElement>
+                        </ui:VisualElement>
+                        <ui:VisualElement name="RoomSeatReadOnly" class="room-read-only-detail">
+                            <ui:Label name="RoomSeatReadOnlyText" text="选择永久 AI 可查看公开构筑；房主选择空席可添加 AI。" class="room-read-only-text" />
+                        </ui:VisualElement>
                     </ui:VisualElement>
                 </ui:VisualElement>
-                <ui:VisualElement class="room-footer">
-                    <ui:Label name="RoomWaitingLabel" text="等待其他玩家准备" class="room-waiting-label" />
-                    <ui:VisualElement class="room-actions">
-                        <ui:Button name="LeaveRoomButton" text="离开房间" class="room-leave-button" />
-                        <ui:Button name="RoomReadyButton" text="确认准备" class="room-confirm-ready-button" />
+
+                <ui:VisualElement class="room-bottom-bar">
+                    <ui:VisualElement class="room-notice-block">
+                        <ui:Label name="RoomNoticeTitle" text="等待房间状态" class="room-notice-title" />
+                        <ui:Label name="RoomNoticeCopy" text="所有房间状态均以服务器权威消息为准。" class="room-notice-copy" />
                     </ui:VisualElement>
+                    <ui:Button name="RoomReadyButton" text="确认准备" class="room-footer-button" />
+                    <ui:Button name="LeaveRoomButton" text="离开房间" class="room-footer-button room-leave-button-new" />
                 </ui:VisualElement>
             </ui:VisualElement>
 
@@ -247,7 +358,7 @@
                             <ui:VisualElement class="connection-card connection-diagnostics-card">
                                 <ui:Label text="连接诊断" class="connection-card-title" />
                                 <ui:Label name="ConnectionSocketPhaseLabel" text="套接字阶段：--" class="connection-detail" />
-                                <ui:Label name="ConnectionHandshakeLabel" text="v11 握手：--" class="connection-detail" />
+                                <ui:Label name="ConnectionHandshakeLabel" text="v12 握手：--" class="connection-detail" />
                                 <ui:Label name="ConnectionRttLabel" text="RTT：--" class="connection-detail" />
                                 <ui:Label name="ConnectionLastCheckedLabel" text="上次检查：--" class="connection-detail" />
                                 <ui:Label name="ConnectionErrorLabel" text="最近错误：--" class="connection-detail connection-error" />

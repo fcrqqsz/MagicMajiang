@@ -1,4 +1,5 @@
 using MahjongGame.Core;
+using MahjongGame.Core.Agents;
 using MahjongGame.Core.Network;
 using MahjongGame.Core.Network.Messages;
 using MahjongGame.Core.Network.Transport;
@@ -21,6 +22,8 @@ internal static class RoomSessionTests
         TestAbnormalRoundCompletionUnwindsRoomOnce(runner);
         TestRoundFinalizationFailureTerminatesEveryHumanSeat(runner);
         TestRoomReadyAndDeparture(runner);
+        TestPermanentAiSeatsAndStableHost(runner);
+        TestDepartedHumanBecomesBeginnerPermanentAi(runner);
         TestResponseAndTurnPolicies(runner);
         TestClientRoomAndScoreProjection(runner);
         TestQueryRoomList(runner);
@@ -37,11 +40,11 @@ internal static class RoomSessionTests
         var endpoints = Enumerable.Range(0, 4).Select(_ => new GameEndpoint()).ToArray();
         using var room = new Room(
             "terminal-telemetry", GameMode.Single, AlienationPreset.Standard,
-            "human-0", true, 16, telemetry);
+            "dev:telemetry-0", 16, telemetry);
         for (int index = 0; index < 4; index++)
             room.TryAddHuman($"human-{index}", endpoints[index], $"dev:telemetry-{index}", $"Human {index}", loadout, out _);
         for (int index = 0; index < 4; index++)
-            room.SetReady($"human-{index}", ReadyPhase.MatchStart, out _);
+            room.SetMatchReady($"human-{index}", true, out _);
         for (int index = 0; index < 4; index++)
             room.SetReady($"human-{index}", ReadyPhase.GameSceneLoaded, out _);
         room.GameServer?.CompleteDrawRound();
@@ -87,9 +90,10 @@ internal static class RoomSessionTests
             out TrustedPlayerLoadout loadout,
             out _);
         var endpoint = new GameEndpoint();
-        using var room = new Room($"terminal-{label}", mode, AlienationPreset.Standard, "host", true, 16);
+        using var room = new Room($"terminal-{label}", mode, AlienationPreset.Standard, $"dev:{label}", 16);
         room.TryAddHuman("host", endpoint, $"dev:{label}", "Host", loadout, out _);
-        room.SetReady("host", ReadyPhase.MatchStart, out _);
+        RoomTestFixtures.FillEmptySeatsWithAi(room, $"dev:{label}", loadout);
+        room.SetMatchReady("host", true, out _);
         room.SetReady("host", ReadyPhase.GameSceneLoaded, out _);
         mutateScores?.Invoke(room.Session);
 
@@ -171,7 +175,7 @@ internal static class RoomSessionTests
 
     private static void TestRoomRevalidatesClonedLoadout(RegressionRunner runner)
     {
-        var room = new Room("stale-loadout", GameMode.Single, AlienationPreset.Low, "host", true, 8);
+        var room = new Room("stale-loadout", GameMode.Single, AlienationPreset.Low, "dev:host", 8);
         PlayerLoadoutCodec.TryDecode(
             PlayerLoadoutCodec.CreateMessage(
                 DeckConfig.CreateStandard(), new TalentSlotConfig(), AlienationPreset.Low),
@@ -222,12 +226,12 @@ internal static class RoomSessionTests
     {
         var constructor = typeof(Room).GetConstructor(new[]
         {
-            typeof(string), typeof(GameMode), typeof(AlienationPreset), typeof(string), typeof(bool), typeof(int)
+            typeof(string), typeof(GameMode), typeof(AlienationPreset), typeof(string), typeof(int)
         });
         var presetProperty = typeof(Room).GetProperty("AlienationPreset");
         Room directRoom = constructor?.Invoke(new object[]
         {
-            "preset-room", GameMode.HalfGame, AlienationPreset.Standard, "host", true, 8
+            "preset-room", GameMode.HalfGame, AlienationPreset.Standard, "host", 8
         }) as Room;
         runner.Check(directRoom != null
             && presetProperty?.GetValue(directRoom) is AlienationPreset preset
@@ -237,7 +241,7 @@ internal static class RoomSessionTests
 
         Room lowRoom = constructor?.Invoke(new object[]
         {
-            "low-room", GameMode.Single, AlienationPreset.Low, "host", true, 8
+            "low-room", GameMode.Single, AlienationPreset.Low, "host", 8
         }) as Room;
         PlayerLoadoutCodec.TryDecode(BuildOverLowPresetLoadout(), out var overLowTrusted, out _);
         bool addedOverBudget = lowRoom?.TryAddHuman(
@@ -247,7 +251,7 @@ internal static class RoomSessionTests
         lowRoom?.Dispose();
 
         var connections = new ConnectionRegistry();
-        using var manager = new RoomManager(2, true, connections, messageCacheSize: 8);
+        using var manager = new RoomManager(2, connections, messageCacheSize: 8);
         var host = new GameEndpoint();
         var guest = new GameEndpoint();
         host.Connect("host-connection", 1);
@@ -306,6 +310,42 @@ internal static class RoomSessionTests
             .Single();
         runner.Check(guestJoined.seatIndex == 1,
             "A valid retry after an over-budget join must receive the first still-vacant seat.");
+
+        PlayerLoadoutMessage aiLoadout = AiTalentLoadoutFactory.Create(
+            AlienationPreset.Low, AiLoadoutTemplate.Stable, 2, 91);
+        guest.Receive("guest-connection", 2, MessageSerializer.Serialize("AddAiSeat", 0,
+            new AddAiSeatMessage
+            {
+                seatIndex = 2,
+                difficulty = (int)AiDifficulty.Standard,
+                template = (int)AiLoadoutTemplate.Stable,
+                loadout = aiLoadout
+            }));
+        RoomErrorMessage hostOnlyError = guest.SentMessages
+            .Select(MessageSerializer.DeserializeEnvelope)
+            .Where(envelope => envelope?.type == "RoomError")
+            .Select(envelope => MessageSerializer.DeserializePayload<RoomErrorMessage>(envelope.data))
+            .LastOrDefault();
+        runner.Check(hostOnlyError?.code == NetworkErrorCodes.HostOnly,
+            "RoomManager rejects a valid AI configuration command from a non-host identity.");
+
+        host.Receive("host-connection", 1, MessageSerializer.Serialize("AddAiSeat", 0,
+            new AddAiSeatMessage
+            {
+                seatIndex = 2,
+                difficulty = (int)AiDifficulty.Standard,
+                template = (int)AiLoadoutTemplate.Stable,
+                loadout = aiLoadout
+            }));
+        RoomSeatUpdatedMessage addedAi = host.SentMessages
+            .Select(MessageSerializer.DeserializeEnvelope)
+            .Where(envelope => envelope?.type == "RoomSeatUpdated")
+            .Select(envelope => MessageSerializer.DeserializePayload<RoomSeatUpdatedMessage>(envelope.data))
+            .LastOrDefault(message => message?.seat?.seatIndex == 2);
+        runner.Check(addedAi?.seat?.seatKind == (int)RoomSeatKind.PermanentAi
+                     && addedAi.seat.aiConfig?.difficulty == (int)AiDifficulty.Standard
+                     && addedAi.seat.aiConfig?.loadout != null,
+            "RoomManager publishes a host-created permanent AI with its public full loadout.");
     }
 
     private static PlayerLoadoutMessage BuildOverLowPresetLoadout()
@@ -449,13 +489,14 @@ internal static class RoomSessionTests
         var hostEndpoint = new GameEndpoint();
         var guestEndpoint = new GameEndpoint();
         using var room = new Room(
-            "runtime-room", GameMode.EastOnly, AlienationPreset.Standard, "host", true, 16);
+            "runtime-room", GameMode.EastOnly, AlienationPreset.Standard, "dev:host", 16);
         bool hostAdded = room.TryAddHuman(
             "host", hostEndpoint, "dev:host", "Host", hostLoadout, out int hostSeat);
         bool guestAdded = room.TryAddHuman(
             "guest", guestEndpoint, "dev:guest", "Guest", guestLoadout, out int guestSeat);
-        bool matchReady = room.SetReady("host", ReadyPhase.MatchStart, out _)
-                          && room.SetReady("guest", ReadyPhase.MatchStart, out _);
+        RoomTestFixtures.FillEmptySeatsWithAi(room, "dev:host", guestLoadout);
+        bool matchReady = room.SetMatchReady("host", true, out _)
+                          && room.SetMatchReady("guest", true, out _);
 
         runner.Check(hostAdded && guestAdded && hostSeat == 0 && guestSeat == 1 && matchReady,
             "two locked human loadouts establish the Room-owned runtime test match");
@@ -584,9 +625,10 @@ internal static class RoomSessionTests
             out _);
 
         endpoint = new GameEndpoint();
-        var room = new Room(roomId, GameMode.EastOnly, AlienationPreset.Standard, "host", true, 16);
+        var room = new Room(roomId, GameMode.EastOnly, AlienationPreset.Standard, $"dev:{roomId}", 16);
         room.TryAddHuman("host", endpoint, $"dev:{roomId}", "Host", loadout, out _);
-        room.SetReady("host", ReadyPhase.MatchStart, out _);
+        RoomTestFixtures.FillEmptySeatsWithAi(room, $"dev:{roomId}", loadout);
+        room.SetMatchReady("host", true, out _);
         return room;
     }
 
@@ -612,13 +654,13 @@ internal static class RoomSessionTests
             "round-finalization-failure",
             GameMode.EastOnly,
             AlienationPreset.Standard,
-            "host",
-            true,
+            "dev:failure-host",
             16);
         room.TryAddHuman("host", hostEndpoint, "dev:failure-host", "Host", hostLoadout, out _);
         room.TryAddHuman("guest", guestEndpoint, "dev:failure-guest", "Guest", guestLoadout, out _);
-        room.SetReady("host", ReadyPhase.MatchStart, out _);
-        room.SetReady("guest", ReadyPhase.MatchStart, out _);
+        RoomTestFixtures.FillEmptySeatsWithAi(room, "dev:failure-host", guestLoadout);
+        room.SetMatchReady("host", true, out _);
+        room.SetMatchReady("guest", true, out _);
         room.SetReady("host", ReadyPhase.GameSceneLoaded, out _);
         room.SetReady("guest", ReadyPhase.GameSceneLoaded, out _);
         hostEndpoint.SendFailure = message =>
@@ -666,25 +708,143 @@ internal static class RoomSessionTests
 
     private static void TestRoomReadyAndDeparture(RegressionRunner runner)
     {
-        runner.Check(!RoomReadyPolicy.CanMarkMatchReady(false, 3)
-            && RoomReadyPolicy.CanMarkMatchReady(false, 4)
-            && RoomReadyPolicy.CanMarkMatchReady(true, 1),
-            "Ready admission must require four humans only when AI fill is disabled.");
+        runner.Check(!RoomReadyPolicy.CanMarkMatchReady(3)
+            && RoomReadyPolicy.CanMarkMatchReady(4),
+            "Ready admission requires four occupied authoritative seats.");
 
-        runner.Check(RoomDeparturePolicy.ShouldKeepRoomAfterDeparture(RoomState.LoadingGameScene, true, false)
-            && RoomDeparturePolicy.ShouldKeepRoomAfterDeparture(RoomState.InRound, true, false)
-            && !RoomDeparturePolicy.ShouldKeepRoomAfterDeparture(RoomState.WaitingForMatchReady, false, true),
+        runner.Check(RoomDeparturePolicy.ShouldKeepRoomAfterDeparture(RoomState.LoadingGameScene, true)
+            && RoomDeparturePolicy.ShouldKeepRoomAfterDeparture(RoomState.InRound, true)
+            && !RoomDeparturePolicy.ShouldKeepRoomAfterDeparture(RoomState.WaitingForMatchReady, false),
             "A room must keep reserved seats while another human remains and close with no humans.");
-        runner.Check(!RoomDeparturePolicy.ShouldReplaceWithAi(RoomState.WaitingForMatchReady, true)
-            && RoomDeparturePolicy.ShouldReplaceWithAi(RoomState.LoadingGameScene, false)
-            && RoomDeparturePolicy.ShouldReplaceWithAi(RoomState.InRound, false)
-            && RoomDeparturePolicy.ShouldReplaceWithAi(RoomState.WaitingForNextRound, false),
+        runner.Check(!RoomDeparturePolicy.ShouldReplaceWithAi(RoomState.WaitingForMatchReady)
+            && RoomDeparturePolicy.ShouldReplaceWithAi(RoomState.LoadingGameScene)
+            && RoomDeparturePolicy.ShouldReplaceWithAi(RoomState.InRound)
+            && RoomDeparturePolicy.ShouldReplaceWithAi(RoomState.WaitingForNextRound),
             "Temporary AI takeover must begin only after pre-match waiting.");
 
-        runner.Check(RoomLifecyclePolicy.ShouldAdvanceAfterWaitingMemberChange(false, true)
+        runner.Check(RoomLifecyclePolicy.ShouldAdvanceAfterWaitingMemberChange(true)
             && RoomLifecyclePolicy.ShouldAutoReadyNextRoundSeat(false)
             && !RoomLifecyclePolicy.ShouldAutoReadyNextRoundSeat(true),
-            "Locked rooms must advance independently of aiFill and auto-ready only offline humans.");
+            "Locked rooms advance while humans remain and auto-ready only offline humans.");
+    }
+
+    private static void TestPermanentAiSeatsAndStableHost(RegressionRunner runner)
+    {
+        PlayerLoadoutCodec.TryDecode(
+            PlayerLoadoutCodec.CreateMessage(DeckConfig.CreateStandard(), new TalentSlotConfig()),
+            AlienationPreset.Standard,
+            out TrustedPlayerLoadout loadout,
+            out _);
+
+        var endpoints = Enumerable.Range(0, 3).Select(_ => new GameEndpoint()).ToArray();
+        using var room = new Room(
+            "manual-ai", GameMode.EastOnly, AlienationPreset.Standard, "dev:host", 16);
+        room.TryAddHuman("host-connection", endpoints[0], "dev:host", "Host", loadout, out int hostSeat);
+        room.TryAddHuman("guest-connection", endpoints[1], "dev:guest", "Guest", loadout, out int guestSeat);
+        room.TryAddHuman("third-connection", endpoints[2], "dev:third", "Third", loadout, out int thirdSeat);
+
+        bool guestRejected = !room.TryAddAi(
+            "dev:guest", 3, AiDifficulty.Standard, AiLoadoutTemplate.Stable, loadout, out string guestError);
+        bool hostAdded = room.TryAddAi(
+            "dev:host", 3, AiDifficulty.Standard, AiLoadoutTemplate.Stable, loadout, out _);
+        RoomSeatMessage aiProjection = room.GetSeatMessage(3);
+        RoomGameSnapshot roomSnapshot = room.BuildSnapshot(hostSeat);
+
+        runner.Check(hostSeat == 0 && guestSeat == 1 && thirdSeat == 2
+                     && guestRejected && guestError == NetworkErrorCodes.HostOnly
+                     && hostAdded
+                     && room.HostPlayerId == "dev:host"
+                     && room.Seats[3].SeatKind == RoomSeatKind.PermanentAi
+                     && aiProjection.aiConfig?.loadout != null
+                     && room.GetSeatMessage(guestSeat).aiConfig == null
+                     && roomSnapshot.seats[3].aiConfig?.loadout != null
+                     && roomSnapshot.seats[guestSeat].aiConfig == null,
+            "Only the stable host can add a permanent AI and only AI loadouts are publicly projected.");
+
+        bool hostReady = room.SetMatchReady("host-connection", true, out _);
+        bool guestReady = room.SetMatchReady("guest-connection", true, out _);
+        bool aiUpdated = room.TryUpdateAi(
+            "dev:host", 3, AiDifficulty.Beginner, AiLoadoutTemplate.Aggressive, loadout, out _);
+        runner.Check(hostReady && guestReady && aiUpdated
+                     && !room.Seats[hostSeat].MatchReady
+                     && room.Seats[guestSeat].MatchReady
+                     && room.Seats[3].AiConfig.Difficulty == AiDifficulty.Beginner,
+            "Editing AI invalidates only host ready while retaining other human ready state.");
+
+        room.HandleExplicitLeave("dev:host", "host-connection", out _, out _);
+        runner.Check(room.HostPlayerId == "dev:guest"
+                     && room.GetSeatMessage(guestSeat).isHost,
+            "An explicit host leave transfers ownership to the earliest joined online human.");
+
+        DateTime disconnectedAt = DateTime.UtcNow;
+        room.HandleDisconnect("dev:guest", "guest-connection", endpoints[1], disconnectedAt,
+            TimeSpan.FromSeconds(120), out _, out _);
+        runner.Check(room.HostPlayerId == "dev:guest",
+            "A disconnected host retains ownership during the reconnect window.");
+
+        room.ExpireOfflineSeats(disconnectedAt.AddSeconds(121), out _, out _);
+        runner.Check(room.HostPlayerId == "dev:third",
+            "An expired host reservation transfers ownership to the next online human.");
+
+        RoomSummaryMessage summary = room.CreateSummary();
+        runner.Check(summary.humanPlayers == 1
+                     && summary.aiPlayers == 1
+                     && summary.emptySeats == 2
+                     && !summary.isFull,
+            "Room summaries distinguish human, permanent AI, and empty seats without exposing loadouts.");
+    }
+
+    private static void TestDepartedHumanBecomesBeginnerPermanentAi(RegressionRunner runner)
+    {
+        PlayerLoadoutCodec.TryDecode(
+            PlayerLoadoutCodec.CreateMessage(DeckConfig.CreateStandard(), new TalentSlotConfig()),
+            AlienationPreset.Standard,
+            out TrustedPlayerLoadout loadout,
+            out _);
+
+        using (var room = new Room(
+                   "leave-to-ai", GameMode.EastOnly, AlienationPreset.Standard, "dev:host", 16))
+        {
+            room.TryAddHuman("host", new GameEndpoint(), "dev:host", "Host", loadout, out int hostSeat);
+            room.TryAddHuman("guest", new GameEndpoint(), "dev:guest", "Guest", loadout, out _);
+            RoomTestFixtures.FillEmptySeatsWithAi(room, "dev:host", loadout);
+            room.SetMatchReady("host", true, out _);
+            room.SetMatchReady("guest", true, out _);
+
+            room.HandleExplicitLeave("dev:host", "host", out _, out bool shouldClose);
+            RoomSeat converted = room.Seats[hostSeat];
+            runner.Check(!shouldClose
+                         && converted.IsAi
+                         && converted.IsOnline
+                         && converted.SeatKind == RoomSeatKind.PermanentAi
+                         && converted.AiConfig?.Difficulty == AiDifficulty.Beginner
+                         && converted.AiConfig?.Template == AiLoadoutTemplate.Custom
+                         && room.HostPlayerId == "dev:guest",
+                "A human leaving after loadout lock becomes a beginner permanent AI while host ownership transfers to a human.");
+        }
+
+        using (var room = new Room(
+                   "timeout-to-ai", GameMode.EastOnly, AlienationPreset.Standard, "dev:host", 16))
+        {
+            var endpoint = new GameEndpoint();
+            room.TryAddHuman("host", endpoint, "dev:host", "Host", loadout, out int hostSeat);
+            RoomTestFixtures.FillEmptySeatsWithAi(room, "dev:host", loadout);
+            room.SetMatchReady("host", true, out _);
+            DateTime disconnectedAt = DateTime.UtcNow;
+
+            room.HandleDisconnect("dev:host", "host", endpoint, disconnectedAt,
+                TimeSpan.FromSeconds(120), out _, out bool closeOnDisconnect);
+            room.ExpireOfflineSeats(disconnectedAt.AddSeconds(121), out _, out bool closeOnExpiry);
+            RoomSeat converted = room.Seats[hostSeat];
+            runner.Check(!closeOnDisconnect
+                         && closeOnExpiry
+                         && converted.IsAi
+                         && converted.IsOnline
+                         && converted.SeatKind == RoomSeatKind.PermanentAi
+                         && converted.AiConfig?.Difficulty == AiDifficulty.Beginner
+                         && converted.AiConfig?.Template == AiLoadoutTemplate.Custom,
+                "A disconnected human keeps the 120-second reservation, then becomes a beginner permanent AI on expiry.");
+        }
     }
 
     private static void TestResponseAndTurnPolicies(RegressionRunner runner)
@@ -729,12 +889,11 @@ internal static class RoomSessionTests
             gameMode = (int)GameMode.EastOnly,
             alienationPreset = (int)AlienationPreset.Standard,
             roomState = (int)RoomState.WaitingForMatchReady,
-            aiFillEnabled = true,
             acceptedSchemaVersion = 2,
             ownTotalAlienation = 17,
             seats = new[]
             {
-                new RoomSeatMessage { seatIndex = 0, isOccupied = true, displayName = "Host" },
+                new RoomSeatMessage { seatIndex = 0, isOccupied = true, displayName = "Host", isHost = true },
                 new RoomSeatMessage { seatIndex = 1, isOccupied = true, displayName = "Guest" }
             }
         };
@@ -749,6 +908,13 @@ internal static class RoomSessionTests
 
         var room = new ClientRoomState();
         room.ApplyJoined(joined);
+        runner.Check(!room.IsHost
+                     && room.HumanPlayerCount == 2
+                     && room.AiPlayerCount == 0
+                     && room.EmptySeatCount == 2
+                     && !room.CanSetMatchReady
+                     && !string.IsNullOrEmpty(room.MatchReadyBlockedReason),
+            "Client room state derives host identity, occupancy counts, and ready admission from authoritative seats.");
         runner.Check(room.ApplySeatUpdate(new RoomSeatMessage
             {
                 seatIndex = 1,
@@ -756,8 +922,9 @@ internal static class RoomSessionTests
                 displayName = "Guest",
                 isReady = true
             })
-            && room.Seats[1].isReady,
-            "Room seat updates must project Ready state.");
+            && room.Seats[1].isReady
+            && room.CanSetMatchReady,
+            "Room seat updates project Ready state and a ready human can still cancel while a seat is empty.");
         room.CompleteSession();
         runner.Check(!room.HasRoom
             && room.IsSessionCompleted
@@ -783,7 +950,7 @@ internal static class RoomSessionTests
     private static void TestQueryRoomList(RegressionRunner runner)
     {
         var connections = new ConnectionRegistry();
-        using var manager = new RoomManager(4, true, connections, messageCacheSize: 8);
+        using var manager = new RoomManager(4, connections, messageCacheSize: 8);
         var client = new GameEndpoint();
         client.Connect("client-conn", 1);
         client.Receive("client-conn", 1, MessageSerializer.Serialize("Hello", 0,

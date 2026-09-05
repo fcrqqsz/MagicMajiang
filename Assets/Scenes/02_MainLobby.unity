@@ -297,6 +297,7 @@ GameObject:
   m_Component:
   - component: {fileID: 1446404567}
   - component: {fileID: 1446404566}
+  - component: {fileID: 1446404568}
   m_Layer: 0
   m_HasEditorInfo: 1
   m_Name: UIDocument_MainLobby
@@ -336,6 +337,21 @@ Transform:
   m_Children: []
   m_Father: {fileID: 362016032}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1446404568
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1446404565}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ca986782b425b794e89e1e6dba1fe95b, type: 3}
+  m_Name:
+  m_EditorClassIdentifier:
+  document: {fileID: 0}
+  lobbyController: {fileID: 0}
+  deckEditorToolkit: {fileID: 0}
 --- !u!1 &1687066261
 GameObject:
   m_ObjectHideFlags: 0

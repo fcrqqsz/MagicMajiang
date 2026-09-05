@@ -42,6 +42,13 @@ if (args.Length == 1 && string.Equals(args[0], "ai-talents", StringComparison.Or
     return runner.Complete();
 }
 
+if (args.Length == 1 && string.Equals(args[0], "room-ui", StringComparison.OrdinalIgnoreCase))
+{
+    RoomPanelViewModelTests.Run(runner);
+    AiLoadoutDraftTests.Run(runner);
+    return runner.Complete();
+}
+
 if (args.Length == 1 && string.Equals(args[0], "talent-actions", StringComparison.OrdinalIgnoreCase))
 {
     TalentActionTests.Run(runner);
@@ -103,6 +110,9 @@ TalentCommandClientTests.Run(runner);
 TalentPresentationTests.Run(runner);
 SideboardTests.Run(runner);
 AiTalentPolicyTests.Run(runner);
+AiDecisionStrategyTests.Run(runner);
+RoomPanelViewModelTests.Run(runner);
+AiLoadoutDraftTests.Run(runner);
 AuthoritativePublicTileTransitionTests.Run(runner);
 CompendiumPresentationTests.Run(runner);
 GameTableLayoutPolicyTests.Run(runner);

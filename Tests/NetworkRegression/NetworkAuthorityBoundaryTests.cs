@@ -8,7 +8,7 @@ internal static class NetworkAuthorityBoundaryTests
     public static void Run(RegressionRunner runner)
     {
         TestGameSceneEntry(runner);
-        TestSingleHumanAiFill(runner);
+        TestRoomRequiresFourOccupiedSeats(runner);
         TestGameModeLengths(runner);
     }
 
@@ -31,12 +31,12 @@ internal static class NetworkAuthorityBoundaryTests
         }
     }
 
-    private static void TestSingleHumanAiFill(RegressionRunner runner)
+    private static void TestRoomRequiresFourOccupiedSeats(RegressionRunner runner)
     {
-        runner.Check(RoomReadyPolicy.CanMarkMatchReady(aiFill: true, humanCount: 1),
-            "One human can start when AI fill is enabled.");
-        runner.Check(!RoomReadyPolicy.CanMarkMatchReady(aiFill: false, humanCount: 1),
-            "One human cannot start when AI fill is disabled.");
+        runner.Check(RoomReadyPolicy.CanMarkMatchReady(occupiedSeatCount: 4),
+            "A human can ready when all four authoritative seats are occupied.");
+        runner.Check(!RoomReadyPolicy.CanMarkMatchReady(occupiedSeatCount: 3),
+            "An empty seat blocks match ready instead of being filled implicitly.");
     }
 
     private static void TestGameModeLengths(RegressionRunner runner)

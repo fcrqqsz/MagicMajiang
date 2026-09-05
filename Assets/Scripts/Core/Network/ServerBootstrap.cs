@@ -14,7 +14,6 @@ namespace MahjongGame.Core.Network
     {
         public int Port { get; private set; }
         public int MaxRooms { get; private set; }
-        public bool AiFill { get; private set; }
         public int ReconnectWindowSeconds { get; private set; }
         public int MessageCacheSize { get; private set; }
         public int HeartbeatTimeoutSeconds { get; private set; }
@@ -44,10 +43,10 @@ namespace MahjongGame.Core.Network
                 Application.persistentDataPath,
                 "Logs",
                 "talent-playtest.jsonl"));
-            _roomManager = new RoomManager(MaxRooms, AiFill, _connectionRegistry, messageCacheSize: MessageCacheSize,
+            _roomManager = new RoomManager(MaxRooms, _connectionRegistry, messageCacheSize: MessageCacheSize,
                 reconnectWindowSeconds: ReconnectWindowSeconds,
                 telemetrySink: _telemetrySink);
-            Debug.Log($"[ServerBootstrap] ServerBootstrap started. Port={Port}, MaxRooms={MaxRooms}, AiFill={AiFill}, ReconnectWindowSeconds={ReconnectWindowSeconds}, MessageCacheSize={MessageCacheSize}, HeartbeatTimeoutSeconds={HeartbeatTimeoutSeconds}");
+            Debug.Log($"[ServerBootstrap] ServerBootstrap started. Port={Port}, MaxRooms={MaxRooms}, ReconnectWindowSeconds={ReconnectWindowSeconds}, MessageCacheSize={MessageCacheSize}, HeartbeatTimeoutSeconds={HeartbeatTimeoutSeconds}");
         }
 
         private void OnDestroy()
@@ -69,7 +68,6 @@ namespace MahjongGame.Core.Network
             var options = ServerBootstrapOptions.Parse(args);
             Port = options.Port;
             MaxRooms = options.MaxRooms;
-            AiFill = options.AiFill;
             ReconnectWindowSeconds = options.ReconnectWindowSeconds;
             MessageCacheSize = options.MessageCacheSize;
             HeartbeatTimeoutSeconds = options.HeartbeatTimeoutSeconds;

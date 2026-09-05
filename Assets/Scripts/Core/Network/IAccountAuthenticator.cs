@@ -20,7 +20,7 @@ namespace MahjongGame.Core.Network
 
     public static class NetworkProtocol
     {
-        public const int Version = 11;
+        public const int Version = 12;
 
         public static bool IsSupported(int protocolVersion) => protocolVersion == Version;
     }
@@ -45,5 +45,8 @@ namespace MahjongGame.Core.Network
         public const string WrongPhase = "WrongPhase";
         public const string NotEligible = "NotEligible";
         public const string RoundAborted = "RoundAborted";
+        public const string HostOnly = "HostOnly";
+        public const string InvalidAiSeat = "InvalidAiSeat";
+        public const string AiConfigLocked = "AiConfigLocked";
     }
 }

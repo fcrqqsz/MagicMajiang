@@ -50,7 +50,7 @@
                 </ui:VisualElement>
                 <ui:Label name="BudgetStatus" class="budget-status" />
             </ui:VisualElement>
-            <ui:Label text="牌库列表" class="sidebar-title" />
+            <ui:Label name="DeckListTitle" text="牌库列表" class="sidebar-title" />
             <ui:ScrollView name="DeckListScroll" class="deck-list-scroll">
                 <ui:VisualElement name="DeckListContainer" class="deck-list-container" />
             </ui:ScrollView>

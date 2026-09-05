@@ -271,7 +271,7 @@ internal static class BattleExitTests
         public readonly Room Room;
         public ServerFixture(bool twoHumans)
         {
-            Manager = new RoomManager(4, true, Connections);
+            Manager = new RoomManager(4, Connections);
             var loadout = PlayerLoadoutCodec.CreateMessage(DeckConfig.CreateStandard(), new TalentSlotConfig());
             int count = twoHumans ? 2 : 1;
             for (int seat = 0; seat < count; seat++)
@@ -286,7 +286,16 @@ internal static class BattleExitTests
             var rooms = (Dictionary<string, Room>)typeof(RoomManager).GetField("_rooms", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(Manager);
             Room = rooms.Values.Single();
             if (twoHumans) Send(1, "JoinRoom", new JoinRoomMessage { roomId = Room.RoomId, loadout = loadout });
-            for (int seat = 0; seat < count; seat++) Send(seat, "Ready", new ReadyMessage { phase = (int)ReadyPhase.MatchStart });
+            for (int seat = count; seat < 4; seat++)
+                Send(0, "AddAiSeat", new AddAiSeatMessage
+                {
+                    seatIndex = seat,
+                    difficulty = (int)AiDifficulty.Beginner,
+                    template = (int)AiLoadoutTemplate.Stable,
+                    loadout = loadout
+                });
+            for (int seat = 0; seat < count; seat++)
+                Send(seat, "SetMatchReady", new SetMatchReadyMessage { isReady = true });
             for (int seat = 0; seat < count; seat++) Send(seat, "Ready", new ReadyMessage { phase = (int)ReadyPhase.GameSceneLoaded });
             if (Room.State != RoomState.InRound) throw new InvalidOperationException("Could not start server exit fixture.");
         }

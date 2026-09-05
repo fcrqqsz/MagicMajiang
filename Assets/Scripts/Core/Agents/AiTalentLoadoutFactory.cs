@@ -31,13 +31,29 @@ namespace MahjongGame.Core.Agents
 
         public static PlayerLoadoutMessage Create(AlienationPreset preset, int seatIndex, int seed)
         {
+            int archetypeIndex = PositiveModulo(seed + seatIndex, ArchetypePriorities.Length);
+            return CreateInternal(preset, seatIndex, DeckConfig.CreateStandard(), ArchetypePriorities[archetypeIndex]);
+        }
+
+        public static PlayerLoadoutMessage Create(AlienationPreset preset, AiLoadoutTemplate template,
+            int seatIndex, int seed)
+        {
+            if (template == AiLoadoutTemplate.Custom)
+                throw new ArgumentException("Custom AI loadouts must provide an explicit full loadout.", nameof(template));
+            int archetypeIndex = template == AiLoadoutTemplate.Aggressive ? 0
+                : template == AiLoadoutTemplate.Stable ? 1 : 2;
+            return CreateInternal(preset, seatIndex, CreateTemplateDeck(template), ArchetypePriorities[archetypeIndex]);
+        }
+
+        private static PlayerLoadoutMessage CreateInternal(AlienationPreset preset, int seatIndex,
+            DeckConfig deck, string[] priorities)
+        {
             if (!AlienationBudgetPolicy.IsDefined(preset))
                 throw new ArgumentOutOfRangeException(nameof(preset));
             if (seatIndex < 0 || seatIndex > 3)
                 throw new ArgumentOutOfRangeException(nameof(seatIndex));
 
             TalentRegistry registry = TalentRegistry.Instance;
-            string[] priorities = ArchetypePriorities[PositiveModulo(seed + seatIndex, ArchetypePriorities.Length)];
             var config = new TalentSlotConfig();
             var carried = new HashSet<string>(StringComparer.Ordinal);
 
@@ -47,7 +63,7 @@ namespace MahjongGame.Core.Agents
                 if (!TryFindMainSlot(config, registry.GetTier(talentId), out int slotIndex)) continue;
 
                 config.SlotTalentIds[slotIndex] = talentId;
-                if (IsAdmitted(config, preset))
+                if (IsAdmitted(deck, config, preset))
                 {
                     carried.Add(talentId);
                 }
@@ -68,7 +84,7 @@ namespace MahjongGame.Core.Agents
                 }
 
                 config.ReserveTalentIds[slotIndex] = talentId;
-                if (IsAdmitted(config, preset))
+                if (IsAdmitted(deck, config, preset))
                 {
                     carried.Add(talentId);
                 }
@@ -78,13 +94,34 @@ namespace MahjongGame.Core.Agents
                 }
             }
 
-            return PlayerLoadoutCodec.CreateMessage(DeckConfig.CreateStandard(), config, preset);
+            return PlayerLoadoutCodec.CreateMessage(deck, config, preset);
         }
 
-        private static bool IsAdmitted(TalentSlotConfig config, AlienationPreset preset)
+        private static DeckConfig CreateTemplateDeck(AiLoadoutTemplate template)
+        {
+            DeckConfig deck = DeckConfig.CreateStandard();
+            if (template == AiLoadoutTemplate.Aggressive)
+            {
+                deck.SetCardCount(Suit.Man, 1, 0);
+                deck.SetCardCount(Suit.Man, 9, 0);
+                deck.SetCardCount(Suit.Man, 4, 2);
+                deck.SetCardCount(Suit.Man, 6, 2);
+            }
+            else if (template == AiLoadoutTemplate.TalentSynergy)
+            {
+                deck.SetCardCount(Suit.Wind, 4, 0);
+                deck.SetCardCount(Suit.Wind, 1, 2);
+                deck.SetCardCount(Suit.Dragon, 3, 0);
+                deck.SetCardCount(Suit.Dragon, 1, 2);
+            }
+            deck.CalculateAlienationScore();
+            return deck;
+        }
+
+        private static bool IsAdmitted(DeckConfig deck, TalentSlotConfig config, AlienationPreset preset)
         {
             PlayerLoadoutMessage candidate = PlayerLoadoutCodec.CreateMessage(
-                DeckConfig.CreateStandard(), config, preset);
+                deck, config, preset);
             return PlayerLoadoutCodec.TryDecode(candidate, preset, out _, out _);
         }
 

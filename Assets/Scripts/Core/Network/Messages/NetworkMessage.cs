@@ -120,6 +120,9 @@ namespace MahjongGame.Core.Network.Messages
         public int maxPlayers;
         public int state;
         public bool isFull;
+        public int humanPlayers;
+        public int aiPlayers;
+        public int emptySeats;
     }
 
     [Serializable]
@@ -136,6 +139,45 @@ namespace MahjongGame.Core.Network.Messages
 
     [Serializable]
     public class ReadyMessage { public int phase; }
+
+    [Serializable]
+    public sealed class SetMatchReadyMessage { public bool isReady; }
+
+    [Serializable]
+    public sealed class AiSeatConfigMessage
+    {
+        public int difficulty;
+        public int template;
+        public PlayerLoadoutMessage loadout;
+    }
+
+    [Serializable]
+    public sealed class AddAiSeatMessage
+    {
+        public int seatIndex;
+        public int difficulty;
+        public int template;
+        public PlayerLoadoutMessage loadout;
+    }
+
+    [Serializable]
+    public sealed class UpdateAiSeatMessage
+    {
+        public int seatIndex;
+        public int difficulty;
+        public int template;
+        public PlayerLoadoutMessage loadout;
+    }
+
+    [Serializable]
+    public sealed class RemoveAiSeatMessage { public int seatIndex; }
+
+    [Serializable]
+    public sealed class RoomNoticeMessage
+    {
+        public string code;
+        public string message;
+    }
 
     [Serializable]
     public sealed class SideboardStartedMessage
@@ -191,6 +233,9 @@ namespace MahjongGame.Core.Network.Messages
         public string controlState;
         public bool isReady;
         public string displayName;
+        public int seatKind;
+        public bool isHost;
+        public AiSeatConfigMessage aiConfig;
     }
 
     [Serializable]
@@ -203,7 +248,6 @@ namespace MahjongGame.Core.Network.Messages
         public int alienationPreset;
         public int roomState;
         public bool isHost;
-        public bool aiFillEnabled;
         public int acceptedSchemaVersion;
         public int ownTotalAlienation;
         public RoomSeatMessage[] seats;

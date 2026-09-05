@@ -17,12 +17,12 @@ internal static class IdentityConnectionTests
 
     private static void TestProtocolAndIdentity(RegressionRunner runner)
     {
-        runner.Check(NetworkProtocol.Version == 11 && NetworkProtocol.IsSupported(11) && !NetworkProtocol.IsSupported(10),
-            "Score-depletion termination must accept protocol v11 and reject v10.");
-        runner.Check(new HelloMessage().protocolVersion == 11
+        runner.Check(NetworkProtocol.Version == 12 && NetworkProtocol.IsSupported(12) && !NetworkProtocol.IsSupported(11),
+            "Configurable AI rooms must accept protocol v12 and reject v11.");
+        runner.Check(new HelloMessage().protocolVersion == 12
             && new HeartbeatAckMessage() != null
             && new PlayerLoadoutMessage() != null,
-            "Protocol v11 must expose Hello, heartbeat acknowledgement, and loadout DTOs.");
+            "Protocol v12 must expose Hello, heartbeat acknowledgement, and loadout DTOs.");
 
         string publicSeatJson = UnityEngine.JsonUtility.ToJson(new RoomSeatMessage
         {
@@ -57,8 +57,8 @@ internal static class IdentityConnectionTests
             "The development authenticator must expose the normalized identity.");
 
         var hello = ClientHelloProtocol.Create("Alice");
-        runner.Check(hello.protocolVersion == 11 && hello.username == "Alice",
-            "Client Hello must carry protocol v11 and the selected username.");
+        runner.Check(hello.protocolVersion == 12 && hello.username == "Alice",
+            "Client Hello must carry protocol v12 and the selected username.");
         runner.Check(RoomErrorPresentationPolicy.GetDisplayMessage(new RoomErrorMessage
             {
                 code = NetworkErrorCodes.IdentityInUse,
@@ -206,7 +206,6 @@ internal static class IdentityConnectionTests
         {
             "--port", "9999",
             "--maxRooms", "3",
-            "--aiFill", "false",
             "--reconnectWindowSeconds", "121",
             "--messageCacheSize", "257",
             "--heartbeatTimeoutSeconds", "11"
@@ -219,7 +218,6 @@ internal static class IdentityConnectionTests
             "Dedicated Server reconnect defaults must remain stable.");
         runner.Check(configured.Port == 9999
             && configured.MaxRooms == 3
-            && !configured.AiFill
             && configured.ReconnectWindowSeconds == 121
             && configured.MessageCacheSize == 257
             && configured.HeartbeatTimeoutSeconds == 11,
