@@ -63,6 +63,27 @@ namespace MahjongGame.UI
         private Button btnRoomPresetPrev;
         private Button btnRoomPresetNext;
         private AlienationPreset _pendingRoomAlienationPreset = AlienationPreset.Standard;
+
+        // New Home Dashboard Elements
+        private Label homeDeckMetaLabel;
+        private Label homeAlienationMetaLabel;
+        private Label homeConnectionGood;
+        private Label homeConnectionSub;
+        private Label deckPresetBadge;
+        private VisualElement homeAlienationFill;
+        private Label homeDeckCostLabel;
+        private Label homeTalentCostLabel;
+        private Label homeAlienationStatusBadge;
+        private VisualElement homeActiveTalentsRow1;
+        private VisualElement homeActiveTalentsRow2;
+        private VisualElement homeSideboardTalentsRow;
+        private Button btnHomeJumpWorkshop;
+        private Label modeScoreBadge;
+        private Label modeDescLabel;
+        private Label roomPresetBadge;
+        private Label roomPresetDescLabel;
+        private EventCallback<ChangeEvent<string>> _onRoomIdChanged;
+        private EventCallback<KeyDownEvent> _onRoomIdKeyDown;
         
         // Connection settings elements
         private Toggle localServerToggle;
@@ -164,6 +185,24 @@ namespace MahjongGame.UI
             btnRoomPresetPrev = root.Q<Button>("BtnRoomPresetPrev");
             btnRoomPresetNext = root.Q<Button>("BtnRoomPresetNext");
 
+            homeDeckMetaLabel = root.Q<Label>("HomeDeckMetaLabel");
+            homeAlienationMetaLabel = root.Q<Label>("HomeAlienationMetaLabel");
+            homeConnectionGood = root.Q<Label>("HomeConnectionGood");
+            homeConnectionSub = root.Q<Label>("HomeConnectionSub");
+            deckPresetBadge = root.Q<Label>("DeckPresetBadge");
+            homeAlienationFill = root.Q<VisualElement>("HomeAlienationFill");
+            homeDeckCostLabel = root.Q<Label>("HomeDeckCostLabel");
+            homeTalentCostLabel = root.Q<Label>("HomeTalentCostLabel");
+            homeAlienationStatusBadge = root.Q<Label>("HomeAlienationStatusBadge");
+            homeActiveTalentsRow1 = root.Q<VisualElement>("HomeActiveTalentsRow1");
+            homeActiveTalentsRow2 = root.Q<VisualElement>("HomeActiveTalentsRow2");
+            homeSideboardTalentsRow = root.Q<VisualElement>("HomeSideboardTalentsRow");
+            btnHomeJumpWorkshop = root.Q<Button>("BtnHomeJumpWorkshop");
+            modeScoreBadge = root.Q<Label>("ModeScoreBadge");
+            modeDescLabel = root.Q<Label>("ModeDescLabel");
+            roomPresetBadge = root.Q<Label>("RoomPresetBadge");
+            roomPresetDescLabel = root.Q<Label>("RoomPresetDescLabel");
+
             localServerToggle = root.Q<Toggle>("LocalServerToggle");
             connectionStatusPill = root.Q<Label>("ConnectionStatusPill");
             connectionAddressLabel = root.Q<Label>("ConnectionAddressLabel");
@@ -189,17 +228,38 @@ namespace MahjongGame.UI
             if (btnModeNext != null) btnModeNext.clicked += OnModeNextClicked;
             if (btnRoomPresetPrev != null) btnRoomPresetPrev.clicked += OnRoomPresetPrevClicked;
             if (btnRoomPresetNext != null) btnRoomPresetNext.clicked += OnRoomPresetNextClicked;
+            if (btnHomeJumpWorkshop != null) btnHomeJumpWorkshop.clicked += OnHomeJumpWorkshopClicked;
+
+            if (roomIdInput != null)
+            {
+                _onRoomIdChanged = evt =>
+                {
+                    string clean = new string((evt.newValue ?? "").ToUpperInvariant().Where(char.IsLetterOrDigit).ToArray());
+                    if (clean != evt.newValue)
+                    {
+                        roomIdInput.SetValueWithoutNotify(clean);
+                    }
+                };
+                roomIdInput.RegisterValueChangedCallback(_onRoomIdChanged);
+
+                _onRoomIdKeyDown = evt =>
+                {
+                    if (evt.keyCode == KeyCode.Return || evt.keyCode == KeyCode.KeypadEnter)
+                    {
+                        OnJoinRoomClicked();
+                    }
+                };
+                roomIdInput.RegisterCallback<KeyDownEvent>(_onRoomIdKeyDown);
+            }
 
             if (ProfileManager.Instance != null && ProfileManager.Instance.CurrentProfile != null)
             {
                 if (welcomeLabel != null)
-                    welcomeLabel.text = $"Welcome, {ProfileManager.Instance.CurrentProfile.Nickname}";
-                    
+                    welcomeLabel.text = $"欢迎归来，{ProfileManager.Instance.CurrentProfile.Nickname}";
             }
 
             RegisterConnectionSettingsCallbacks();
             audioSettingsView = new AudioSettingsView(root, AudioManager.Instance);
-
             InitializeCompendiumElements(root);
 
             if (deckEditorToolkit != null)
@@ -238,6 +298,12 @@ namespace MahjongGame.UI
             if (btnModeNext != null) btnModeNext.clicked -= OnModeNextClicked;
             if (btnRoomPresetPrev != null) btnRoomPresetPrev.clicked -= OnRoomPresetPrevClicked;
             if (btnRoomPresetNext != null) btnRoomPresetNext.clicked -= OnRoomPresetNextClicked;
+            if (btnHomeJumpWorkshop != null) btnHomeJumpWorkshop.clicked -= OnHomeJumpWorkshopClicked;
+            if (roomIdInput != null)
+            {
+                if (_onRoomIdChanged != null) roomIdInput.UnregisterValueChangedCallback(_onRoomIdChanged);
+                if (_onRoomIdKeyDown != null) roomIdInput.UnregisterCallback<KeyDownEvent>(_onRoomIdKeyDown);
+            }
 
             if (deckEditorToolkit != null)
             {
@@ -698,6 +764,10 @@ namespace MahjongGame.UI
             var profile = ProfileManager.Instance.CurrentProfile;
             string deckName = "标准牌库（默认）";
             int alienation = 0;
+            int deckConfigCost = 0;
+            int talentConfigCost = 0;
+            TalentSlotConfig talents = null;
+            AlienationPreset loadoutPreset = AlienationPreset.Standard;
 
             if (profile.SavedDecks.Count > 0)
             {
@@ -711,21 +781,135 @@ namespace MahjongGame.UI
                 var deck = profile.SavedDecks[idx];
                 deckName = deck.DeckName;
                 alienation = DeckConfig.CalculateTotalAlienation(deck.Config, deck.Talents);
+                deckConfigCost = deck.Config?.AlienationScore ?? 0;
+                talentConfigCost = Mathf.Max(0, alienation - deckConfigCost);
+                talents = deck.Talents;
+                loadoutPreset = deck.AlienationPreset;
             }
 
+            int maxBudget = (int)loadoutPreset;
+            bool isOverflow = alienation > maxBudget;
+
             if (deckNameLabel != null)
-                deckNameLabel.text = $"当前牌库: {deckName}";
+                deckNameLabel.text = deckName;
+            if (deckPresetBadge != null)
+                deckPresetBadge.text = $"{RoomLoadoutAdmissionPresentationPolicy.GetDisplayName(loadoutPreset)} · {maxBudget} 预算";
             if (scoreLabel != null)
-                scoreLabel.text = $"异化值: {alienation}";
+                scoreLabel.text = $"{alienation} / {maxBudget}";
+            if (homeDeckMetaLabel != null)
+                homeDeckMetaLabel.text = deckName;
+            if (homeAlienationMetaLabel != null)
+                homeAlienationMetaLabel.text = $"{alienation} / {maxBudget} 点";
+            if (homeDeckCostLabel != null)
+                homeDeckCostLabel.text = $"34张牌库: {deckConfigCost}点";
+            if (homeTalentCostLabel != null)
+                homeTalentCostLabel.text = $"主槽天赋: {talentConfigCost}点";
+
+            if (homeAlienationStatusBadge != null)
+            {
+                homeAlienationStatusBadge.text = isOverflow ? "[异化超额]" : "[合规可用]";
+                homeAlienationStatusBadge.EnableInClassList("breakdown-invalid", isOverflow);
+                homeAlienationStatusBadge.EnableInClassList("breakdown-valid", !isOverflow);
+            }
+
+            if (homeAlienationFill != null)
+            {
+                float pct = maxBudget > 0 ? ((float)alienation / maxBudget) * 100f : 0f;
+                homeAlienationFill.style.width = Length.Percent(Mathf.Clamp(pct, 0f, 100f));
+                homeAlienationFill.EnableInClassList("progress-overflow", isOverflow);
+            }
+
+            RenderHomeTalents(talents);
 
             bool canCycle = profile.SavedDecks.Count > 1;
             if (btnDeckPrev != null) btnDeckPrev.SetEnabled(canCycle);
             if (btnDeckNext != null) btnDeckNext.SetEnabled(canCycle);
         }
 
+        private void RenderHomeTalents(TalentSlotConfig talents)
+        {
+            string GetSlot(string[] arr, int idx) => (arr != null && idx >= 0 && idx < arr.Length) ? arr[idx] : null;
+
+            if (homeActiveTalentsRow1 != null)
+            {
+                homeActiveTalentsRow1.Clear();
+                homeActiveTalentsRow1.Add(CreateHomeTalentChip(GetSlot(talents?.SlotTalentIds, 0), TalentTier.Large, false));
+                homeActiveTalentsRow1.Add(CreateHomeTalentChip(GetSlot(talents?.SlotTalentIds, 1), TalentTier.Medium, false));
+                homeActiveTalentsRow1.Add(CreateHomeTalentChip(GetSlot(talents?.SlotTalentIds, 2), TalentTier.Medium, false));
+            }
+            if (homeActiveTalentsRow2 != null)
+            {
+                homeActiveTalentsRow2.Clear();
+                homeActiveTalentsRow2.Add(CreateHomeTalentChip(GetSlot(talents?.SlotTalentIds, 3), TalentTier.Small, false));
+                homeActiveTalentsRow2.Add(CreateHomeTalentChip(GetSlot(talents?.SlotTalentIds, 4), TalentTier.Small, false));
+                homeActiveTalentsRow2.Add(CreateHomeTalentChip(GetSlot(talents?.SlotTalentIds, 5), TalentTier.Small, false));
+            }
+            if (homeSideboardTalentsRow != null)
+            {
+                homeSideboardTalentsRow.Clear();
+                homeSideboardTalentsRow.Add(CreateHomeTalentChip(GetSlot(talents?.ReserveTalentIds, 0), TalentTier.Medium, true));
+                homeSideboardTalentsRow.Add(CreateHomeTalentChip(GetSlot(talents?.ReserveTalentIds, 1), TalentTier.Small, true));
+                homeSideboardTalentsRow.Add(CreateHomeTalentChip(GetSlot(talents?.ReserveTalentIds, 2), TalentTier.Small, true));
+            }
+        }
+
+        private static VisualElement CreateHomeTalentChip(string talentId, TalentTier? defaultTier, bool isSideboard)
+        {
+            var chip = new VisualElement();
+            chip.AddToClassList("talent-chip");
+            if (isSideboard) chip.AddToClassList("chip-sideboard");
+
+            if (string.IsNullOrWhiteSpace(talentId))
+            {
+                chip.AddToClassList("chip-empty");
+                var emptyTag = new Label("-");
+                emptyTag.AddToClassList("chip-tier-tag");
+                chip.Add(emptyTag);
+
+                var emptyName = new Label("[未装配]");
+                emptyName.AddToClassList("chip-name");
+                chip.Add(emptyName);
+                return chip;
+            }
+
+            TalentTier tier = TalentRegistry.Instance != null ? TalentRegistry.Instance.GetTier(talentId) : (defaultTier ?? TalentTier.Small);
+            string displayName = TalentRegistry.Instance?.GetDisplayName(talentId) ?? talentId;
+
+            switch (tier)
+            {
+                case TalentTier.Large:
+                    chip.AddToClassList("chip-major");
+                    break;
+                case TalentTier.Medium:
+                    chip.AddToClassList("chip-medium");
+                    break;
+                default:
+                    chip.AddToClassList("chip-minor");
+                    break;
+            }
+
+            string tierText = tier switch
+            {
+                TalentTier.Large => "大",
+                TalentTier.Medium => "中",
+                _ => "小"
+            };
+
+            var tagLabel = new Label(tierText);
+            tagLabel.AddToClassList("chip-tier-tag");
+            chip.Add(tagLabel);
+
+            var nameLabel = new Label(displayName);
+            nameLabel.AddToClassList("chip-name");
+            chip.Add(nameLabel);
+
+            return chip;
+        }
+
+        private void OnHomeJumpWorkshopClicked() => ShowTab("Workshop");
+
         private void OnDeckPrevClicked() => CycleDeck(-1);
         private void OnDeckNextClicked() => CycleDeck(1);
-
         private void OnModePrevClicked() => CycleMode(-1);
         private void OnModeNextClicked() => CycleMode(1);
 
@@ -753,7 +937,21 @@ namespace MahjongGame.UI
                 modeIdx = 0;
 
             var mode = (GameMode)modeIdx;
-            modeNameLabel.text = $"对战模式: {GameModeNames[modeIdx]} · {SessionScoreRules.GetInitialScore(mode)} 分";
+            int startScore = SessionScoreRules.GetInitialScore(mode);
+            modeNameLabel.text = $"{GameModeNames[modeIdx]} ({mode})";
+            if (modeScoreBadge != null)
+                modeScoreBadge.text = $"{startScore} 分起始";
+            if (modeDescLabel != null)
+            {
+                modeDescLabel.text = mode switch
+                {
+                    GameMode.Single => "一小局决胜，节奏紧凑明快，完整局末结算后决出胜负",
+                    GameMode.EastOnly => "共 4 小局，每家轮坐东风一次，完整局末结算",
+                    GameMode.HalfGame => "共 8 小局（东/南圈），第 4 局后进入中场备牌",
+                    GameMode.FullGame => "共 16 小局（东南西北全圈），第 4 局后进入中场备牌",
+                    _ => "标准对战模式"
+                };
+            }
         }
 
         private void OnRoomPresetPrevClicked() => CyclePendingRoomPreset(-1);
@@ -772,7 +970,28 @@ namespace MahjongGame.UI
         private void RefreshPendingRoomPresetDisplay()
         {
             if (roomPresetLabel != null)
-                roomPresetLabel.text = $"房间异化档位: {RoomLoadoutAdmissionPresentationPolicy.GetDisplayName(_pendingRoomAlienationPreset)}";
+                roomPresetLabel.text = $"{RoomLoadoutAdmissionPresentationPolicy.GetDisplayName(_pendingRoomAlienationPreset)} ({_pendingRoomAlienationPreset})";
+
+            if (roomPresetBadge != null)
+            {
+                roomPresetBadge.text = _pendingRoomAlienationPreset switch
+                {
+                    AlienationPreset.Standard => "推荐默认",
+                    AlienationPreset.Low => "传统国标",
+                    _ => "极限构筑"
+                };
+            }
+
+            if (roomPresetDescLabel != null)
+            {
+                roomPresetDescLabel.text = _pendingRoomAlienationPreset switch
+                {
+                    AlienationPreset.Low => "预算上限 40 点，适合偏向传统国标的纯净对局体验",
+                    AlienationPreset.Standard => "预算上限 80 点（推荐），兼顾策略自由度与战力平衡",
+                    AlienationPreset.High => "预算上限 120 点，支持强力天赋组合与极限牌库构筑",
+                    _ => ""
+                };
+            }
         }
 
         private void CycleDeck(int direction)
@@ -866,6 +1085,16 @@ namespace MahjongGame.UI
             if (connectionReadinessLabel != null) connectionReadinessLabel.text = view.ReadinessText;
             if (retestConnectionButton != null)
                 retestConnectionButton.SetEnabled(!view.ActionsDisabled && NetworkManager.Instance?.RoomService != null);
+
+            bool isReady = diagnostics?.Phase == ClientConnectionPhase.Ready;
+            if (homeConnectionGood != null)
+                homeConnectionGood.text = isReady ? "在线服务器就绪" : "未连接服务器";
+            if (homeConnectionSub != null)
+            {
+                homeConnectionSub.text = (isReady && diagnostics.RoundTripTimeMilliseconds.HasValue)
+                    ? $"RTT {diagnostics.RoundTripTimeMilliseconds.Value}ms · 权威已同步"
+                    : view.StatusText;
+            }
         }
 
         public void ShowTab(string tabName)
@@ -901,6 +1130,7 @@ namespace MahjongGame.UI
             {
                 RefreshHomeDeckInfo();
                 RefreshGameModeDisplay();
+                RefreshPendingRoomPresetDisplay();
             }
             else if (tabName == "Compendium")
             {

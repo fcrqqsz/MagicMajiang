@@ -11,48 +11,199 @@
     <ui:VisualElement name="LobbyRoot" class="lobby-root">
         <!-- Sidebar Navigation -->
         <ui:VisualElement name="Sidebar" class="sidebar">
-            <ui:Label text="Super Majiang" class="sidebar-title" />
-            <ui:Button name="TabHome" text="Home" class="nav-button active-tab" />
-            <ui:Button name="TabWorkshop" text="Deck Workshop" class="nav-button" />
-            <ui:Button name="TabCompendium" text="图鉴与规则" class="nav-button" />
-            <ui:Button name="TabCollection" text="Collection/Shop" class="nav-button" tooltip="Coming Soon!" enable="false" style="opacity: 0.5;" />
-            <ui:Button name="TabSettings" text="Settings" class="nav-button" />
+            <ui:VisualElement class="sidebar-brand">
+                <ui:Label text="SUPER MAJIANG" class="sidebar-title" />
+                <ui:Label text="国标 ROGUELIKE" class="sidebar-tag" />
+            </ui:VisualElement>
+            <ui:VisualElement class="nav-group">
+                <ui:Button name="TabHome" text="首页大厅" class="nav-button active-tab" />
+                <ui:Button name="TabWorkshop" text="牌库工坊" class="nav-button" />
+                <ui:Button name="TabCompendium" text="图鉴与规则" class="nav-button" />
+                <ui:Button name="TabCollection" text="收藏与商店 (即将上线)" class="nav-button nav-button-disabled" tooltip="Coming Soon!" enable="false" style="opacity: 0.5;" />
+                <ui:Button name="TabSettings" text="系统设置" class="nav-button" />
+            </ui:VisualElement>
+            <ui:VisualElement class="sidebar-footer">
+                <ui:Label text="v12 权威协议" class="sidebar-version" />
+                <ui:Label text="国标 81 番 · 异化构筑" class="sidebar-copyright" />
+            </ui:VisualElement>
         </ui:VisualElement>
 
         <!-- Main Content Area -->
         <ui:VisualElement name="ContentArea" class="content-area">
             
             <!-- Home View -->
-            <ui:VisualElement name="ViewHome" class="view-container">
-                <ui:Label name="WelcomeLabel" text="Welcome, Player" class="view-title" />
-                <ui:VisualElement name="DeckSelector" class="deck-selector">
-                    <ui:Button name="BtnDeckPrev" text="&lt;" class="deck-arrow-btn" />
-                    <ui:Label name="DeckNameLabel" text="当前牌库: 标准牌库（默认）" class="view-subtitle deck-name-display" />
-                    <ui:Button name="BtnDeckNext" text="&gt;" class="deck-arrow-btn" />
+            <ui:VisualElement name="ViewHome" class="view-container home-view-container">
+                <!-- 顶栏：呼应房间界面 Top Bar 风格 -->
+                <ui:VisualElement class="home-top-bar">
+                    <ui:VisualElement class="brand-block">
+                        <ui:Label text="四方牌局 · 联机大厅" class="eyebrow" />
+                        <ui:Label name="WelcomeLabel" text="欢迎归来，玩家" class="welcome-title" />
+                    </ui:VisualElement>
+                    <ui:VisualElement class="meta-strip">
+                        <ui:VisualElement class="meta-cell">
+                            <ui:Label text="出战牌库" class="meta-label" />
+                            <ui:Label name="HomeDeckMetaLabel" text="标准牌库（默认）" class="meta-value" />
+                        </ui:VisualElement>
+                        <ui:VisualElement class="meta-cell">
+                            <ui:Label text="总异化值" class="meta-label" />
+                            <ui:Label name="HomeAlienationMetaLabel" text="0 / 80 点" class="meta-value meta-value-gold" />
+                        </ui:VisualElement>
+                        <ui:VisualElement class="meta-cell">
+                            <ui:Label text="当前身份" class="meta-label" />
+                            <ui:Label text="真人玩家" class="meta-value" />
+                        </ui:VisualElement>
+                    </ui:VisualElement>
+                    <ui:VisualElement class="connection-block">
+                        <ui:Label name="HomeConnectionGood" text="在线服务器就绪" class="connection-good" />
+                        <ui:Label name="HomeConnectionSub" text="权威已同步" class="connection-sub" />
+                    </ui:VisualElement>
                 </ui:VisualElement>
-                <ui:Label name="ScoreLabel" text="异化值: 0" class="view-subtitle" />
-                <ui:VisualElement name="GameModeSelector" class="deck-selector">
-                    <ui:Button name="BtnModePrev" text="&lt;" class="deck-arrow-btn" />
-                    <ui:Label name="ModeNameLabel" text="对战模式: 单局 · 50 分" class="view-subtitle deck-name-display" />
-                    <ui:Button name="BtnModeNext" text="&gt;" class="deck-arrow-btn" />
+
+                <!-- 主体双栏仪表盘 -->
+                <ui:VisualElement class="home-body">
+                    <!-- 左栏：出战构筑与异化卡片 -->
+                    <ui:VisualElement class="deck-dashboard-panel">
+                        <ui:VisualElement class="section-heading">
+                            <ui:Label text="出战构筑与异化" class="section-title" />
+                            <ui:Label text="匹配与创建房间时使用的卡组" class="section-caption" />
+                        </ui:VisualElement>
+
+                        <ui:VisualElement class="deck-main-card">
+                            <!-- 牌库轮播切换 -->
+                            <ui:VisualElement name="DeckSelector" class="deck-carousel-row">
+                                <ui:Button name="BtnDeckPrev" text="&lt;" class="arrow-btn" />
+                                <ui:VisualElement class="deck-name-container">
+                                    <ui:Label name="DeckNameLabel" text="标准牌库（默认）" class="deck-name-label" />
+                                    <ui:Label name="DeckPresetBadge" text="标准档 80 预算" class="deck-preset-badge" />
+                                </ui:VisualElement>
+                                <ui:Button name="BtnDeckNext" text="&gt;" class="arrow-btn" />
+                            </ui:VisualElement>
+
+                            <!-- 预算指示表盘 -->
+                            <ui:VisualElement class="budget-panel">
+                                <ui:VisualElement class="budget-header-row">
+                                    <ui:Label text="当前总异化值" class="budget-title" />
+                                    <ui:Label name="ScoreLabel" text="0 / 80" class="budget-total-text" />
+                                </ui:VisualElement>
+                                <ui:VisualElement class="progress-track">
+                                    <ui:VisualElement name="HomeAlienationFill" class="progress-fill" style="width: 0%;" />
+                                </ui:VisualElement>
+                                <ui:VisualElement class="budget-breakdown-row">
+                                    <ui:Label name="HomeDeckCostLabel" text="34张牌库: 0点" class="breakdown-item" />
+                                    <ui:Label name="HomeTalentCostLabel" text="主槽天赋: 0点" class="breakdown-item" />
+                                    <ui:Label name="HomeAlienationStatusBadge" text="[合规可用]" class="breakdown-tag breakdown-valid" />
+                                </ui:VisualElement>
+                            </ui:VisualElement>
+
+                            <!-- 已激活与备选天赋摘要 -->
+                            <ui:VisualElement class="talents-preview-box">
+                                <ui:VisualElement class="talents-preview-header">
+                                    <ui:Label text="激活主天赋 (6 槽位)" class="talents-box-title" />
+                                </ui:VisualElement>
+                                <ui:VisualElement name="HomeActiveTalentsRow1" class="talent-chips-row" />
+                                <ui:VisualElement name="HomeActiveTalentsRow2" class="talent-chips-row" />
+
+                                <ui:VisualElement class="talents-preview-header talents-sideboard-header">
+                                    <ui:Label text="中场备选 (3 槽位)" class="talents-box-title" />
+                                </ui:VisualElement>
+                                <ui:VisualElement name="HomeSideboardTalentsRow" class="talent-chips-row" />
+                            </ui:VisualElement>
+
+                            <!-- 前往工坊按钮 -->
+                            <ui:VisualElement class="deck-action-row">
+                                <ui:Button name="BtnHomeJumpWorkshop" text="前往牌库工坊编辑" class="workshop-jump-btn" />
+                            </ui:VisualElement>
+                        </ui:VisualElement>
+
+                        <ui:VisualElement class="info-note">
+                            <ui:Label text="提示：所选卡组总异化值不可超过进入房间的异化档位上限。可在牌库工坊自由调整 34 张牌与 6+3 天赋。" class="info-note-text" />
+                        </ui:VisualElement>
+                    </ui:VisualElement>
+
+                    <!-- 右栏：对局配置与快速操作区 -->
+                    <ui:VisualElement class="match-config-panel">
+                        <!-- 规则与档位设置卡片 -->
+                        <ui:VisualElement class="config-card">
+                            <ui:VisualElement class="section-heading">
+                                <ui:Label text="对局规则与房间配置" class="section-title" />
+                                <ui:Label text="创建新房间时的预设规则" class="section-caption" />
+                            </ui:VisualElement>
+
+                            <!-- 模式轮播条 -->
+                            <ui:VisualElement class="selector-container">
+                                <ui:Label text="对战模式" class="field-caption" />
+                                <ui:VisualElement name="GameModeSelector" class="carousel-selector-bar">
+                                    <ui:Button name="BtnModePrev" text="&lt;" class="carousel-arrow-btn" />
+                                    <ui:VisualElement class="carousel-content-block">
+                                        <ui:VisualElement class="carousel-title-row">
+                                            <ui:Label name="ModeNameLabel" text="单局对战 (Single)" class="carousel-title" />
+                                            <ui:Label name="ModeScoreBadge" text="50 分起始" class="badge badge-gold" />
+                                        </ui:VisualElement>
+                                        <ui:Label name="ModeDescLabel" text="一小局决胜，节奏紧凑明快，完整局末结算后决出胜负" class="carousel-desc" />
+                                    </ui:VisualElement>
+                                    <ui:Button name="BtnModeNext" text="&gt;" class="carousel-arrow-btn" />
+                                </ui:VisualElement>
+                            </ui:VisualElement>
+
+                            <!-- 异化档位轮播条 -->
+                            <ui:VisualElement class="selector-container selector-container-spaced">
+                                <ui:Label text="房间异化档位 (预算上限)" class="field-caption" />
+                                <ui:VisualElement name="RoomPresetSelector" class="carousel-selector-bar">
+                                    <ui:Button name="BtnRoomPresetPrev" text="&lt;" class="carousel-arrow-btn" />
+                                    <ui:VisualElement class="carousel-content-block">
+                                        <ui:VisualElement class="carousel-title-row">
+                                            <ui:Label name="RoomPresetLabel" text="标准 80 (Standard)" class="carousel-title" />
+                                            <ui:Label name="RoomPresetBadge" text="推荐默认" class="badge badge-ready" />
+                                        </ui:VisualElement>
+                                        <ui:Label name="RoomPresetDescLabel" text="支持多样化策略构筑与中高阶天赋配合，战力自由且平衡" class="carousel-desc" />
+                                    </ui:VisualElement>
+                                    <ui:Button name="BtnRoomPresetNext" text="&gt;" class="carousel-arrow-btn" />
+                                </ui:VisualElement>
+                            </ui:VisualElement>
+                        </ui:VisualElement>
+
+                        <!-- 快速起局卡片 -->
+                        <ui:VisualElement class="action-card">
+                            <ui:VisualElement class="action-heading-row">
+                                <ui:Label text="快速起局" class="card-subtitle" />
+                                <ui:Label text="房主手动配置 AI，四席占满即可准备" class="card-caption" />
+                            </ui:VisualElement>
+                            <ui:VisualElement class="action-btn-row">
+                                <ui:Button name="MatchmakingButton" text="创建新房间" class="btn-create-room" />
+                                <ui:Button name="BtnViewRoomList" text="浏览房间列表" class="btn-view-rooms" />
+                            </ui:VisualElement>
+                        </ui:VisualElement>
+
+                        <!-- 房间号直连卡片 -->
+                        <ui:VisualElement class="direct-join-card">
+                            <ui:VisualElement class="action-heading-row">
+                                <ui:Label text="房间号直连" class="card-subtitle" />
+                                <ui:Label text="输入其他玩家分享的 4 位房间号" class="card-caption" />
+                            </ui:VisualElement>
+                            <ui:VisualElement class="join-input-row">
+                                <ui:VisualElement class="room-input-container">
+                                    <ui:TextField name="RoomIdInput" placeholder-text="输入房间号 (如 7K2M 或 R0001)" class="room-id-textfield" />
+                                    <ui:Label text="[自动转大写]" class="input-auto-upper-tag" />
+                                </ui:VisualElement>
+                                <ui:Button name="JoinRoomButton" text="加入该房间" class="btn-join-room" />
+                            </ui:VisualElement>
+                        </ui:VisualElement>
+
+                        <!-- 状态与警示栏 -->
+                        <ui:VisualElement class="status-strip">
+                            <ui:VisualElement class="status-indicator">
+                                <ui:VisualElement class="status-dot" />
+                                <ui:Label name="RoomStatusLabel" text="当前未加入房间 · 准备就绪" class="status-text" />
+                            </ui:VisualElement>
+                        </ui:VisualElement>
+
+                        <!-- 超额阻断提示 -->
+                        <ui:VisualElement name="RoomAdmissionBlocker" class="admission-blocker" style="display: none;">
+                            <ui:Label text="[异化超额警示]" class="blocker-title" />
+                            <ui:Label name="RoomAdmissionBlockerLabel" class="blocker-text" />
+                        </ui:VisualElement>
+                    </ui:VisualElement>
                 </ui:VisualElement>
-                <ui:VisualElement name="RoomPresetSelector" class="deck-selector room-preset-selector">
-                    <ui:Button name="BtnRoomPresetPrev" text="&lt;" class="deck-arrow-btn" />
-                    <ui:Label name="RoomPresetLabel" text="房间异化档位: 标准 80" class="view-subtitle deck-name-display" />
-                    <ui:Button name="BtnRoomPresetNext" text="&gt;" class="deck-arrow-btn" />
-                </ui:VisualElement>
-                <ui:VisualElement name="RoomAdmissionBlocker" class="room-admission-blocker" style="display: none;">
-                    <ui:Label name="RoomAdmissionBlockerLabel" class="room-admission-blocker-label" />
-                </ui:VisualElement>
-                <ui:VisualElement class="home-action-row">
-                    <ui:Button name="MatchmakingButton" text="创建新房间" class="action-button" />
-                    <ui:Button name="BtnViewRoomList" text="查看房间列表" class="action-button room-browser-button" />
-                </ui:VisualElement>
-                <ui:VisualElement class="room-controls">
-                    <ui:TextField name="RoomIdInput" label="房间号（例如 R0001）" class="room-id-input" tooltip="输入其他玩家创建的房间号" />
-                    <ui:Button name="JoinRoomButton" text="加入该房间" class="room-secondary-button" />
-                </ui:VisualElement>
-                <ui:Label name="RoomStatusLabel" text="当前未加入房间" class="view-subtitle" />
             </ui:VisualElement>
 
             <!-- 房间主界面保留在大厅 UIDocument；高级编辑器使用独立 UIDocument。 -->
